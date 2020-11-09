@@ -74,8 +74,8 @@ func NewApplication() Application {
 	if !env.IsDevelopment() {
 		log.SetFormatter(&log.JSONFormatter{})
 	}
-	logger := NewLogger()
 
+	logger := NewLogger()
 	return Application{
 		Version: Version(),
 		Name:    appName,
