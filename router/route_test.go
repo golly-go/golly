@@ -14,7 +14,9 @@ var routes = Routes{
 				Path: "/loans",
 				Children: Routes{
 					Route{Method: GET, Path: "/"},
-					Route{Method: POST, Path: "/calculator"}},
+					Route{Method: POST, Path: "/calculator"},
+					Route{Method: GET, Path: "/{id}"},
+				},
 			},
 		},
 	},
@@ -28,23 +30,27 @@ func TestBuildRoutes(t *testing.T) {
 		found  bool
 	}{
 		{GET, "/v1/loans", true},
+		{GET, "/v1/loans/1234", true},
 		{POST, "/v1/loans", false},
 		{GET, "/status", true},
 		{POST, "/v1/loans/calculator", true},
-		{GET, "/v1/loans/calculator", false},
+		{GET, "/v1/loans/calculator/1234", false},
+		{GET, "/v1/loans/calculator", true}, // Goes to {id}
 		{DELETE, "/v2/garbage", false},
 	}
 
-	for pos, example := range examples {
+	for _, example := range examples {
 		route, found := routes.search(example.method, tokenizePath(example.path))
 
-		assert.Equalf(t, example.found, found, "example:%d found", pos)
+		assert.Equalf(t, example.found, found, "example:%s found", example.path)
 
 		if example.found {
-			assert.NotNilf(t, route, "example:%d", pos)
-			assert.Equalf(t, example.method, route.Method, "example:%d method")
+			assert.Equal(t, []string{}, route.pathToNode)
+
+			assert.NotNilf(t, route, "example:%s", example.path)
+			assert.Equalf(t, example.method, route.Method, "example:%s method", example.path)
 		} else {
-			assert.Nilf(t, route, "example:%d nil")
+			assert.Nilf(t, route, "example:%s nil", example.path)
 		}
 
 	}

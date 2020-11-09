@@ -38,6 +38,9 @@ type Route struct {
 	Path     string     `json:"path"`
 	Method   methodType `json:"method"`
 	Children Routes
+
+	pathToNode   []string
+	tokensToNode []string
 }
 
 type Routes []Route
@@ -51,6 +54,7 @@ func (routes Routes) search(method methodType, tokens []string) (*Route, bool) {
 	return nil, false
 }
 
+// TODO this is very rudimentary
 func tokenizePath(path string) []string {
 	var current []byte
 	var sections []string
@@ -92,12 +96,20 @@ func (route *Route) search(method methodType, tokens []string) (*Route, bool) {
 	if route.match(method, token) {
 		for _, child := range route.Children {
 			if r, found := child.search(method, tokens[1:]); found {
+				r.tokensToNode = append([]string{token}, r.tokensToNode...)
+				r.pathToNode = append([]string{route.Path}, r.pathToNode...)
+
 				return r, found
 			}
 		}
 
 		if (lng == 0 || lng == 1) && route.Method != 0 {
-			return route, true
+			r := Route(*route)
+
+			r.tokensToNode = append([]string{}, token)
+			r.pathToNode = append([]string{}, r.Path)
+
+			return &r, true
 		}
 	}
 	return nil, false
