@@ -45,8 +45,6 @@ func TestBuildRoutes(t *testing.T) {
 		assert.Equalf(t, example.found, found, "example:%s found", example.path)
 
 		if example.found {
-			assert.Equal(t, []string{}, route.pathToNode)
-
 			assert.NotNilf(t, route, "example:%s", example.path)
 			assert.Equalf(t, example.method, route.Method, "example:%s method", example.path)
 		} else {
