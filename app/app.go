@@ -27,8 +27,6 @@ var (
 	startTime = time.Now()
 
 	source = ""
-
-	profile = false
 )
 
 // Application base application stuff such as configuration and database connection
@@ -48,6 +46,7 @@ func SetName(name string) {
 	appName = name
 }
 
+// SetVersion sets the application version
 func SetVersion(major, minor, patch int, build string) {
 	versionMajor = major
 	versionMinor = minor
@@ -55,10 +54,12 @@ func SetVersion(major, minor, patch int, build string) {
 	versionBuild = build
 }
 
+// Version returns a version string
 func Version() string {
 	return fmt.Sprintf("v%d.%d.%d%s", versionMajor, versionMinor, versionPatch, versionBuild)
 }
 
+// VersionParts returns the version pieces
 func VersionParts() (int, int, int, string) {
 	return versionMajor, versionMinor, versionPatch, versionBuild
 }
@@ -75,15 +76,15 @@ func NewApplication() Application {
 		log.SetFormatter(&log.JSONFormatter{})
 	}
 
-	logger := NewLogger()
 	return Application{
 		Version: Version(),
 		Name:    appName,
 		Config:  initConfig(),
-		Logger:  logger,
+		Logger:  NewLogger(),
 	}
 }
 
+// NewLogger returns a new logger intance
 func NewLogger() *log.Entry {
 	return log.WithFields(log.Fields{
 		"service": appName,

@@ -39,8 +39,9 @@ type Route struct {
 	Method   methodType `json:"method"`
 	Children Routes
 
-	pathToNode   []string
-	tokensToNode []string
+	XPath []string
+
+	NodeTree Routes
 }
 
 type Routes []Route
@@ -62,7 +63,7 @@ func tokenizePath(path string) []string {
 	lngth := len(path)
 
 	if lngth == 0 {
-		return []string{}
+		return []string{"/"}
 	}
 
 	if path[0] != '/' {
@@ -85,6 +86,11 @@ func tokenizePath(path string) []string {
 }
 
 // TOOD optimize this searching i think this works for now
+// We are using BFS traversal here go along the breadth until you find your match
+// then traverse downwards - this brings us somewhere near O(V+E)
+// We could optimize and change traversal to a hash to reduce V will see how this plays out
+// According to benchmarks this is reasonable till we are reaching into a tree that is 2500 nodes
+// deep and grabbing the last one
 func (route *Route) search(method methodType, tokens []string) (*Route, bool) {
 	lng := len(tokens)
 
@@ -96,8 +102,10 @@ func (route *Route) search(method methodType, tokens []string) (*Route, bool) {
 	if route.match(method, token) {
 		for _, child := range route.Children {
 			if r, found := child.search(method, tokens[1:]); found {
-				r.tokensToNode = append([]string{token}, r.tokensToNode...)
-				r.pathToNode = append([]string{route.Path}, r.pathToNode...)
+
+				// Record our paths on the way out
+				r.XPath = append([]string{route.Path}, r.XPath...)
+				r.NodeTree = append(Routes{*route}, r.NodeTree...)
 
 				return r, found
 			}
@@ -105,9 +113,7 @@ func (route *Route) search(method methodType, tokens []string) (*Route, bool) {
 
 		if (lng == 0 || lng == 1) && route.Method != 0 {
 			r := Route(*route)
-
-			r.tokensToNode = append([]string{}, token)
-			r.pathToNode = append([]string{}, r.Path)
+			r.XPath = append([]string{}, r.Path)
 
 			return &r, true
 		}
@@ -118,4 +124,8 @@ func (route *Route) search(method methodType, tokens []string) (*Route, bool) {
 func (route Route) match(method methodType, path string) bool {
 	return (route.Method == method || route.Method == ALL || route.Method == 0) &&
 		(route.Path == path || strings.Index(route.Path, "{") != -1)
+}
+
+func (route *Route) Append(r Route) {
+	route.Children = append(route.Children, r)
 }

@@ -1,10 +1,13 @@
 package router
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
+
+var deepRoute, deepTokens = superDeepRoute()
 
 var routes = Routes{
 	Route{
@@ -20,27 +23,72 @@ var routes = Routes{
 			},
 		},
 	},
+	Route{Path: "/", Method: GET},
 	Route{Path: "/status", Method: GET},
+	deepRoute,
 }
 
-func TestBuildRoutes(t *testing.T) {
+func superDeepRoute() (Route, []string) {
+	var tokens []string
+	var last *Route
+
+	for i := 1000; i > 0; i-- {
+		str := fmt.Sprintf("/%d", i)
+		tokens = append([]string{str}, tokens...)
+
+		current := Route{Path: str, Method: GET}
+
+		if last != nil {
+			current.Append(*last)
+		}
+		last = &current
+	}
+
+	return Route{Path: "/0", Children: Routes{*last}}, append([]string{"/0"}, tokens...)
+}
+
+func BenchmarkTokenizeString(t *testing.B) {
+	tokenizePath("/somepath/that/needs/tokenization")
+	tokenizePath("/somepath/that/needs/tokenization/")
+}
+
+func BenchmarkSearchRoutesNotFound(t *testing.B) {
+	if _, found := routes.search(GET, []string{"/v1", "/loans", "/something", "/or-other"}); found {
+		t.FailNow()
+	}
+}
+
+func BenchmarkSearchRoutesFound(t *testing.B) {
+	if _, found := routes.search(GET, []string{"/v1", "/loans", "/1234"}); !found {
+		t.FailNow()
+	}
+}
+
+func BenchmarkSearchRoutes1000DeepRoute(t *testing.B) {
+	if _, found := routes.search(GET, deepTokens); !found {
+		t.FailNow()
+	}
+}
+
+func TestSearchRoutes(t *testing.T) {
 	var examples = []struct {
 		method methodType
-		path   string
+		path   []string
 		found  bool
 	}{
-		{GET, "/v1/loans", true},
-		{GET, "/v1/loans/1234", true},
-		{POST, "/v1/loans", false},
-		{GET, "/status", true},
-		{POST, "/v1/loans/calculator", true},
-		{GET, "/v1/loans/calculator/1234", false},
-		{GET, "/v1/loans/calculator", true}, // Goes to {id}
-		{DELETE, "/v2/garbage", false},
+		{GET, []string{"/v1", "/loans"}, true},
+		{GET, []string{"/"}, true},
+		{GET, []string{"/v1", "/loans", "/1234"}, true},
+		{POST, []string{"/v1", "/loans"}, false},
+		{GET, []string{"/status"}, true},
+		{POST, []string{"/v1", "/loans", "/calculator"}, true},
+		{GET, []string{"/v1", "/loans", "/calculator", "/1234"}, false},
+		{GET, []string{"/v1", "/loans", "/calculator"}, true}, // Goes to {id}
+		{DELETE, []string{"/v2", "/garbage"}, false},
 	}
 
 	for _, example := range examples {
-		route, found := routes.search(example.method, tokenizePath(example.path))
+		route, found := routes.search(example.method, example.path)
 
 		assert.Equalf(t, example.found, found, "example:%s found", example.path)
 
