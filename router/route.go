@@ -1,8 +1,10 @@
 package router
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
+	"time"
 )
 
 type methodType int
@@ -53,6 +55,23 @@ func (routes Routes) search(method methodType, tokens []string) (*Route, bool) {
 		}
 	}
 	return nil, false
+}
+
+func (routes Routes) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	status := http.StatusNotFound
+
+	defer func(t time.Time) {
+		fmt.Printf("Completed request %s %s [%d]\n", r.Method, r.URL.String(), status)
+	}(time.Now())
+
+	if r, found := routes.search(methods[r.Method], tokenizePath(r.URL.Path)); found {
+		fmt.Printf("Found: %#v\n", r.XPath)
+		status = http.StatusOK
+
+		w.WriteHeader(status)
+	} else {
+		w.WriteHeader(status)
+	}
 }
 
 // TODO this is very rudimentary

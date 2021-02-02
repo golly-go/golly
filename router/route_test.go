@@ -25,6 +25,7 @@ var routes = Routes{
 	},
 	Route{Path: "/", Method: GET},
 	Route{Path: "/status", Method: GET},
+	Route{Path: "/s/{id}", Method: GET},
 	deepRoute,
 }
 
@@ -32,7 +33,7 @@ func superDeepRoute() (Route, []string) {
 	var tokens []string
 	var last *Route
 
-	for i := 1000; i > 0; i-- {
+	for i := 2500; i > 0; i-- {
 		str := fmt.Sprintf("/%d", i)
 		tokens = append([]string{str}, tokens...)
 
