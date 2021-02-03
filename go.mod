@@ -7,5 +7,6 @@ require (
 	github.com/sirupsen/logrus v1.7.0
 	github.com/slimloans/go v0.0.0-20201109033059-b6c966cfb5bc
 	github.com/spf13/viper v1.7.1
-	github.com/stretchr/testify v1.6.1
+	github.com/stretchr/testify v1.7.0
+	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b // indirect
 )
