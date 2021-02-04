@@ -5,10 +5,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jinzhu/gorm"
 	log "github.com/sirupsen/logrus"
-	"github.com/slimloans/go/env"
+	"github.com/slimloans/golly/env"
 	"github.com/spf13/viper"
+	"gorm.io/gorm"
 )
 
 var (
@@ -71,9 +71,10 @@ func Name() string {
 
 // NewApplication creates a new application for consumption
 func NewApplication() Application {
-
 	if !env.IsDevelopment() {
 		log.SetFormatter(&log.JSONFormatter{})
+	} else {
+		log.SetFormatter(&log.TextFormatter{})
 	}
 
 	return Application{
