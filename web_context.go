@@ -72,7 +72,7 @@ func (wctx WebContext) Request() *http.Request {
 	return wctx.request
 }
 
-func (wctx WebContext) Writer() http.ResponseWriter {
+func (wctx WebContext) Response() http.ResponseWriter {
 	return wctx.writer
 }
 
@@ -87,11 +87,15 @@ func (wctx *WebContext) URLParam(key string) string {
 
 // AddHeader adds a reaponse header
 func (wctx *WebContext) AddHeader(key, value string) {
-	wctx.Writer().Header().Add(key, value)
+	wctx.Response().Header().Add(key, value)
 }
 
 // RenderStatus renders out a status
 func (wctx *WebContext) RenderStatus(status int) {
 	wctx.rendered = true
-	wctx.Writer().WriteHeader(status)
+	wctx.Response().WriteHeader(status)
+}
+
+func (wctx WebContext) Write(b []byte) (int, error) {
+	return wctx.writer.Write(b)
 }
