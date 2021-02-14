@@ -1,14 +1,20 @@
 package golly
 
-import "net/http"
+import (
+	"fmt"
+	"net/http"
+	"time"
+
+	"github.com/sirupsen/logrus"
+	log "github.com/sirupsen/logrus"
+)
 
 // WebContext specific context for web
 // this will allow us not to pass down Context
 type WebContext struct {
 	Context
-	requestID string
-	request   *http.Request
-	writer    http.ResponseWriter
+	request *http.Request
+	writer  http.ResponseWriter
 
 	rendered bool
 
@@ -19,7 +25,8 @@ type WebContext struct {
 func NewWebContext(a Application, r *http.Request, w http.ResponseWriter) WebContext {
 	ctx := NewContext(r.Context())
 	ctx.SetDB(a.DB)
-	ctx.SetLogger(a.Logger)
+
+	ctx.SetLogger(a.Logger.WithFields(webLogParams(ctx, r)))
 
 	return WebContext{
 		urlParams: map[string]string{},
@@ -29,20 +36,38 @@ func NewWebContext(a Application, r *http.Request, w http.ResponseWriter) WebCon
 	}
 }
 
+func webLogParams(ctx Context, r *http.Request) log.Fields {
+	logFields := logrus.Fields{}
+
+	logFields["ts"] = time.Now().UTC().Format(time.RFC1123)
+
+	scheme := "http"
+	if r.TLS != nil {
+		scheme = "https"
+	}
+
+	logFields["http.proto"] = r.Proto
+	logFields["http.request_id"] = ctx.ContextID()
+
+	logFields["http.method"] = r.Method
+	logFields["http.useragent"] = r.UserAgent()
+	logFields["http.url"] = fmt.Sprintf("%s://%s%s", scheme, r.Host, r.RequestURI)
+	logFields["url"] = fmt.Sprintf("%s://%s%s", scheme, r.Host, r.RequestURI)
+
+	logFields["http.url_details.path"] = r.URL.Path
+	logFields["http.url_details.host"] = r.Host
+	logFields["http.url_details.queryString"] = r.URL.RawQuery
+	logFields["http.url_details.schema"] = scheme
+
+	return logFields
+}
+
 func (wctx WebContext) Request() *http.Request {
 	return wctx.request
 }
 
 func (wctx WebContext) Writer() http.ResponseWriter {
 	return wctx.writer
-}
-
-func (wctx WebContext) RequestID() string {
-	return wctx.requestID
-}
-
-func (wctx WebContext) SetRequestID(id string) {
-	wctx.requestID = id
 }
 
 func (wctx *WebContext) setURLParams(params map[string]string) {

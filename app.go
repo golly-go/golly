@@ -39,7 +39,7 @@ type Application struct {
 
 	StartedAt time.Time
 
-	Routes Route
+	routes *Route
 }
 
 var appName string
@@ -80,14 +80,14 @@ func NewApplication() Application {
 		Config:    initConfig(),
 		Logger:    NewLogger(),
 		StartedAt: startTime,
-		Routes:    NewRoute(),
+		routes:    NewRoute(),
 	}
 }
 
 func (a Application) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	defer func(t time.Time, method string) {
-		ctx.Logger().Infof("Completed request %s %s [%d]\n", method, r.URL.String(), status)
-	}(time.Now(), method)
-
 	processWebRequest(a, r, w)
+}
+
+func (a *Application) Routes() *Route {
+	return a.routes
 }

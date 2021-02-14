@@ -4,6 +4,7 @@ import (
 	"context"
 	"sync"
 
+	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 )
@@ -11,14 +12,16 @@ import (
 const (
 	// LoggerKey key to the data map for the logger
 	LoggerKey = "logger"
-	// key to the db
-	DBKey = "db"
 )
 
 type Context struct {
 	context context.Context
 
 	data *sync.Map
+
+	db *gorm.DB
+
+	id string
 }
 
 // NewContext returns a new application context provided some basic information
@@ -26,18 +29,23 @@ func NewContext(ctx context.Context) Context {
 	return Context{
 		context: ctx,
 		data:    &sync.Map{},
+		id:      uuid.New().String(),
 	}
 }
 
-func (c Context) SetDB(db *gorm.DB) {
-	c.Set(DBKey, db)
+func (c Context) ContextID() string {
+	return c.id
 }
 
-func (c Context) UpdateLogFields(fields log.Fields) {
+func (c *Context) SetDB(db *gorm.DB) {
+	c.db = db
+}
+
+func (c *Context) UpdateLogFields(fields log.Fields) {
 	c.Set(LoggerKey, c.Logger().WithFields(fields))
 }
 
-func (c Context) SetLogger(l *log.Entry) {
+func (c *Context) SetLogger(l *log.Entry) {
 	c.Set(LoggerKey, l)
 }
 
@@ -71,12 +79,7 @@ func (c *Context) Get(key string) (interface{}, bool) {
 // not sure what todo here as we may be returning nil
 // might not be safe to call in all cases
 func (c Context) DB() *gorm.DB {
-	if d, found := c.Get("DB"); found {
-		if db, ok := d.(*gorm.DB); ok {
-			return db.Session(&gorm.Session{})
-		}
-	}
-	return nil
+	return c.db
 }
 
 // NewDB returns a new session (Not sure if i like this)

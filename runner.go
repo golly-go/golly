@@ -22,22 +22,20 @@ func Boot(f func(Application) error) error {
 	return nil
 }
 
-func Run(mode string) error {
-	return Boot(func(a Application) error {
-		a.Logger.Infof("Starting App %s (%s)", a.Name, a.Version)
+func (a Application) Run(mode string) error {
+	a.Logger.Infof("Starting App %s (%s)", a.Name, a.Version)
 
-		switch mode {
-		case "workers":
-		case "web":
-			return runWeb(a)
-		default:
+	switch mode {
+	case "workers":
+	case "web":
+		return runWeb(a)
+	default:
 
-			if err := runWeb(a); err != nil {
-				return err
-			}
+		if err := runWeb(a); err != nil {
+			return err
 		}
-		return nil
-	})
+	}
+	return nil
 }
 
 func runWeb(a Application) error {

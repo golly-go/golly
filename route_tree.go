@@ -1,11 +1,15 @@
 package golly
 
 import (
+	"fmt"
 	"net/http"
 	"regexp"
+	"runtime/debug"
 	"strings"
 	"time"
 
+	"github.com/sirupsen/logrus"
+	"github.com/slimloans/golly/env"
 	"github.com/slimloans/golly/middleware"
 )
 
@@ -144,12 +148,15 @@ func (re Route) IsAllowed(method string) bool {
 	return false
 }
 
-func FindRoute(root Route, path string) *Route {
+func FindRoute(root *Route, path string) *Route {
 
 	p := path
 	if p[0] == '/' {
 		p = p[1:]
 	}
+
+	fmt.Printf("Searcing for: %s\n", p)
+	fmt.Printf("%#v\n", root)
 
 	tokens := strings.Split(p, "/")
 
@@ -190,8 +197,8 @@ func (re Route) Length() (cnt int) {
 	return
 }
 
-func NewRoute() Route {
-	return Route{
+func NewRoute() *Route {
+	return &Route{
 		handlers:   map[methodType]HandlerFunc{},
 		middleware: []MiddlewareFunc{},
 	}
@@ -234,7 +241,7 @@ func (re *Route) Add(path string, handler HandlerFunc, httpMethods methodType) *
 		if node := r.FindChildByToken(token); node != nil {
 			r = node
 		} else {
-			node := &Route{Token: token, handlers: map[methodType]HandlerFunc{}, parent: r}
+			node := &Route{Token: token, handlers: map[methodType]HandlerFunc{}, parent: r, middleware: r.middleware}
 
 			r.Children = append(r.Children, node)
 			r = node
@@ -391,19 +398,47 @@ func processWebRequest(a Application, r *http.Request, w http.ResponseWriter) {
 
 	wctx := NewWebContext(a, r, writer)
 
-	defer func(t time.Time, method string) {
-		wctx.Logger().Infof("Completed request %s %s [%d] [%d]\n", method, r.URL.String(), writer.Status(), writer.BytesWritten())
-	}(time.Now(), r.Method)
+	defer func() {
+		if r := recover(); r != nil {
+			writer.WriteHeader(http.StatusInternalServerError)
+			if env.IsDevelopment() {
+				debug.PrintStack()
+			}
+		}
+	}()
 
-	if re := FindRoute(a.Routes, r.URL.Path); re != nil {
+	// TODO move this into a middleware
+	defer func(t time.Time, method string, writer middleware.WrapResponseWriter) {
+		elapsed := time.Now().Sub(t)
+		status := writer.Status()
+
+		logger := wctx.Logger().WithFields(logrus.Fields{
+			"http.status_code":      status,
+			"network.bytes_written": writer.BytesWritten(),
+			"duration":              elapsed.Nanoseconds(),
+		})
+
+		str := fmt.Sprintf("Completed request [%v] [%d %s]", elapsed, status, http.StatusText(status))
+
+		if status < 302 {
+			logger.Info(str)
+		} else if status < 500 {
+			logger.Warn(str)
+		} else {
+			logger.Error(str)
+		}
+
+	}(time.Now(), r.Method, writer)
+
+	if re := FindRoute(a.routes, r.URL.Path); re != nil {
 		wctx.setURLParams(handleRouteVariables(re, r.URL.Path))
 		re.ServeHTTP(wctx)
 		return
 	}
 
-	if a.Routes.notFoundHandler == nil {
-		w.WriteHeader(http.StatusNotFound)
+	if a.routes.notFoundHandler == nil {
+		writer.WriteHeader(http.StatusNotFound)
 	} else {
-		a.Routes.notFoundHandler(wctx)
+		a.routes.notFoundHandler(wctx)
 	}
 }
