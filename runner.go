@@ -1,6 +1,9 @@
 package golly
 
-import "net/http"
+import (
+	"fmt"
+	"net/http"
+)
 
 func Boot(f func(Application) error) error {
 	a := NewApplication()
@@ -12,7 +15,11 @@ func Boot(f func(Application) error) error {
 
 	a.DB = db
 
-	return f(a)
+	if err := f(a); err != nil {
+		panic(err)
+	}
+
+	return nil
 }
 
 func Run(mode string) error {
@@ -22,14 +29,24 @@ func Run(mode string) error {
 		switch mode {
 		case "workers":
 		case "web":
-			runWeb(a)
+			return runWeb(a)
 		default:
-			runWeb(a)
+
+			if err := runWeb(a); err != nil {
+				return err
+			}
 		}
 		return nil
 	})
 }
 
-func runWeb(a Application) {
-	http.ListenAndServe(a.Config.GetString("bind"), a)
+func runWeb(a Application) error {
+	var bind string
+
+	if port := a.Config.GetString("port"); port != "" {
+		bind = fmt.Sprintf(":%s", port)
+	} else {
+		bind = a.Config.GetString("bind")
+	}
+	return http.ListenAndServe(bind, a)
 }

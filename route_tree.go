@@ -5,6 +5,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/slimloans/golly/middleware"
 )
 
 type methodType uint
@@ -204,16 +206,9 @@ func (re *Route) NotAllowedHandler(fn HandlerFunc) {
 }
 
 func (re *Route) ServeHTTP(ctx WebContext) {
-
-	status := http.StatusNotFound
-
 	r := ctx.Request()
 
 	method := r.Method
-
-	defer func(t time.Time, method string) {
-		ctx.Logger().Infof("Completed request %s %s [%d]\n", method, r.URL.String(), status)
-	}(time.Now(), method)
 
 	if mt, found := methods[method]; found {
 		if re.allowed&mt != 0 {
@@ -392,7 +387,13 @@ func handleRouteVariables(re *Route, path string) map[string]string {
 }
 
 func processWebRequest(a Application, r *http.Request, w http.ResponseWriter) {
-	wctx := NewWebContext(a, r, w)
+	writer := middleware.NewWrapResponseWriter(w, r.ProtoMajor)
+
+	wctx := NewWebContext(a, r, writer)
+
+	defer func(t time.Time, method string) {
+		wctx.Logger().Infof("Completed request %s %s [%d] [%d]\n", method, r.URL.String(), writer.Status(), writer.BytesWritten())
+	}(time.Now(), r.Method)
 
 	if re := FindRoute(a.Routes, r.URL.Path); re != nil {
 		wctx.setURLParams(handleRouteVariables(re, r.URL.Path))

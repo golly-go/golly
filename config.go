@@ -9,7 +9,7 @@ import (
 
 // Sane defaults TODO: Clean this up
 func setConfigDefaults(v *viper.Viper) *viper.Viper {
-	v.SetDefault("bind", "9001")
+	v.SetDefault("bind", ":9999")
 	v.SetDefault(appName, map[string]interface{}{
 		"db": map[string]interface{}{
 			"host":     "127.0.0.1",
