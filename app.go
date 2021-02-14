@@ -2,11 +2,10 @@ package golly
 
 import (
 	"fmt"
-	"strings"
+	"net/http"
 	"time"
 
 	log "github.com/sirupsen/logrus"
-	"github.com/slimloans/golly/env"
 	"github.com/spf13/viper"
 	"gorm.io/gorm"
 )
@@ -37,6 +36,10 @@ type Application struct {
 	Name    string `json:"name"`
 	Version string `json:"version"`
 	Logger  *log.Entry
+
+	StartedAt time.Time
+
+	Routes Route
 }
 
 var appName string
@@ -71,49 +74,16 @@ func Name() string {
 
 // NewApplication creates a new application for consumption
 func NewApplication() Application {
-	if !env.IsDevelopment() {
-		log.SetFormatter(&log.JSONFormatter{})
-	} else {
-		log.SetFormatter(&log.TextFormatter{})
-	}
-
 	return Application{
-		Version: Version(),
-		Name:    appName,
-		Config:  initConfig(),
-		Logger:  NewLogger(),
+		Version:   Version(),
+		Name:      appName,
+		Config:    initConfig(),
+		Logger:    NewLogger(),
+		StartedAt: startTime,
+		Routes:    NewRoute(),
 	}
 }
 
-// NewLogger returns a new logger intance
-func NewLogger() *log.Entry {
-	return log.WithFields(log.Fields{
-		"service": appName,
-		"version": Version(),
-		"env":     env.CurrentENV(),
-	})
-}
-
-// initConfig initializes the config looking for the config files in various places
-// this is a good place to put global defaults that are used by all packages.
-func initConfig() *viper.Viper {
-	v := viper.New()
-
-	v.SetConfigType("json")
-	v.AddConfigPath(fmt.Sprintf("$HOME/%s", appName))
-	v.AddConfigPath(".")
-
-	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
-
-	v.AutomaticEnv()
-
-	if err := v.ReadInConfig(); err != nil {
-		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
-			// Config file not found; ignore error if desired
-			return v
-		}
-		panic(err)
-	}
-
-	return v
+func (a Application) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	processWebRequest(a, r, w)
 }

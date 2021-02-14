@@ -10,7 +10,7 @@ import (
 func TestContextData(t *testing.T) {
 	examples := []string{"1", "2", "3", "4", "5", "!@3412341234123"}
 
-	c := NewContext(context.TODO(), nil)
+	c := NewContext(context.TODO())
 
 	for _, example := range examples {
 		c.Set(example, example)
@@ -25,9 +25,10 @@ func TestContextData(t *testing.T) {
 
 func TestContextDB(t *testing.T) {
 	db := NewInMemoryConnection()
-	c := NewContext(context.TODO(), nil)
+	c := NewContext(context.TODO())
 
 	assert.Nil(t, c.DB())
-	c.db = db
+	c.SetDB(db)
+
 	assert.NotNil(t, c.DB())
 }

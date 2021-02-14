@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"time"
 )
 
 type methodType uint
@@ -41,11 +42,14 @@ type RouteToken interface {
 	Match(string) bool
 	Equal(RouteToken) bool
 	Value() string
+	IsVeradic() bool
 }
 
 type RoutePath struct {
 	Path string
 }
+
+func (rp RoutePath) IsVeradic() bool { return false }
 
 func (rp RoutePath) Match(str string) bool {
 	return rp.Path == str
@@ -72,6 +76,8 @@ func (rt RouteVariable) Value() string {
 	return rt.Name
 }
 
+func (rp RouteVariable) IsVeradic() bool { return true }
+
 func (rt RouteVariable) Match(str string) bool {
 	if rt.Matcher == "" {
 		return true
@@ -82,19 +88,27 @@ func (rt RouteVariable) Match(str string) bool {
 }
 
 // HandlerFunc Defines our handler function
-type HandlerFunc func(c Context)
+type HandlerFunc func(c WebContext)
+
+// MiddlewareFunc defines our middleware function
+type MiddlewareFunc func(HandlerFunc) HandlerFunc
 
 // Route is an entry into our routing tree
 type Route struct {
 	Token RouteToken
 
-	Handlers map[methodType]HandlerFunc
+	handlers map[methodType]HandlerFunc
 
 	Children []*Route
 
-	Middleware []interface{} //TBD
+	middleware []MiddlewareFunc //TBD
 
 	allowed methodType
+
+	methodNotAllowedHandler HandlerFunc
+	notFoundHandler         HandlerFunc
+
+	parent *Route
 }
 
 var routeRoot Route
@@ -118,6 +132,14 @@ func (re Route) Allow() []string {
 		}
 	}
 	return ret
+}
+
+// IsAllowed returns if a method is allowed on a route
+func (re Route) IsAllowed(method string) bool {
+	if mt, found := methods[method]; found {
+		return re.allowed&mt != 0
+	}
+	return false
 }
 
 func FindRoute(root Route, path string) *Route {
@@ -168,8 +190,43 @@ func (re Route) Length() (cnt int) {
 
 func NewRoute() Route {
 	return Route{
-		Handlers: map[methodType]HandlerFunc{},
+		handlers:   map[methodType]HandlerFunc{},
+		middleware: []MiddlewareFunc{},
 	}
+}
+
+func (re *Route) NotFoundHandler(fn HandlerFunc) {
+	re.notFoundHandler = fn
+}
+
+func (re *Route) NotAllowedHandler(fn HandlerFunc) {
+	re.methodNotAllowedHandler = fn
+}
+
+func (re *Route) ServeHTTP(ctx WebContext) {
+
+	status := http.StatusNotFound
+
+	r := ctx.Request()
+
+	method := r.Method
+
+	defer func(t time.Time, method string) {
+		ctx.Logger().Infof("Completed request %s %s [%d]\n", method, r.URL.String(), status)
+	}(time.Now(), method)
+
+	if mt, found := methods[method]; found {
+		if re.allowed&mt != 0 {
+			h := chain(re.middleware, re.handlers[mt])
+			h(ctx)
+
+			return
+		}
+	}
+
+	ctx.AddHeader("Allow", strings.Join(re.Allow(), ","))
+	ctx.RenderStatus(405)
+	return
 }
 
 func (re *Route) Add(path string, handler HandlerFunc, httpMethods methodType) *Route {
@@ -182,21 +239,31 @@ func (re *Route) Add(path string, handler HandlerFunc, httpMethods methodType) *
 		if node := r.FindChildByToken(token); node != nil {
 			r = node
 		} else {
-			node := &Route{Token: token, Handlers: map[methodType]HandlerFunc{}}
+			node := &Route{Token: token, handlers: map[methodType]HandlerFunc{}, parent: r}
 
 			r.Children = append(r.Children, node)
 			r = node
 		}
 
 		if pos == lng-1 {
-			if r.Handlers[ALL] == nil && r.Handlers[httpMethods] == nil {
-				r.Handlers[httpMethods] = handler
+			if r.handlers[ALL] == nil && r.handlers[httpMethods] == nil {
+				r.handlers[httpMethods] = handler
 
 				r.allowed |= httpMethods
 			}
 		}
 	}
 	return r
+}
+
+func (re *Route) Use(fns ...MiddlewareFunc) *Route {
+	re.middleware = append(re.middleware, fns...)
+
+	for _, child := range re.Children {
+		child.Use(fns...)
+	}
+
+	return re
 }
 
 // Get adds a get route
@@ -238,6 +305,10 @@ func (re Route) Namespace(path string, f func(r *Route)) *Route {
 	r := re.Add(path, nil, 0)
 	f(r)
 	return r
+}
+
+func (re Route) Route(path string, f func(r *Route)) *Route {
+	return re.Namespace(path, f)
 }
 
 func tokenize(path string) []RouteToken {
@@ -287,4 +358,51 @@ func tokenize(path string) []RouteToken {
 		}
 	}
 	return ret
+}
+
+func chain(middlewares []MiddlewareFunc, endpoint HandlerFunc) HandlerFunc {
+	// Return ahead of time if there aren't any middlewares for the chain
+	if len(middlewares) == 0 {
+		return endpoint
+	}
+
+	// Wrap the end handler with the middleware chain
+	h := middlewares[len(middlewares)-1](endpoint)
+	for i := len(middlewares) - 2; i >= 0; i-- {
+		h = middlewares[i](h)
+	}
+
+	return h
+}
+
+// This is gross once i start using it ill optimize
+func handleRouteVariables(re *Route, path string) map[string]string {
+	ret := map[string]string{}
+	tokens := tokenize(path)
+
+	p := re
+
+	for i := len(tokens) - 1; i > 0; i-- {
+		if p.Token.IsVeradic() {
+			ret[p.Token.Value()] = tokens[i].Value()
+		}
+		p = re.parent
+	}
+	return ret
+}
+
+func processWebRequest(a Application, r *http.Request, w http.ResponseWriter) {
+	wctx := NewWebContext(a, r, w)
+
+	if re := FindRoute(a.Routes, r.URL.Path); re != nil {
+		wctx.setURLParams(handleRouteVariables(re, r.URL.Path))
+		re.ServeHTTP(wctx)
+		return
+	}
+
+	if a.Routes.notFoundHandler == nil {
+		w.WriteHeader(http.StatusNotFound)
+	} else {
+		a.Routes.notFoundHandler(wctx)
+	}
 }
