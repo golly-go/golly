@@ -13,8 +13,9 @@ import (
 // this will allow us not to pass down Context
 type WebContext struct {
 	Context
-	request *http.Request
-	writer  http.ResponseWriter
+	requestID string
+	request   *http.Request
+	writer    http.ResponseWriter
 
 	rendered bool
 
@@ -22,21 +23,26 @@ type WebContext struct {
 }
 
 // NewWebContext returns a new web context
-func NewWebContext(a Application, r *http.Request, w http.ResponseWriter) WebContext {
+func NewWebContext(a Application, r *http.Request, w http.ResponseWriter, requestID string) WebContext {
 	ctx := NewContext(r.Context())
 	ctx.SetDB(a.DB)
 
-	ctx.SetLogger(a.Logger.WithFields(webLogParams(ctx, r)))
+	ctx.SetLogger(a.Logger.WithFields(webLogParams(requestID, r)))
 
 	return WebContext{
 		urlParams: map[string]string{},
 		Context:   ctx,
 		request:   r,
 		writer:    w,
+		requestID: requestID,
 	}
 }
 
-func webLogParams(ctx Context, r *http.Request) log.Fields {
+func (wctx WebContext) RequestID() string {
+	return wctx.requestID
+}
+
+func webLogParams(requestID string, r *http.Request) log.Fields {
 	logFields := logrus.Fields{}
 
 	logFields["ts"] = time.Now().UTC().Format(time.RFC1123)
@@ -47,7 +53,7 @@ func webLogParams(ctx Context, r *http.Request) log.Fields {
 	}
 
 	logFields["http.proto"] = r.Proto
-	logFields["http.request_id"] = ctx.ContextID()
+	logFields["http.request_id"] = requestID
 
 	logFields["http.method"] = r.Method
 	logFields["http.useragent"] = r.UserAgent()

@@ -4,7 +4,6 @@ import (
 	"context"
 	"sync"
 
-	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 )
@@ -20,8 +19,6 @@ type Context struct {
 	data *sync.Map
 
 	db *gorm.DB
-
-	id string
 }
 
 // NewContext returns a new application context provided some basic information
@@ -29,12 +26,7 @@ func NewContext(ctx context.Context) Context {
 	return Context{
 		context: ctx,
 		data:    &sync.Map{},
-		id:      uuid.New().String(),
 	}
-}
-
-func (c Context) ContextID() string {
-	return c.id
 }
 
 func (c *Context) SetDB(db *gorm.DB) {

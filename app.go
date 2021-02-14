@@ -3,6 +3,7 @@ package golly
 import (
 	"fmt"
 	"net/http"
+	"os"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -26,6 +27,8 @@ var (
 	startTime = time.Now()
 
 	source = ""
+
+	hostName, _ = os.Hostname()
 )
 
 // Application base application stuff such as configuration and database connection

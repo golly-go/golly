@@ -3,9 +3,11 @@ package golly
 import (
 	"fmt"
 	"net/http"
+	"os"
 	"regexp"
 	"runtime/debug"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -154,9 +156,6 @@ func FindRoute(root *Route, path string) *Route {
 	if p[0] == '/' {
 		p = p[1:]
 	}
-
-	fmt.Printf("Searcing for: %s\n", p)
-	fmt.Printf("%#v\n", root)
 
 	tokens := strings.Split(p, "/")
 
@@ -393,10 +392,27 @@ func handleRouteVariables(re *Route, path string) map[string]string {
 	return ret
 }
 
+var (
+	requestLock sync.RWMutex
+	reqcount    int
+	hostname, _ = os.Hostname()
+)
+
+func requestCount() int {
+	requestLock.Lock()
+	defer requestLock.Unlock()
+
+	reqcount++
+	return reqcount
+}
+
+func makeRequestID() string {
+	return fmt.Sprintf("%s/%06d", hostname, requestCount())
+}
+
 func processWebRequest(a Application, r *http.Request, w http.ResponseWriter) {
 	writer := middleware.NewWrapResponseWriter(w, r.ProtoMajor)
-
-	wctx := NewWebContext(a, r, writer)
+	wctx := NewWebContext(a, r, writer, makeRequestID())
 
 	defer func() {
 		if r := recover(); r != nil {
