@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"sync"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -29,6 +30,12 @@ var (
 	source = ""
 
 	hostName, _ = os.Hostname()
+
+	appName string
+
+	initializers = []func(Application) error{}
+
+	lock sync.RWMutex
 )
 
 // Application base application stuff such as configuration and database connection
@@ -45,7 +52,15 @@ type Application struct {
 	routes *Route
 }
 
-var appName string
+// RegisterInitializer registers a function to be called prior to boot
+// Initializers take an application and return error
+// on error they will panic() and prevent the app from loading
+func RegisterInitializer(fns ...func(Application) error) {
+	lock.Lock()
+	defer lock.Unlock()
+
+	initializers = append(initializers, fns...)
+}
 
 // SetName sets the application name
 func SetName(name string) {

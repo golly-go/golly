@@ -450,6 +450,10 @@ func renderRoutes(routes *Route) HandlerFunc {
 	}
 }
 
+func printRoutes(routes *Route) {
+	fmt.Printf("%s\n", strings.Join(buildPath(routes, ""), "\n"))
+}
+
 func buildPath(route *Route, prefix string) []string {
 	ret := []string{}
 
