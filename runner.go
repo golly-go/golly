@@ -98,14 +98,14 @@ func Boot(f func(Application) error) error {
 
 	a.DB = db
 
-	if err := f(a); err != nil {
-		panic(err)
-	}
-
 	for _, initializer := range initializers {
 		if err := initializer(a); err != nil {
 			panic(err)
 		}
+	}
+
+	if err := f(a); err != nil {
+		panic(err)
 	}
 
 	return nil
