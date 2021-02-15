@@ -15,6 +15,7 @@ var (
 	defaultMethods = []string{http.MethodGet, http.MethodPost, http.MethodHead}
 )
 
+// CorsOptions defines the cors options
 type CorsOptions struct {
 	AllowedHeaders []string
 	AllowedMethods []string
@@ -85,6 +86,7 @@ func (c CorsOptions) init() cors {
 	return co
 }
 
+// Cors builds a golly middleware providing cors ooptions
 func Cors(co CorsOptions) func(next golly.HandlerFunc) golly.HandlerFunc {
 	crs := co.init()
 

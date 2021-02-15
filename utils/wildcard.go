@@ -14,7 +14,7 @@ func (wcs Wildcards) Find(pred func(Wildcard) bool) *Wildcard {
 		if pred(wc) {
 			return &wc
 		}
-	}=
+	}
 	return nil
 }
 
