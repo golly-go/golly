@@ -29,6 +29,11 @@ func NewContext(ctx context.Context) Context {
 	}
 }
 
+func (c *Context) WithContext(ctx context.Context) context.Context {
+	c.context = ctx
+	return c.context
+}
+
 func (c *Context) SetDB(db *gorm.DB) {
 	c.db = db
 }
