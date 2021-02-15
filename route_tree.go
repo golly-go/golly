@@ -217,12 +217,17 @@ func (re *Route) ServeHTTP(ctx WebContext) {
 	method := r.Method
 
 	if mt, found := methods[method]; found {
-		if re.allowed&mt != 0 {
-			h := chain(re.middleware, re.handlers[mt])
-			h(ctx)
+		handler := re.handlers[mt]
 
-			return
+		// Gross force options through
+		if re.allowed&mt == 0 && mt&OPTIONS == 0 {
+			handler = func(c WebContext) {}
 		}
+
+		h := chain(re.middleware, handler)
+		h(ctx)
+
+		return
 	}
 
 	ctx.AddHeader("Allow", strings.Join(re.Allow(), ","))
