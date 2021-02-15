@@ -4,7 +4,6 @@ go 1.15
 
 require (
 	github.com/fsnotify/fsnotify v1.4.9 // indirect
-	github.com/gofrs/uuid v3.2.0+incompatible
 	github.com/google/uuid v1.2.0
 	github.com/jackc/pgproto3/v2 v2.0.7 // indirect
 	github.com/magiconair/properties v1.8.4 // indirect
