@@ -17,6 +17,8 @@ type WebContext struct {
 	request   *http.Request
 	writer    http.ResponseWriter
 
+	Route *Route
+
 	rendered bool
 
 	urlParams map[string]string

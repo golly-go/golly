@@ -5,6 +5,16 @@ import (
 	"net/http"
 )
 
+type RunMode string
+
+var (
+	RunModeDefault RunMode = "default"
+
+	RunModeWeb RunMode = "web"
+
+	RunModeWorkers RunMode = "workers"
+)
+
 func Boot(f func(Application) error) error {
 	a := NewApplication()
 
@@ -22,12 +32,12 @@ func Boot(f func(Application) error) error {
 	return nil
 }
 
-func (a Application) Run(mode string) error {
+func (a Application) Run(mode RunMode) error {
 	a.Logger.Infof("Starting App %s (%s)", a.Name, a.Version)
 
 	switch mode {
-	case "workers":
-	case "web":
+	case RunModeWorkers:
+	case RunModeWeb:
 		return runWeb(a)
 	default:
 
@@ -46,5 +56,8 @@ func runWeb(a Application) error {
 	} else {
 		bind = a.Config.GetString("bind")
 	}
+
+	a.Logger.Infof("Webserver running on %s", bind)
+
 	return http.ListenAndServe(bind, a)
 }

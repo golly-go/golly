@@ -20,8 +20,11 @@ type Marshaler struct {
 
 var (
 	FormatTypeJSON FormatOption = "JSON"
-	FormatTypeXML  FormatOption = "XML"
+
+	FormatTypeXML FormatOption = "XML"
+
 	FormatTypeText FormatOption = "TEXT"
+
 	FormatTypeData FormatOption = "DATA"
 
 	ErrorInvalidType = fmt.Errorf("invalid resposne type provided")

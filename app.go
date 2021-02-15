@@ -83,7 +83,8 @@ func NewApplication() Application {
 		Config:    initConfig(),
 		Logger:    NewLogger(),
 		StartedAt: startTime,
-		routes:    NewRoute(),
+		routes: NewRoute().
+			mount("/", func(r *Route) { r.Get("/routes", renderRoutes(r)) }),
 	}
 }
 

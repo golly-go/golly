@@ -5,14 +5,10 @@ import (
 	"net/http"
 	"os"
 	"regexp"
-	"runtime/debug"
 	"strings"
 	"sync"
-	"time"
 
-	"github.com/sirupsen/logrus"
 	"github.com/slimloans/golly/env"
-	"github.com/slimloans/golly/middleware"
 )
 
 type methodType uint
@@ -51,12 +47,14 @@ type RouteToken interface {
 	Equal(RouteToken) bool
 	Value() string
 	IsVeradic() bool
+	Pattern() string
 }
 
 type RoutePath struct {
 	Path string
 }
 
+func (rp RoutePath) Pattern() string { return "" }
 func (rp RoutePath) IsVeradic() bool { return false }
 
 func (rp RoutePath) Match(str string) bool {
@@ -83,6 +81,8 @@ func (rt RouteVariable) Equal(token RouteToken) bool {
 func (rt RouteVariable) Value() string {
 	return rt.Name
 }
+
+func (rt RouteVariable) Pattern() string { return rt.Matcher }
 
 func (rp RouteVariable) IsVeradic() bool { return true }
 
@@ -302,13 +302,18 @@ func (re *Route) Match(path string, h HandlerFunc, meths ...string) *Route {
 	return r
 }
 
-func (re Route) Namespace(path string, f func(r *Route)) *Route {
+func (re *Route) mount(path string, f func(r *Route)) *Route {
+	re.Namespace(path, f)
+	return re
+}
+
+func (re *Route) Namespace(path string, f func(r *Route)) *Route {
 	r := re.Add(path, nil, 0)
 	f(r)
 	return r
 }
 
-func (re Route) Route(path string, f func(r *Route)) *Route {
+func (re *Route) Route(path string, f func(r *Route)) *Route {
 	return re.Namespace(path, f)
 }
 
@@ -411,52 +416,63 @@ func makeRequestID() string {
 }
 
 func processWebRequest(a Application, r *http.Request, w http.ResponseWriter) {
-	writer := middleware.NewWrapResponseWriter(w, r.ProtoMajor)
+	writer := NewWrapResponseWriter(w, r.ProtoMajor)
 	wctx := NewWebContext(a, r, writer, makeRequestID())
 
-	defer func() {
-		if r := recover(); r != nil {
-			writer.WriteHeader(http.StatusInternalServerError)
-			if env.IsDevelopment() {
-				wctx.Logger().Errorf("%#v\n", r)
-
-				debug.PrintStack()
-			}
-		}
-	}()
-
-	// TODO move this into a middleware
-	defer func(t time.Time, method string, writer middleware.WrapResponseWriter) {
-		elapsed := time.Now().Sub(t)
-		status := writer.Status()
-
-		logger := wctx.Logger().WithFields(logrus.Fields{
-			"http.status_code":      status,
-			"network.bytes_written": writer.BytesWritten(),
-			"duration":              elapsed.Nanoseconds(),
-		})
-
-		str := fmt.Sprintf("Completed request [%v] [%d %s]", elapsed, status, http.StatusText(status))
-
-		if status < 302 {
-			logger.Info(str)
-		} else if status < 500 {
-			logger.Warn(str)
-		} else {
-			logger.Error(str)
-		}
-
-	}(time.Now(), r.Method, writer)
-
 	if re := FindRoute(a.routes, r.URL.Path); re != nil {
-		wctx.setURLParams(handleRouteVariables(re, r.URL.Path))
-		re.ServeHTTP(wctx)
-		return
+		// We may just be a parent node
+		wctx.Route = re
+
+		if re.allowed != 0 {
+			wctx.setURLParams(handleRouteVariables(re, r.URL.Path))
+			re.ServeHTTP(wctx)
+			return
+		}
 	}
 
-	if a.routes.notFoundHandler == nil {
-		writer.WriteHeader(http.StatusNotFound)
-	} else {
-		a.routes.notFoundHandler(wctx)
+	notFoundHandler := a.routes.notFoundHandler
+	if notFoundHandler == nil {
+		notFoundHandler = func(c WebContext) { c.RenderStatus(http.StatusNotFound) }
+	}
+
+	h := chain(a.routes.middleware, notFoundHandler)
+	h(wctx)
+}
+
+func renderRoutes(routes *Route) HandlerFunc {
+	return func(c WebContext) {
+		if env.IsDevelopment() {
+			text := strings.Join(buildPath(routes, ""), "\n")
+			c.RenderText(text)
+		} else {
+			c.RenderStatus(http.StatusNotFound)
+		}
 	}
 }
+
+func buildPath(route *Route, prefix string) []string {
+	ret := []string{}
+
+	if route.Token != nil {
+		if route.Token.IsVeradic() {
+			prefix = fmt.Sprintf("%s/{%s:%s}", prefix, route.Token.Value(), route.Token.Pattern())
+		} else {
+			prefix = fmt.Sprintf("%s/%s", prefix, route.Token.Value())
+		}
+	}
+	for _, child := range route.Children {
+		ret = append(ret, buildPath(child, prefix)...)
+	}
+	if route.allowed != 0 {
+		ret = append(ret, prefix)
+	}
+
+	return ret
+}
+
+/*
+  root->child->grandchild->ggchild
+   ""   test      1         payments
+
+
+*/
