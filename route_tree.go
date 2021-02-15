@@ -418,6 +418,8 @@ func processWebRequest(a Application, r *http.Request, w http.ResponseWriter) {
 		if r := recover(); r != nil {
 			writer.WriteHeader(http.StatusInternalServerError)
 			if env.IsDevelopment() {
+				wctx.Logger().Errorf("%#v\n", r)
+
 				debug.PrintStack()
 			}
 		}
