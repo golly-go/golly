@@ -55,6 +55,12 @@ func Run(mode RunMode) {
 }
 
 func Boot(f func(Application) error) error {
+	for _, preboot := range preboots {
+		if err := preboot(); err != nil {
+			panic(err)
+		}
+	}
+
 	a := NewApplication()
 
 	db, err := NewDBConnection(a.Config, a.Name)

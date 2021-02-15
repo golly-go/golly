@@ -35,6 +35,8 @@ var (
 
 	initializers = []func(Application) error{}
 
+	preboots = []func() error{}
+
 	lock sync.RWMutex
 )
 
@@ -60,6 +62,15 @@ func RegisterInitializer(fns ...func(Application) error) {
 	defer lock.Unlock()
 
 	initializers = append(initializers, fns...)
+}
+
+// RegisterPreboot registers a function to be called prior to application
+// being created
+func RegisterPreboot(fns ...func() error) {
+	lock.Lock()
+	defer lock.Unlock()
+
+	preboots = append(preboots, fns...)
 }
 
 // SetName sets the application name
