@@ -9,6 +9,7 @@ func init() {
 	if !env.IsDevelopment() {
 		log.SetFormatter(&log.JSONFormatter{})
 	} else {
+		log.SetLevel(log.DebugLevel)
 		log.SetFormatter(&log.TextFormatter{})
 	}
 }

@@ -214,22 +214,25 @@ func (re *Route) NotAllowedHandler(fn HandlerFunc) {
 func (re *Route) ServeHTTP(ctx WebContext) {
 	r := ctx.Request()
 
-	method := r.Method
+	// Cors work around to resolve the correct handler
+	// this provides us with correct allow headers and 405 behavior
+	method := r.Header.Get("Access-Control-Request-Method")
+	if method == "" {
+		method = r.Method
+	}
 
 	if mt, found := methods[method]; found {
-		handler := re.handlers[mt]
-
-		// Gross force options through
-		if re.allowed&mt == 0 {
-			if mt&OPTIONS == 0 {
-				handler = func(c WebContext) {}
+		if handler, found := re.handlers[mt]; found {
+			// if we are not in the correct method noop
+			// for now need to clean this cors integration up
+			if method != r.Method {
+				handler = NoOpHandler
 			}
+
+			h := chain(re.middleware, handler)
+			h(ctx)
+			return
 		}
-
-		h := chain(re.middleware, handler)
-		h(ctx)
-
-		return
 	}
 
 	ctx.AddHeader("Allow", strings.Join(re.Allow(), ","))
@@ -487,3 +490,5 @@ func buildPath(route *Route, prefix string) []string {
 
 
 */
+
+func NoOpHandler(WebContext) {}

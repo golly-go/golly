@@ -93,6 +93,7 @@ func Cors(co CorsOptions) func(next golly.HandlerFunc) golly.HandlerFunc {
 	return func(next golly.HandlerFunc) golly.HandlerFunc {
 		return func(wctx golly.WebContext) {
 			r := wctx.Request()
+
 			if r.Method == http.MethodOptions && r.Header.Get("Access-Control-Request-Method") != "" {
 				crs.preflight(wctx)
 			} else {
