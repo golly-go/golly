@@ -1,10 +1,13 @@
 package golly
 
 import (
+	"context"
 	"fmt"
 	"net/http"
+	"os"
 
 	"github.com/spf13/cobra"
+	"gorm.io/gorm"
 )
 
 type RunMode string
@@ -51,6 +54,31 @@ var (
 func Run(mode RunMode) {
 	if err := Boot(func(a Application) error { a.Run(mode); return nil }); err != nil {
 		panic(err)
+	}
+}
+
+// Seed calls seed for on a function TODO: make this based more on cobra
+func Seed(a Application, name string, fn func(Context) error) {
+	ctx := context.TODO()
+
+	running := "all"
+	if len(os.Args) > 1 {
+		running = os.Args[1]
+	}
+
+	if running == "list" {
+		fmt.Println("\t-\t", name)
+	}
+
+	if running == "all" || running == name {
+
+		aCtx := NewContext(ctx)
+		aCtx.SetDB(a.DB.Session(&gorm.Session{NewDB: true}))
+
+		if err := fn(aCtx); err != nil {
+			a.Logger.Error(err.Error())
+			panic(err)
+		}
 	}
 }
 
