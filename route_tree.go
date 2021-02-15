@@ -220,8 +220,10 @@ func (re *Route) ServeHTTP(ctx WebContext) {
 		handler := re.handlers[mt]
 
 		// Gross force options through
-		if re.allowed&mt == 0 && mt&OPTIONS == 0 {
-			handler = func(c WebContext) {}
+		if re.allowed&mt == 0 {
+			if mt&OPTIONS == 0 {
+				handler = func(c WebContext) {}
+			}
 		}
 
 		h := chain(re.middleware, handler)
