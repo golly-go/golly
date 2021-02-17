@@ -32,11 +32,13 @@ type ModelUUID struct {
 }
 
 func (base *ModelUUID) BeforeCreate(tx *gorm.DB) error {
-	uuid, err := uuid.NewUUID()
-	if err != nil {
-		return err
+	if base.ID == uuid.Nil {
+		uuid, err := uuid.NewUUID()
+		if err != nil {
+			return err
+		}
+		base.ID = uuid
 	}
-	base.ID = uuid
 	return nil
 }
 
