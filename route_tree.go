@@ -26,6 +26,10 @@ const (
 	TRACE              = 0x200
 )
 
+type Controller interface {
+	Routes(*Route)
+}
+
 var (
 	ALL methodType = CONNECT | DELETE | GET | HEAD | OPTIONS | PATCH | POST | PUT | TRACE
 
@@ -315,6 +319,10 @@ func (re *Route) Match(path string, h HandlerFunc, meths ...string) *Route {
 func (re *Route) mount(path string, f func(r *Route)) *Route {
 	re.Namespace(path, f)
 	return re
+}
+
+func (re *Route) Mount(path string, c Controller) *Route {
+	return re.mount(path, c.Routes)
 }
 
 func (re *Route) Namespace(path string, f func(r *Route)) *Route {
