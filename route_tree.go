@@ -417,12 +417,14 @@ func handleRouteVariables(re *Route, path string) map[string]string {
 	tokens := tokenize(path)
 
 	p := re
-
 	for i := len(tokens) - 1; i > 0; i-- {
-		if p.Token.IsVeradic() {
-			ret[p.Token.Value()] = tokens[i].Value()
+		switch t := p.Token.(type) {
+		case RouteVariable:
+			if t.Match(tokens[i].Value()) {
+				ret[t.Value()] = tokens[i].Value()
+			}
 		}
-		p = re.parent
+		p = p.parent
 	}
 	return ret
 }
