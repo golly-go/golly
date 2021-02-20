@@ -36,7 +36,6 @@ func NewWebContext(a Application, r *http.Request, w http.ResponseWriter, reques
 	ctx.SetLogger(a.Logger.WithFields(webLogParams(requestID, r)))
 
 	return WebContext{
-		urlParams: map[string]string{},
 		Context:   ctx,
 		request:   r,
 		writer:    w,
@@ -95,6 +94,10 @@ func (wctx *WebContext) setURLParams(params map[string]string) {
 
 // URLParam returns a URL parameter
 func (wctx *WebContext) URLParam(key string) string {
+	// Lazy load url params
+	if wctx.urlParams == nil {
+		wctx.urlParams = handleRouteVariables(wctx.Route, wctx.request.URL.Path)
+	}
 	return wctx.urlParams[key]
 }
 

@@ -456,7 +456,6 @@ func processWebRequest(a Application, r *http.Request, w http.ResponseWriter) {
 		wctx.Route = re
 
 		if re.allowed != 0 {
-			wctx.setURLParams(handleRouteVariables(re, r.URL.Path))
 			re.ServeHTTP(wctx)
 			return
 		}
