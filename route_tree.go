@@ -248,7 +248,20 @@ func (re *Route) Add(path string, handler HandlerFunc, httpMethods methodType) *
 	r := re
 
 	tokens := tokenize(path)
+
+	fmt.Printf("%#v\n", tokens)
+	fmt.Printf("%#v\n", handler)
+
 	lng := len(tokens)
+
+	if lng == 0 {
+		if r.handlers[ALL] == nil && r.handlers[httpMethods] == nil {
+			r.handlers[httpMethods] = handler
+
+			r.allowed |= httpMethods
+		}
+		return r
+	}
 
 	for pos, token := range tokens {
 		if node := r.FindChildByToken(token); node != nil {
@@ -482,11 +495,17 @@ func buildPath(route *Route, prefix string) []string {
 			prefix = fmt.Sprintf("%s/%s", prefix, route.Token.Value())
 		}
 	}
+
 	for _, child := range route.Children {
 		ret = append(ret, buildPath(child, prefix)...)
 	}
+
 	if route.allowed != 0 {
-		ret = append(ret, prefix)
+		for k, meth := range methods {
+			if route.allowed&meth != 0 {
+				ret = append(ret, fmt.Sprintf("[%s] %s", k, prefix))
+			}
+		}
 	}
 
 	return ret
