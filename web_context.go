@@ -1,8 +1,12 @@
 package golly
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -78,6 +82,13 @@ func (wctx WebContext) Response() http.ResponseWriter {
 	return wctx.writer
 }
 
+// RequestBody return the request body in a buffer
+func (wctx *WebContext) RequestBody() []byte {
+	b, _ := ioutil.ReadAll(wctx.request.Body)
+	wctx.request.Body = ioutil.NopCloser(bytes.NewBuffer(b))
+	return b
+}
+
 func (wctx *WebContext) setURLParams(params map[string]string) {
 	wctx.urlParams = params
 }
@@ -100,4 +111,20 @@ func (wctx *WebContext) RenderStatus(status int) {
 
 func (wctx WebContext) Write(b []byte) (int, error) {
 	return wctx.writer.Write(b)
+}
+
+// Params marshals json params into out interface
+func (wctx WebContext) Params(out interface{}) error {
+	return json.Unmarshal(wctx.RequestBody(), out)
+}
+
+// GetParam returns a URL GET param
+func (wctx WebContext) GetParam(key string) string {
+	return wctx.request.URL.Query().Get(key)
+}
+
+// GetParamInt returns a URL Get param int
+func (wctx WebContext) GetParamInt(key string) int {
+	val, _ := strconv.Atoi(wctx.GetParam(key))
+	return val
 }
