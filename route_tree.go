@@ -249,16 +249,15 @@ func (re *Route) Add(path string, handler HandlerFunc, httpMethods methodType) *
 
 	tokens := tokenize(path)
 
-	fmt.Printf("%#v\n", tokens)
-	fmt.Printf("%#v\n", handler)
-
 	lng := len(tokens)
 
 	if lng == 0 {
-		if r.handlers[ALL] == nil && r.handlers[httpMethods] == nil {
-			r.handlers[httpMethods] = handler
+		if handler != nil {
+			if r.handlers[ALL] == nil && r.handlers[httpMethods] == nil {
+				r.handlers[httpMethods] = handler
 
-			r.allowed |= httpMethods
+				r.allowed |= httpMethods
+			}
 		}
 		return r
 	}
