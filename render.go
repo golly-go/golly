@@ -48,6 +48,14 @@ type RenderOptions struct {
 	Format FormatOption
 }
 
+func RenderExt(wctx WebContext, resp interface{}, err error, format FormatOption) {
+	if err != nil {
+		resp = errors.WrapGeneric(err)
+	}
+
+	wctx.Render(resp, RenderOptions{Format: format})
+}
+
 func (wctx WebContext) Render(resp interface{}, options RenderOptions) {
 	if wctx.rendered {
 		panic(DoubleRenderError.NewError(fmt.Errorf("render called twice")))
