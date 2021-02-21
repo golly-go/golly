@@ -26,6 +26,8 @@ type WebContext struct {
 	rendered bool
 
 	urlParams map[string]string
+
+	format FormatOption
 }
 
 // NewWebContext returns a new web context

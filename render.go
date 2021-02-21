@@ -56,6 +56,21 @@ func RenderExt(wctx WebContext, resp interface{}, err error, format FormatOption
 	wctx.Render(resp, RenderOptions{Format: format})
 }
 
+func Render(wctx WebContext, resp interface{}) {
+	format := wctx.format
+	if format == "" {
+		format = FormatTypeJSON
+	}
+
+	var err error
+	if e, ok := resp.(error); ok {
+		err = e
+		resp = nil
+	}
+
+	RenderExt(wctx, resp, err, format)
+}
+
 func (wctx WebContext) Render(resp interface{}, options RenderOptions) {
 	if wctx.rendered {
 		panic(DoubleRenderError.NewError(fmt.Errorf("render called twice")))
