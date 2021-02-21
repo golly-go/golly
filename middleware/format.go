@@ -6,6 +6,7 @@ func DefaultFormat(format golly.FormatOption) func(golly.HandlerFunc) golly.Hand
 	return func(next golly.HandlerFunc) golly.HandlerFunc {
 		return func(c golly.WebContext) {
 			c.SetFormat(format)
+			next(c)
 		}
 	}
 }
