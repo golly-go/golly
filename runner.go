@@ -73,7 +73,7 @@ func Seed(a Application, name string, fn func(Context) error) {
 	if running == "all" || running == name {
 
 		aCtx := NewContext(ctx)
-		aCtx.SetDB(a.DB.Session(&gorm.Session{NewDB: true}))
+		aCtx.SetDB(a.DB.Session(&gorm.Session{}))
 
 		if err := fn(aCtx); err != nil {
 			a.Logger.Error(err.Error())

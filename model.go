@@ -25,10 +25,10 @@ type Model struct {
 
 // ModelUUID is a UUID version of model
 type ModelUUID struct {
-	ID        uuid.UUID  `gorm:"type:uuid;" json:"id" fake:"-"`
-	CreatedAt time.Time  `json:"created_at" faker:"-"`
-	UpdatedAt time.Time  `json:"updated_at" faker:"-"`
-	DeletedAt *time.Time `json:"deleted_at,omitempty" faker:"-"`
+	ID        uuid.UUID      `gorm:"type:uuid;" json:"id" fake:"-"`
+	CreatedAt time.Time      `json:"created_at" faker:"-"`
+	UpdatedAt time.Time      `json:"updated_at" faker:"-"`
+	DeletedAt gorm.DeletedAt `json:"deleted_at,omitempty" faker:"-"`
 }
 
 func (base *ModelUUID) BeforeCreate(tx *gorm.DB) error {
