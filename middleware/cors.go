@@ -159,6 +159,8 @@ func (c cors) preflight(wctx golly.WebContext) {
 	if c.credentials {
 		headers.Set("Access-Control-Allow-Credentials", "true")
 	}
+
+	wctx.RenderStatus(http.StatusOK)
 }
 
 // parseHeaders this is probably not the fast impl will refactor later
