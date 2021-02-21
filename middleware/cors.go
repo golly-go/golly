@@ -131,13 +131,13 @@ func (c cors) preflight(wctx golly.WebContext) {
 	method := r.Header.Get("Access-Control-Request-Method")
 
 	if !c.isMethodAllowed(method) {
-		wctx.Logger().Debug("preflight: method %s not allowed for cors", method)
+		wctx.Logger().Debugf("preflight: method %s not allowed for cors", method)
 		return
 	}
 
 	rHeaders := parseHeaders(r.Header.Get("Access-Control-Request-Headers"))
 	if !c.areHeadersAllowed(rHeaders) {
-		wctx.Logger().Debug("preflight: headers '%v' not allowed", rHeaders)
+		wctx.Logger().Debugf("preflight: headers '%v' not allowed", rHeaders)
 		return
 	}
 
@@ -185,7 +185,7 @@ func (c cors) request(wctx golly.WebContext) {
 	}
 
 	if !c.isMethodAllowed(r.Method) {
-		wctx.Logger().Debug("request: method %s not allowed for cors", r.Method)
+		wctx.Logger().Debugf("request: method %s not allowed for cors", r.Method)
 		return
 	}
 

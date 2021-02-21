@@ -109,7 +109,8 @@ type MiddlewareFunc func(HandlerFunc) HandlerFunc
 type Route struct {
 	Token RouteToken
 
-	handlers map[methodType]HandlerFunc
+	handlers         map[methodType]HandlerFunc
+	internalHandlers map[methodType]HandlerFunc
 
 	Children []*Route
 
@@ -202,8 +203,9 @@ func (re Route) Length() (cnt int) {
 
 func NewRoute() *Route {
 	return &Route{
-		handlers:   map[methodType]HandlerFunc{},
-		middleware: []MiddlewareFunc{},
+		handlers:         map[methodType]HandlerFunc{},
+		internalHandlers: map[methodType]HandlerFunc{},
+		middleware:       []MiddlewareFunc{},
 	}
 }
 
@@ -230,11 +232,10 @@ func (re *Route) ServeHTTP(ctx WebContext) {
 			// if we are not in the correct method noop
 			// for now need to clean this cors integration up
 			if method != r.Method {
-				handler = NoOpHandler
+				handler = chain(re.middleware, NoOpHandler)
 			}
 
-			h := chain(re.middleware, handler)
-			h(ctx)
+			handler(ctx)
 			return
 		}
 	}
@@ -242,6 +243,16 @@ func (re *Route) ServeHTTP(ctx WebContext) {
 	ctx.AddHeader("Allow", strings.Join(re.Allow(), ","))
 	ctx.RenderStatus(405)
 	return
+}
+
+func (re *Route) updateHandlers() {
+	for method, handler := range re.internalHandlers {
+		re.updateHandler(method, handler)
+	}
+}
+
+func (re *Route) updateHandler(method methodType, handler HandlerFunc) {
+	re.handlers[method] = chain(re.middleware, handler)
 }
 
 func (re *Route) Add(path string, handler HandlerFunc, httpMethods methodType) *Route {
@@ -253,8 +264,10 @@ func (re *Route) Add(path string, handler HandlerFunc, httpMethods methodType) *
 
 	if lng == 0 {
 		if handler != nil {
-			if r.handlers[ALL] == nil && r.handlers[httpMethods] == nil {
-				r.handlers[httpMethods] = handler
+			if r.internalHandlers[ALL] == nil && r.internalHandlers[httpMethods] == nil {
+				r.internalHandlers[httpMethods] = handler
+
+				r.updateHandler(httpMethods, handler)
 
 				r.allowed |= httpMethods
 			}
@@ -266,7 +279,11 @@ func (re *Route) Add(path string, handler HandlerFunc, httpMethods methodType) *
 		if node := r.FindChildByToken(token); node != nil {
 			r = node
 		} else {
-			node := &Route{Token: token, handlers: map[methodType]HandlerFunc{}, parent: r, middleware: r.middleware}
+			node := NewRoute()
+
+			node.parent = r
+			node.middleware = r.middleware
+			node.Token = token
 
 			r.Children = append(r.Children, node)
 			r = node
@@ -274,7 +291,9 @@ func (re *Route) Add(path string, handler HandlerFunc, httpMethods methodType) *
 
 		if pos == lng-1 {
 			if r.handlers[ALL] == nil && r.handlers[httpMethods] == nil {
-				r.handlers[httpMethods] = handler
+
+				r.internalHandlers[httpMethods] = handler
+				r.updateHandler(httpMethods, handler)
 
 				r.allowed |= httpMethods
 			}
@@ -289,6 +308,8 @@ func (re *Route) Use(fns ...MiddlewareFunc) *Route {
 	for _, child := range re.Children {
 		child.Use(fns...)
 	}
+
+	re.updateHandlers()
 
 	return re
 }
