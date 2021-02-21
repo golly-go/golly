@@ -44,7 +44,9 @@ func (c *Context) SetDB(db *gorm.DB) {
 
 func (c *Context) ResetDB() {
 	if c.originalDB != nil {
-		c.db = c.originalDB
+		c.db = c.originalDB.Session(&gorm.Session{
+			NewDB: true,
+		})
 	}
 }
 
