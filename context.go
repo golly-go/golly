@@ -18,7 +18,8 @@ type Context struct {
 
 	data *sync.Map
 
-	db *gorm.DB
+	db         *gorm.DB
+	originalDB *gorm.DB
 }
 
 // NewContext returns a new application context provided some basic information
@@ -35,7 +36,16 @@ func (c *Context) WithContext(ctx context.Context) context.Context {
 }
 
 func (c *Context) SetDB(db *gorm.DB) {
+	if c.originalDB == nil {
+		c.originalDB = db
+	}
 	c.db = db
+}
+
+func (c *Context) ResetDB() {
+	if c.originalDB != nil {
+		c.db = c.originalDB
+	}
 }
 
 func (c *Context) UpdateLogFields(fields log.Fields) {
