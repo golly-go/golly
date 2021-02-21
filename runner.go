@@ -138,5 +138,8 @@ func runWeb(a Application) error {
 
 	a.Logger.Infof("Webserver running on %s", bind)
 
-	return http.ListenAndServe(bind, a)
+	err := http.ListenAndServe(bind, a)
+	panic(err)
+
+	return err
 }

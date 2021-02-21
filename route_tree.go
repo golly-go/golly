@@ -340,7 +340,7 @@ func (re *Route) Mount(path string, c Controller) *Route {
 func (re *Route) Namespace(path string, f func(r *Route)) *Route {
 	r := re.Add(path, nil, 0)
 	f(r)
-	return r
+	return re
 }
 
 func (re *Route) Route(path string, f func(r *Route)) *Route {
