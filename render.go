@@ -127,6 +127,8 @@ func RenderResponse(wctx WebContext, marshal Marshaler, res interface{}) {
 
 			if status != http.StatusUnauthorized {
 				l.Error(err)
+			} else {
+				l.Warn(err)
 			}
 		}
 	}
