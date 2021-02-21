@@ -49,6 +49,10 @@ func (wctx WebContext) RequestID() string {
 	return wctx.requestID
 }
 
+func (wctx *WebContext) SetFormat(format FormatOption) {
+	wctx.format = format
+}
+
 func webLogParams(requestID string, r *http.Request) log.Fields {
 	logFields := logrus.Fields{}
 
