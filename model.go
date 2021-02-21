@@ -17,10 +17,10 @@ import (
 
 // Model default model struct (Can add additional functionality here)
 type Model struct {
-	ID        uint       `json:"id" faker:"-"`
-	CreatedAt time.Time  `json:"created_at" faker:"-"`
-	UpdatedAt time.Time  `json:"updated_at" faker:"-"`
-	DeletedAt *time.Time `json:"deleted_at,omitempty" faker:"-"`
+	ID        uint           `json:"id" faker:"-"`
+	CreatedAt time.Time      `json:"created_at" faker:"-"`
+	UpdatedAt time.Time      `json:"updated_at" faker:"-"`
+	DeletedAt gorm.DeletedAt `json:"deleted_at,omitempty" faker:"-"`
 }
 
 // ModelUUID is a UUID version of model
