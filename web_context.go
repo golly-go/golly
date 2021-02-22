@@ -35,6 +35,7 @@ type WebContext struct {
 func NewWebContext(a Application, r *http.Request, w http.ResponseWriter, requestID string) WebContext {
 	ctx := NewContext(r.Context())
 	ctx.SetDB(a.DB.Session(&gorm.Session{NewDB: true}))
+	ctx.config = a.Config
 
 	ctx.SetLogger(a.Logger.WithFields(webLogParams(requestID, r)))
 

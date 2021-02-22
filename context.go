@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	log "github.com/sirupsen/logrus"
+	"github.com/spf13/viper"
 	"gorm.io/gorm"
 )
 
@@ -20,6 +21,8 @@ type Context struct {
 
 	db         *gorm.DB
 	originalDB *gorm.DB
+
+	config *viper.Viper
 }
 
 // NewContext returns a new application context provided some basic information
@@ -28,6 +31,10 @@ func NewContext(ctx context.Context) Context {
 		context: ctx,
 		data:    &sync.Map{},
 	}
+}
+
+func (c *Context) Config() *viper.Viper {
+	return c.config
 }
 
 func (c *Context) WithContext(ctx context.Context) context.Context {
