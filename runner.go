@@ -74,6 +74,7 @@ func Seed(a Application, name string, fn func(Context) error) {
 
 		aCtx := NewContext(ctx)
 		aCtx.SetDB(a.DB.Session(&gorm.Session{}))
+		aCtx.config = a.Config
 
 		if err := fn(aCtx); err != nil {
 			a.Logger.Error(err.Error())
