@@ -8,7 +8,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/slimloans/golly/env"
-	"github.com/slimloans/golly/utils"
 	"github.com/spf13/viper"
 	"gorm.io/driver/postgres"
 	"gorm.io/driver/sqlite"
@@ -34,13 +33,12 @@ type ModelUUID struct {
 
 func (base *ModelUUID) BeforeCreate(tx *gorm.DB) error {
 	if base.ID == uuid.Nil {
-		base.ID = utils.NewUUIDV5()
-		// // 	uuid, err := uuid.NewRandom()
-		// // 	if err != nil {
-		// // 		return err
-		// // 	}
+		uuid, err := uuid.NewRandom()
+		if err != nil {
+			return err
+		}
 		// base.ID = uuid.NewSHA1(uuid.NameSpaceOID, []byte(uuid.NewString()))
-		// // base.ID = uuid
+		base.ID = uuid
 	}
 	return nil
 }
