@@ -50,8 +50,20 @@ type Application struct {
 	Logger  *log.Entry
 
 	StartedAt time.Time
+	routes    *Route
+}
 
-	routes *Route
+func (a Application) SetGlobalTimezone(tz string) error {
+	lock.Lock()
+	defer lock.Unlock()
+
+	location, err := time.LoadLocation(tz)
+	if err != nil {
+		return err
+	}
+	time.Local = location
+	return nil
+
 }
 
 // RegisterInitializer registers a function to be called prior to boot
