@@ -53,7 +53,11 @@ type Application struct {
 	routes    *Route
 }
 
-func (a Application) SetGlobalTimezone(tz string) error {
+func init() {
+	SetGlobalTimezone("UTC")
+}
+
+func SetGlobalTimezone(tz string) error {
 	lock.Lock()
 	defer lock.Unlock()
 
