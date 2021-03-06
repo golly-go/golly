@@ -18,8 +18,8 @@ import (
 // Model default model struct (Can add additional functionality here)
 type Model struct {
 	ID        uint           `json:"id" faker:"-"`
-	CreatedAt time.Time      `json:"created_at" faker:"-"`
-	UpdatedAt time.Time      `json:"updated_at" faker:"-"`
+	CreatedAt time.Time      `json:"created_at,omitempty" faker:"-"`
+	UpdatedAt time.Time      `json:"updated_at,omitempty" faker:"-"`
 	DeletedAt gorm.DeletedAt `json:"deleted_at,omitempty" faker:"-"`
 }
 
