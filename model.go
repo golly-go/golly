@@ -61,7 +61,7 @@ func NewDBConnection(v *viper.Viper, prefixKey string) (*gorm.DB, error) {
 		},
 	)
 
-	if !env.IsDevelopmentOrTest() || os.Getenv("DISABLE_DB_LOGGER") == "" {
+	if !env.IsDevelopmentOrTest() || os.Getenv("DISABLE_DB_LOGGER") != "" {
 		logger = nil
 	}
 
