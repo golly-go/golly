@@ -52,18 +52,20 @@ func TestModelUUID() ModelUUID {
 func NewDBConnection(v *viper.Viper, prefixKey string) (*gorm.DB, error) {
 	vip := setConfigDefaults(v)
 
+	config := logger.Config{
+		SlowThreshold: time.Second,
+		LogLevel:      logger.Info,
+		Colorful:      true,
+	}
+
+	if !env.IsDevelopmentOrTest() {
+		config.LogLevel = logger.Warn
+	}
+
 	logger := logger.New(
 		log.New(os.Stdout, "\r\n", log.LstdFlags), // io writer
-		logger.Config{
-			SlowThreshold: time.Second,
-			LogLevel:      logger.Info,
-			Colorful:      true,
-		},
+		config,
 	)
-
-	if !env.IsDevelopmentOrTest() || os.Getenv("DISABLE_DB_LOGGER") != "" {
-		logger = nil
-	}
 
 	db, err := gorm.Open(postgres.Open(connectionString(vip, prefixKey)), &gorm.Config{Logger: logger})
 	return db, err

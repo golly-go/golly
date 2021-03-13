@@ -3,6 +3,7 @@ package utils
 import (
 	"bytes"
 	"encoding/gob"
+	"fmt"
 	"reflect"
 	"time"
 
@@ -66,6 +67,8 @@ func CastData(obj reflect.Type, data map[string]interface{}) reflect.Value {
 					}
 				}
 			case uuid.UUID:
+				fmt.Printf("%#v\n", fieldValue)
+
 				if val, ok := fieldValue.(string); ok {
 					if t, err := uuid.Parse(val); err == nil {
 						fl.Set(reflect.ValueOf(t))
@@ -75,10 +78,23 @@ func CastData(obj reflect.Type, data map[string]interface{}) reflect.Value {
 						fl.Set(reflect.ValueOf(val))
 					}
 				}
+				// default:
+				// 	switch fl.Kind() {
+				// 	case reflect.Slice, reflect.Array:
+				// 		fmt.Printf("%#v\n", v)
+
+				// 		for i := 0; i < v.Len(); i++ {
+				// 			if d, ok := v.Index(i).Interface().(map[string]interface{}); ok {
+				// 				fl.Set(CastData(v.Index(i).Type(), d))
+				// 			} else {
+				// 				fl.Set(reflect.ValueOf(v.Index(i).Interface()))
+				// 			}
+				// 		}
 			default:
 				if d, ok := fieldValue.(map[string]interface{}); ok {
 					fl.Set(CastData(fl.Type(), d))
 				}
+				// }
 			}
 		}
 	}
