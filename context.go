@@ -23,6 +23,8 @@ type Context struct {
 	originalDB *gorm.DB
 
 	config *viper.Viper
+
+	root *Route
 }
 
 // NewContext returns a new application context provided some basic information

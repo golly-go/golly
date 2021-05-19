@@ -34,6 +34,8 @@ type WebContext struct {
 // NewWebContext returns a new web context
 func NewWebContext(a Application, r *http.Request, w http.ResponseWriter, requestID string) WebContext {
 	ctx := NewContext(r.Context())
+	ctx.root = a.routes
+
 	ctx.SetDB(a.DB.Session(&gorm.Session{NewDB: true}))
 	ctx.config = a.Config
 
