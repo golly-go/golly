@@ -240,6 +240,8 @@ func (re *Route) ServeHTTP(ctx WebContext) {
 		}
 	}
 
+	chain(routeRoot.middleware, NoOpHandler)(ctx)
+
 	ctx.AddHeader("Allow", strings.Join(re.Allow(), ","))
 	ctx.RenderStatus(405)
 	return
