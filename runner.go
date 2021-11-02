@@ -113,7 +113,7 @@ func Boot(f func(Application) error) error {
 }
 
 func (a Application) Run(mode RunMode) error {
-	a.Logger.Infof("Starting App %s (%s)", a.Name, a.Version)
+	a.Logger.Infof("Good Golly were booting %s (%s)", a.Name, a.Version)
 
 	switch mode {
 	case RunModeWorkers:
