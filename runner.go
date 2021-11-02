@@ -52,7 +52,7 @@ var (
 )
 
 func Run(mode RunMode) {
-	if err := Boot(func(a Application) error { a.Run(mode); return nil }); err != nil {
+	if err := Boot(func(a Application) error { return a.Run(mode) }); err != nil {
 		panic(err)
 	}
 }
