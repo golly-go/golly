@@ -97,7 +97,7 @@ func Wrap(ae Error, err error) error {
 func sourceFile() string {
 	for i := 2; i < 15; i++ {
 		_, file, line, ok := runtime.Caller(i)
-		if ok && !strings.Contains(file, "apperrors") {
+		if ok && !strings.Contains(file, "apperrors") && !strings.Contains(file, "golly") {
 			f := strings.Split(file, "github.com/")
 
 			if len(f) > 1 {
