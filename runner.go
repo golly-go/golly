@@ -52,7 +52,7 @@ var (
 )
 
 func Run(mode RunMode) {
-	if err := Boot(func(a Application) error { a.Run(mode); return nil }); err != nil {
+	if err := Boot(func(a Application) error { return a.Run(mode) }); err != nil {
 		panic(err)
 	}
 }
@@ -113,7 +113,7 @@ func Boot(f func(Application) error) error {
 }
 
 func (a Application) Run(mode RunMode) error {
-	a.Logger.Infof("Starting App %s (%s)", a.Name, a.Version)
+	a.Logger.Infof("Good Golly were booting %s (%s)", a.Name, a.Version)
 
 	switch mode {
 	case RunModeWorkers:
