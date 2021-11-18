@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/slimloans/golly"
 	"github.com/slimloans/golly/env"
 	"github.com/spf13/viper"
 	"gorm.io/driver/postgres"
@@ -14,6 +15,20 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
+
+type Postgres struct {
+	DB *gorm.DB
+}
+
+func (Postgres) Name() string { return "db" }
+
+func PostgresPlugin(app golly.Application) (golly.Plugin, error) {
+	db, err := NewDBConnection(app.Config, app.Name)
+	if err != nil {
+		return Postgres{}, err
+	}
+	return Postgres{db}, nil
+}
 
 // Model default model struct (Can add additional functionality here)
 type Model struct {
@@ -37,7 +52,6 @@ func (base *ModelUUID) BeforeCreate(tx *gorm.DB) error {
 		if err != nil {
 			return err
 		}
-		// base.ID = uuid.NewSHA1(uuid.NameSpaceOID, []byte(uuid.NewString()))
 		base.ID = uuid
 	}
 	return nil
@@ -50,8 +64,6 @@ func TestModelUUID() ModelUUID {
 
 // NewDBConnection new db connection
 func NewDBConnection(v *viper.Viper, prefixKey string) (*gorm.DB, error) {
-	vip := setConfigDefaults(v)
-
 	config := logger.Config{
 		SlowThreshold: time.Second,
 		LogLevel:      logger.Info,
@@ -67,7 +79,7 @@ func NewDBConnection(v *viper.Viper, prefixKey string) (*gorm.DB, error) {
 		config,
 	)
 
-	db, err := gorm.Open(postgres.Open(connectionString(vip, prefixKey)), &gorm.Config{Logger: logger})
+	db, err := gorm.Open(postgres.Open(connectionString(v, prefixKey)), &gorm.Config{Logger: logger})
 	return db, err
 }
 

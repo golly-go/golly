@@ -92,12 +92,12 @@ func Boot(f func(Application) error) error {
 
 	a := NewApplication()
 
-	db, err := NewDBConnection(a.Config, a.Name)
-	if err != nil {
-		panic(err)
-	}
+	// db, err := NewDBConnection(a.Config, a.Name)
+	// if err != nil {
+	// 	panic(err)
+	// }
 
-	a.DB = db
+	// a.DB = db
 
 	for _, initializer := range initializers {
 		if err := initializer(a); err != nil {
@@ -117,10 +117,10 @@ func (a Application) Run(mode RunMode) error {
 
 	switch mode {
 	case RunModeWorkers:
+		fallthrough
 	case RunModeWeb:
 		return runWeb(a)
 	default:
-
 		if err := runWeb(a); err != nil {
 			return err
 		}

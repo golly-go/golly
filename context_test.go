@@ -24,11 +24,10 @@ func TestContextData(t *testing.T) {
 }
 
 func TestContextDB(t *testing.T) {
-	db := NewInMemoryConnection()
+
 	c := NewContext(context.TODO())
 
 	assert.Nil(t, c.DB())
-	c.SetDB(db)
 
 	assert.NotNil(t, c.DB())
 }

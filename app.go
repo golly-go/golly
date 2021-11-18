@@ -51,6 +51,8 @@ type Application struct {
 
 	StartedAt time.Time
 	routes    *Route
+
+	Plugins []Plugin
 }
 
 func init() {
@@ -67,7 +69,6 @@ func SetGlobalTimezone(tz string) error {
 	}
 	time.Local = location
 	return nil
-
 }
 
 // RegisterInitializer registers a function to be called prior to boot
@@ -126,7 +127,9 @@ func NewApplication() Application {
 		Logger:    NewLogger(),
 		StartedAt: startTime,
 		routes: NewRoute().
-			mount("/", func(r *Route) { r.Get("/routes", renderRoutes(r)) }),
+			mount("/", func(r *Route) {
+				r.Get("/routes", renderRoutes(r))
+			}),
 	}
 }
 

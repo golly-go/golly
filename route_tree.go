@@ -538,8 +538,6 @@ func buildPath(route *Route, prefix string) []string {
 /*
   root->child->grandchild->ggchild
    ""   test      1         payments
-
-
 */
 
 func NoOpHandler(WebContext) {}
