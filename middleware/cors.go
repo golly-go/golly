@@ -8,7 +8,10 @@ import (
 	"github.com/slimloans/golly/utils"
 )
 
-const toLower = 'a' - 'A'
+const (
+	toLower     = 'a' - 'A'
+	wildcardSym = "*"
+)
 
 var (
 	defaultHeaders = []string{"Origin", "Accept", "Content-Type"}
@@ -50,7 +53,7 @@ func (c CorsOptions) init() cors {
 	} else {
 		co.headers = utils.Convert(append(c.AllowedHeaders, "Origin"), http.CanonicalHeaderKey)
 		for _, header := range co.headers {
-			if header == "*" {
+			if header == wildcardSym {
 				co.allHeaders = true
 				break
 			}
@@ -69,7 +72,7 @@ func (c CorsOptions) init() cors {
 		// To slow
 		// orgins := utils.Convert(c.AllowedOrigins, strings.ToLower)
 		for _, origin := range c.AllowedOrigins {
-			if origin == "*" {
+			if origin == wildcardSym {
 				co.allOrigins = true
 				break
 			}
@@ -142,7 +145,7 @@ func (c cors) preflight(wctx golly.WebContext) {
 	}
 
 	if c.allOrigins {
-		origin = "*"
+		origin = wildcardSym
 	}
 
 	headers.Set("Access-Control-Allow-Origin", origin)
@@ -190,7 +193,7 @@ func (c cors) request(wctx golly.WebContext) {
 	}
 
 	if c.allOrigins {
-		origin = "*"
+		origin = wildcardSym
 	}
 
 	headers.Set("Access-Control-Allow-Origin", origin)
@@ -215,22 +218,13 @@ func (c *cors) isOriginAllowed(origin string) bool {
 		return true
 	}
 
-	if utils.StringSliceContains(c.orgins, origin) {
+	if w := c.worigins.Find(func(w utils.Wildcard) bool { return w.Match(origin) }); w != nil {
 		return true
-	}
-
-	{
-		w := c.worigins.Find(func(w utils.Wildcard) bool { return w.Match(origin) })
-		if w != nil {
-			return true
-		}
 	}
 
 	return false
 }
 
-// isMethodAllowed checks if a given method can be used as part of a cross-domain request
-// on the endpoint
 func (c *cors) isMethodAllowed(method string) bool {
 	if len(c.methods) == 0 {
 		return false
@@ -250,8 +244,7 @@ func (c *cors) areHeadersAllowed(headers []string) bool {
 	}
 
 	for _, header := range headers {
-		header = http.CanonicalHeaderKey(header)
-		if utils.StringSliceContains(c.headers, header) {
+		if utils.StringSliceContains(c.headers, http.CanonicalHeaderKey(header)) {
 			return true
 		}
 	}
