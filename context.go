@@ -53,14 +53,6 @@ func (c *Context) WithContext(ctx context.Context) context.Context {
 	return c.context
 }
 
-func (c *Context) ResetDB() {
-	if c.originalDB != nil {
-		c.db = c.originalDB.Session(&gorm.Session{
-			NewDB: true,
-		})
-	}
-}
-
 func (c *Context) UpdateLogFields(fields log.Fields) {
 	c.store.Set(LoggerKey, c.Logger().WithFields(fields))
 }

@@ -6,12 +6,12 @@ import (
 )
 
 func init() {
-	if !env.IsDevelopment() {
-		log.SetFormatter(&log.JSONFormatter{})
-	} else {
+	if env.IsDevelopment() {
 		log.SetLevel(log.DebugLevel)
 		log.SetFormatter(&log.TextFormatter{})
+		return
 	}
+	log.SetFormatter(&log.JSONFormatter{})
 }
 
 // NewLogger returns a new logger intance
