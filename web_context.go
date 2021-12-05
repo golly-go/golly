@@ -11,7 +11,6 @@ import (
 
 	"github.com/sirupsen/logrus"
 	log "github.com/sirupsen/logrus"
-	"gorm.io/gorm"
 )
 
 // WebContext specific context for web
@@ -35,10 +34,7 @@ type WebContext struct {
 func NewWebContext(a Application, r *http.Request, w http.ResponseWriter, requestID string) WebContext {
 	ctx := NewContext(r.Context())
 	ctx.root = a.routes
-
-	ctx.SetDB(a.DB.Session(&gorm.Session{NewDB: true}))
 	ctx.config = a.Config
-
 	ctx.SetLogger(a.Logger.WithFields(webLogParams(requestID, r)))
 
 	return WebContext{

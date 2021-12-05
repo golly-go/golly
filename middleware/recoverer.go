@@ -17,11 +17,9 @@ func Recoverer(next golly.HandlerFunc) golly.HandlerFunc {
 
 				wctx.Response().WriteHeader(http.StatusInternalServerError)
 
-				// debug.PrintStack()
 				runtime.Stack(buf, false)
 
 				stack := []string{}
-
 				for _, line := range buf {
 					stack = append(stack, string(line))
 				}

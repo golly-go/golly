@@ -1,0 +1,74 @@
+package orm
+
+import (
+	"fmt"
+	"sync"
+
+	"github.com/slimloans/golly"
+	"github.com/slimloans/golly/errors"
+	"github.com/spf13/viper"
+	"gorm.io/gorm"
+)
+
+var db *gorm.DB
+var lock sync.RWMutex
+
+func InitializerWithMigration(app golly.Application, modelsToMigrate ...interface{}) golly.InitializerFunc {
+	return func(app golly.Application) error {
+		if err := Initializer(app); err != nil {
+			return err
+		}
+
+		db.AutoMigrate(modelsToMigrate...)
+		return nil
+	}
+}
+
+// Initializer golly initializer setting up the databse
+// todo: mkae this more dynamic going forward with interfaces etc
+// since right now we only support gorm
+func Initializer(app golly.Application) error {
+	lock.Lock()
+	defer lock.Unlock()
+
+	v := setConfigDefaults(app.Name, app.Config)
+
+	driver := v.GetString(fmt.Sprintf("%s.db.driver", app.Name))
+
+	switch driver {
+	case "in-memory":
+		d := NewInMemoryConnection()
+		db = d
+	case "postgres":
+		d, err := NewPostgresConnection(v, app.Name)
+		if err != nil {
+			return errors.WrapGeneric(err)
+		}
+		db = d
+	default:
+		return errors.WrapGeneric(fmt.Errorf("database drive %s not supported", driver))
+
+	}
+	return nil
+}
+
+// Not sure i want to go back to having a global database
+// but for now lets do this
+func DB(golly.Context) *gorm.DB {
+	return db
+}
+
+// Sane defaults TODO: Clean this up
+func setConfigDefaults(appName string, v *viper.Viper) *viper.Viper {
+	v.SetDefault(appName, map[string]interface{}{
+		"db": map[string]interface{}{
+			"host":     "127.0.0.1",
+			"port":     "5432",
+			"username": "app",
+			"password": "password",
+			"name":     appName,
+			"driver":   "postgres",
+		},
+	})
+	return v
+}
