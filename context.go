@@ -5,7 +5,6 @@ import (
 
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
-	"gorm.io/gorm"
 )
 
 const (
@@ -17,11 +16,7 @@ type Context struct {
 	store *Store
 
 	context context.Context
-
-	db         *gorm.DB
-	originalDB *gorm.DB
-
-	config *viper.Viper
+	config  *viper.Viper
 
 	root *Route
 }
