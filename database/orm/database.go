@@ -47,15 +47,32 @@ func Initializer(app golly.Application) error {
 		db = d
 	default:
 		return errors.WrapGeneric(fmt.Errorf("database drive %s not supported", driver))
-
 	}
+
+	app.Routes().Use(middleware)
 	return nil
+}
+
+func Connection() *gorm.DB {
+	return db
 }
 
 // Not sure i want to go back to having a global database
 // but for now lets do this
-func DB(golly.Context) *gorm.DB {
-	return db
+func DB(c golly.Context) *gorm.DB {
+	if db, found := c.Get("database"); found {
+		return db.(*gorm.DB)
+	}
+	return nil
+}
+
+func middleware(next golly.HandlerFunc) golly.HandlerFunc {
+	return func(c golly.WebContext) {
+		c.Set("database", db.Session(&gorm.Session{
+			NewDB: true,
+		}))
+		next(c)
+	}
 }
 
 // Sane defaults TODO: Clean this up

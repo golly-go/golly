@@ -2,35 +2,16 @@ package orm
 
 import (
 	"fmt"
-	"log"
 	"os"
-	"time"
 
-	"github.com/slimloans/golly/env"
 	"github.com/spf13/viper"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
-	"gorm.io/gorm/logger"
 )
 
 // NewDBConnection new db connection
 func NewPostgresConnection(v *viper.Viper, prefixKey string) (*gorm.DB, error) {
-	config := logger.Config{
-		SlowThreshold: time.Second,
-		LogLevel:      logger.Info,
-		Colorful:      true,
-	}
-
-	if !env.IsDevelopmentOrTest() {
-		config.LogLevel = logger.Warn
-	}
-
-	logger := logger.New(
-		log.New(os.Stdout, "\r\n", log.LstdFlags), // io writer
-		config,
-	)
-
-	db, err := gorm.Open(postgres.Open(postgressConnectionString(v, prefixKey)), &gorm.Config{Logger: logger})
+	db, err := gorm.Open(postgres.Open(postgressConnectionString(v, prefixKey)), &gorm.Config{Logger: newLogger("postgres")})
 	return db, err
 }
 

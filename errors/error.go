@@ -1,12 +1,10 @@
 package errors
 
 import (
-	"fmt"
 	"reflect"
-	"runtime"
-	"strings"
 
 	"github.com/sirupsen/logrus"
+	"github.com/slimloans/golly/utils"
 )
 
 // Error struct holds the wrapped error
@@ -37,7 +35,7 @@ func (ae Error) NewError(err error) Error {
 	if e, ok := err.(Error); ok {
 		source = e.Caller
 	} else {
-		source = sourceFile()
+		source = utils.FileWithLineNum()
 	}
 
 	e := Error{Key: ae.Key, Err: err, Caller: source, Status: ae.Status}
@@ -92,20 +90,4 @@ func Wrap(ae Error, err error) error {
 	}
 
 	return ae.NewError(err)
-}
-
-func sourceFile() string {
-	for i := 2; i < 15; i++ {
-		_, file, line, ok := runtime.Caller(i)
-		if ok && !strings.Contains(file, "apperrors") && !strings.Contains(file, "golly") {
-			f := strings.Split(file, "github.com/")
-
-			if len(f) > 1 {
-				return fmt.Sprintf("github.com/%v:%v", f[1], line)
-			}
-
-			return fmt.Sprintf("%v:%v", file, line)
-		}
-	}
-	return ""
 }
