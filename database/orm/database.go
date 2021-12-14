@@ -63,14 +63,12 @@ func DB(c golly.Context) *gorm.DB {
 	if db, found := c.Get("database"); found {
 		return db.(*gorm.DB)
 	}
-	return nil
+	return Connection()
 }
 
 func middleware(next golly.HandlerFunc) golly.HandlerFunc {
 	return func(c golly.WebContext) {
-		c.Set("database", db.Session(&gorm.Session{
-			NewDB: true,
-		}))
+		c.Set("database", db.Session(&gorm.Session{NewDB: true}))
 		next(c)
 	}
 }

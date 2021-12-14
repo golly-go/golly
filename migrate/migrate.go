@@ -2,6 +2,7 @@ package migrate
 
 import (
 	"github.com/slimloans/golly"
+	"github.com/slimloans/golly/database/orm"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"gorm.io/gorm"
@@ -47,7 +48,7 @@ var Commands = []*cobra.Command{
 }
 
 func boot(args []string, fn func(*viper.Viper, *gorm.DB, []string) error) {
-	err := golly.Boot(func(a golly.Application) error { return fn(a.Config, a.DB, args) })
+	err := golly.Boot(func(a golly.Application) error { return fn(a.Config, orm.Connection(), args) })
 	if err != nil {
 		panic(err)
 	}

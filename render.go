@@ -77,7 +77,7 @@ func (wctx WebContext) Render(resp interface{}, options RenderOptions) {
 	if marshaler, found := marshalers[options.Format]; found {
 		RenderResponse(wctx, marshaler, resp)
 	} else {
-		wctx.Logger().Errorf("invalid format provided (format: %s)", options.Format)
+		wctx.Logger().Errorf("invalid format provided (format: %v)", options.Format)
 		wctx.Response().WriteHeader(http.StatusInternalServerError)
 	}
 }
