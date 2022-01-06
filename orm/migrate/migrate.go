@@ -9,6 +9,7 @@ import (
 )
 
 // Commands migration commands to be imported into an application
+// these commands allow for sql based migrations.
 var Commands = []*cobra.Command{
 	{
 		Use:   "init",
