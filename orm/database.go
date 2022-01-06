@@ -13,14 +13,14 @@ import (
 var db *gorm.DB
 var lock sync.RWMutex
 
+const contextKey = "database"
+
 func InitializerWithMigration(app golly.Application, modelsToMigrate ...interface{}) golly.InitializerFunc {
 	return func(app golly.Application) error {
 		if err := Initializer(app); err != nil {
 			return err
 		}
-
-		db.AutoMigrate(modelsToMigrate...)
-		return nil
+		return db.AutoMigrate(modelsToMigrate...)
 	}
 }
 
@@ -37,8 +37,7 @@ func Initializer(app golly.Application) error {
 
 	switch driver {
 	case "in-memory":
-		d := NewInMemoryConnection()
-		db = d
+		db = NewInMemoryConnection()
 	case "postgres":
 		d, err := NewPostgresConnection(v, app.Name)
 		if err != nil {
@@ -60,7 +59,7 @@ func Connection() *gorm.DB {
 // Not sure i want to go back to having a global database
 // but for now lets do this
 func DB(c golly.Context) *gorm.DB {
-	if db, found := c.Get("database"); found {
+	if db, found := c.Get(contextKey); found {
 		return db.(*gorm.DB)
 	}
 	return Connection()
@@ -68,7 +67,7 @@ func DB(c golly.Context) *gorm.DB {
 
 func middleware(next golly.HandlerFunc) golly.HandlerFunc {
 	return func(c golly.WebContext) {
-		c.Set("database", db.Session(&gorm.Session{NewDB: true}))
+		c.Set(contextKey, db.Session(&gorm.Session{NewDB: true}))
 		next(c)
 	}
 }
