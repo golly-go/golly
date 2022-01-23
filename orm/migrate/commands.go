@@ -34,7 +34,12 @@ func newVersionString() string {
 }
 
 func findOrCreateFolder() error {
-	return os.MkdirAll("."+migrationPath, 0700)
+
+	if _, err := os.Stat(migrationPath); err != nil {
+		return nil
+	}
+	fmt.Println("Creating migration folder: ", migrationPath)
+	return os.MkdirAll(migrationPath, 0700)
 }
 
 func MigrationInit(v *viper.Viper, db *gorm.DB, args []string) error {
