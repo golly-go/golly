@@ -72,12 +72,12 @@ func DB(c golly.Context) *gorm.DB {
 
 func middleware(next golly.HandlerFunc) golly.HandlerFunc {
 	return func(c golly.WebContext) {
-		SetDBOnContext(c.Context)
+		SetDBOnContext(c.Context, Connection())
 		next(c)
 	}
 }
 
-func SetDBOnContext(c golly.Context) {
+func SetDBOnContext(c golly.Context, db *gorm.DB) {
 	c.Set(contextKey, db.Session(&gorm.Session{NewDB: true}))
 }
 
