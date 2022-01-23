@@ -7,7 +7,6 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
-	"gorm.io/gorm"
 )
 
 type RunMode string
@@ -73,7 +72,6 @@ func Seed(a Application, name string, fn func(Context) error) {
 	if running == "all" || running == name {
 
 		aCtx := NewContext(ctx)
-		aCtx.SetDB(a.DB.Session(&gorm.Session{}))
 		aCtx.config = a.Config
 
 		if err := fn(aCtx); err != nil {
@@ -91,14 +89,6 @@ func Boot(f func(Application) error) error {
 	}
 
 	a := NewApplication()
-
-	// db, err := NewDBConnection(a.Config, a.Name)
-	// if err != nil {
-	// 	panic(err)
-	// }
-
-	// a.DB = db
-
 	for _, initializer := range initializers {
 		if err := initializer(a); err != nil {
 			panic(err)

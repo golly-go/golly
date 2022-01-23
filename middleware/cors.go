@@ -9,7 +9,6 @@ import (
 )
 
 const (
-	toLower     = 'a' - 'A'
 	wildcardSym = "*"
 )
 

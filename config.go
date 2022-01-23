@@ -7,22 +7,6 @@ import (
 	"github.com/spf13/viper"
 )
 
-// Sane defaults TODO: Clean this up
-func setConfigDefaults(v *viper.Viper) *viper.Viper {
-	v.SetDefault("bind", ":9999")
-	v.SetDefault(appName, map[string]interface{}{
-		"db": map[string]interface{}{
-			"host":     "127.0.0.1",
-			"port":     "5432",
-			"username": "app",
-			"password": "password",
-			"name":     appName,
-			"driver":   "postgres",
-		},
-	})
-	return v
-}
-
 // initConfig initializes the config looking for the config files in various places
 // this is a good place to put global defaults that are used by all packages.
 func initConfig() *viper.Viper {
@@ -36,7 +20,7 @@ func initConfig() *viper.Viper {
 
 	v.AutomaticEnv()
 
-	setConfigDefaults(v)
+	v.SetDefault("bind", ":9999")
 
 	if err := v.ReadInConfig(); err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); ok {

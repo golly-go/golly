@@ -33,7 +33,22 @@ func newVersionString() string {
 		tStamp)
 }
 
+func findOrCreateFolder() error {
+	dbFolderPath := "./" + migrationPath
+
+	if _, err := os.Stat(dbFolderPath); !os.IsNotExist(err) {
+		return nil
+	}
+
+	fmt.Println("Creating migration folder: ", dbFolderPath)
+	return os.MkdirAll(dbFolderPath, 0700)
+}
+
 func MigrationInit(v *viper.Viper, db *gorm.DB, args []string) error {
+	if err := findOrCreateFolder(); err != nil {
+		return err
+	}
+
 	if err := db.AutoMigrate(&SchemaMigration{}); err != nil {
 		return err
 	}

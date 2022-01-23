@@ -2,12 +2,14 @@ package migrate
 
 import (
 	"github.com/slimloans/golly"
+	orm "github.com/slimloans/golly/orm"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"gorm.io/gorm"
 )
 
 // Commands migration commands to be imported into an application
+// these commands allow for sql based migrations.
 var Commands = []*cobra.Command{
 	{
 		Use:   "init",
@@ -47,7 +49,7 @@ var Commands = []*cobra.Command{
 }
 
 func boot(args []string, fn func(*viper.Viper, *gorm.DB, []string) error) {
-	err := golly.Boot(func(a golly.Application) error { return fn(a.Config, a.DB, args) })
+	err := golly.Boot(func(a golly.Application) error { return fn(a.Config, orm.Connection(), args) })
 	if err != nil {
 		panic(err)
 	}

@@ -2,11 +2,9 @@ package golly
 
 import (
 	"context"
-	"sync"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
-	"gorm.io/gorm"
 )
 
 const (
@@ -15,23 +13,29 @@ const (
 )
 
 type Context struct {
+	store *Store
+
 	context context.Context
-
-	data *sync.Map
-
-	db         *gorm.DB
-	originalDB *gorm.DB
-
-	config *viper.Viper
+	config  *viper.Viper
 
 	root *Route
+}
+
+// Set set a value on the context
+func (c *Context) Set(key string, value interface{}) {
+	c.store.Set(key, value)
+}
+
+// Get get a value from the context
+func (c *Context) Get(key string) (interface{}, bool) {
+	return c.store.Get(key)
 }
 
 // NewContext returns a new application context provided some basic information
 func NewContext(ctx context.Context) Context {
 	return Context{
 		context: ctx,
-		data:    &sync.Map{},
+		store:   NewStore(),
 	}
 }
 
@@ -44,31 +48,16 @@ func (c *Context) WithContext(ctx context.Context) context.Context {
 	return c.context
 }
 
-func (c *Context) SetDB(db *gorm.DB) {
-	if c.originalDB == nil {
-		c.originalDB = db
-	}
-	c.db = db
-}
-
-func (c *Context) ResetDB() {
-	if c.originalDB != nil {
-		c.db = c.originalDB.Session(&gorm.Session{
-			NewDB: true,
-		})
-	}
-}
-
 func (c *Context) UpdateLogFields(fields log.Fields) {
-	c.Set(LoggerKey, c.Logger().WithFields(fields))
+	c.store.Set(LoggerKey, c.Logger().WithFields(fields))
 }
 
 func (c *Context) SetLogger(l *log.Entry) {
-	c.Set(LoggerKey, l)
+	c.store.Set(LoggerKey, l)
 }
 
 func (c Context) Logger() *log.Entry {
-	if lgr, found := c.Get(LoggerKey); found {
+	if lgr, found := c.store.Get(LoggerKey); found {
 		if l, ok := lgr.(*log.Entry); ok {
 			return l
 		}
@@ -81,29 +70,4 @@ func (c Context) Logger() *log.Entry {
 // Context returns the context
 func (c Context) Context() context.Context {
 	return c.context
-}
-
-// Set set a value on the context
-func (c *Context) Set(key string, value interface{}) {
-	c.data.Store(key, value)
-}
-
-// Get get a value from the context
-func (c *Context) Get(key string) (interface{}, bool) {
-	return c.data.Load(key)
-}
-
-// DB returns a new DB session
-// not sure what todo here as we may be returning nil
-// might not be safe to call in all cases
-func (c Context) DB() *gorm.DB {
-	return c.db
-}
-
-// NewDB returns a new session (Not sure if i like this)
-func (c Context) NewDB() *gorm.DB {
-	if db := c.DB(); db != nil {
-		return db.Session(&gorm.Session{NewDB: true})
-	}
-	return nil
 }

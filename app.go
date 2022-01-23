@@ -12,6 +12,9 @@ import (
 	"gorm.io/gorm"
 )
 
+type InitializerFunc func(Application) error
+type PrebootFunc func() error
+
 var (
 	// VersionMajor Major Semver
 	versionMajor = 0
@@ -33,9 +36,8 @@ var (
 
 	appName string
 
-	initializers = []func(Application) error{}
-
-	preboots = []func() error{}
+	initializers = []InitializerFunc{}
+	preboots     = []PrebootFunc{}
 
 	lock sync.RWMutex
 )
@@ -52,7 +54,7 @@ type Application struct {
 	StartedAt time.Time
 	routes    *Route
 
-	Plugins []Plugin
+	store *Store
 }
 
 func init() {
@@ -74,7 +76,7 @@ func SetGlobalTimezone(tz string) error {
 // RegisterInitializer registers a function to be called prior to boot
 // Initializers take an application and return error
 // on error they will panic() and prevent the app from loading
-func RegisterInitializer(fns ...func(Application) error) {
+func RegisterInitializer(fns ...InitializerFunc) {
 	lock.Lock()
 	defer lock.Unlock()
 
@@ -83,7 +85,7 @@ func RegisterInitializer(fns ...func(Application) error) {
 
 // RegisterPreboot registers a function to be called prior to application
 // being created
-func RegisterPreboot(fns ...func() error) {
+func RegisterPreboot(fns ...PrebootFunc) {
 	lock.Lock()
 	defer lock.Unlock()
 
@@ -126,6 +128,7 @@ func NewApplication() Application {
 		Config:    initConfig(),
 		Logger:    NewLogger(),
 		StartedAt: startTime,
+		store:     NewStore(),
 		routes: NewRoute().
 			mount("/", func(r *Route) {
 				r.Get("/routes", renderRoutes(r))

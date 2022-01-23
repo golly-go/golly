@@ -371,6 +371,11 @@ func (re *Route) Route(path string, f func(r *Route)) *Route {
 	return re.Namespace(path, f)
 }
 
+func (re *Route) MergeRouteTree(r *Route) *Route {
+	re.Children = append(re.Children, r)
+	return re
+}
+
 func tokenize(path string) []RouteToken {
 	var ret []RouteToken
 

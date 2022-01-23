@@ -9,7 +9,7 @@ import (
 	"github.com/slimloans/golly/errors"
 )
 
-type FormatOption string
+type FormatOption uint
 
 type marshalFunc func(interface{}) ([]byte, error)
 
@@ -19,13 +19,11 @@ type Marshaler struct {
 }
 
 var (
-	FormatTypeJSON FormatOption = "JSON"
-
-	FormatTypeXML FormatOption = "XML"
-
-	FormatTypeText FormatOption = "TEXT"
-
-	FormatTypeData FormatOption = "DATA"
+	FormatTypeJSON       FormatOption = 0x0001
+	FormatTypeXML        FormatOption = 0x0002
+	FormatTypeText       FormatOption = 0x0004
+	FormatTypeData       FormatOption = 0x0008
+	FormatTypeAttachment FormatOption = 0x0010
 
 	ErrorInvalidType = fmt.Errorf("invalid resposne type provided")
 
@@ -58,7 +56,7 @@ func RenderExt(wctx WebContext, resp interface{}, err error, format FormatOption
 
 func Render(wctx WebContext, resp interface{}) {
 	format := wctx.format
-	if format == "" {
+	if format == 0 {
 		format = FormatTypeJSON
 	}
 
@@ -79,10 +77,14 @@ func (wctx WebContext) Render(resp interface{}, options RenderOptions) {
 	if marshaler, found := marshalers[options.Format]; found {
 		RenderResponse(wctx, marshaler, resp)
 	} else {
-		wctx.Logger().Errorf("invalid format provided (format: %s)", options.Format)
+		wctx.Logger().Errorf("invalid format provided (format: %v)", options.Format)
 		wctx.Response().WriteHeader(http.StatusInternalServerError)
 	}
 }
+
+// func (wctx WebContext) RenderAttachment(name string, data []byte) {
+// 	wctx.Response().Header().Set("")
+// }
 
 func (wctx WebContext) RenderJSON(resp interface{}) {
 	wctx.Render(resp, RenderOptions{Format: FormatTypeJSON})
