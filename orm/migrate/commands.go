@@ -33,7 +33,7 @@ func newVersionString() string {
 		tStamp)
 }
 
-func findOrCreateFolder() error {
+func createDBFolderIfNotExist() error {
 	dbFolderPath := "./" + migrationPath
 
 	if _, err := os.Stat(dbFolderPath); !os.IsNotExist(err) {
@@ -45,7 +45,7 @@ func findOrCreateFolder() error {
 }
 
 func MigrationInit(v *viper.Viper, db *gorm.DB, args []string) error {
-	if err := findOrCreateFolder(); err != nil {
+	if err := createDBFolderIfNotExist(); err != nil {
 		return err
 	}
 
@@ -54,9 +54,6 @@ func MigrationInit(v *viper.Viper, db *gorm.DB, args []string) error {
 	}
 
 	fmt.Println("Created schema migrations table.")
-	if _, err := os.Stat(migrationPath); os.IsNotExist(err) {
-		return err
-	}
 	return nil
 }
 

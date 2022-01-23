@@ -24,12 +24,17 @@ func InitializerWithMigration(app golly.Application, modelsToMigrate ...interfac
 	}
 }
 
+func SetConnection(newDB *gorm.DB) {
+	lock.Lock()
+	defer lock.Unlock()
+
+	db = newDB
+}
+
 // Initializer golly initializer setting up the databse
 // todo: mkae this more dynamic going forward with interfaces etc
 // since right now we only support gorm
 func Initializer(app golly.Application) error {
-	lock.Lock()
-	defer lock.Unlock()
 
 	v := setConfigDefaults(app.Name, app.Config)
 
@@ -37,13 +42,13 @@ func Initializer(app golly.Application) error {
 
 	switch driver {
 	case "in-memory":
-		db = NewInMemoryConnection()
+		SetConnection(NewInMemoryConnection())
 	case "postgres":
 		d, err := NewPostgresConnection(v, app.Name)
 		if err != nil {
 			return errors.WrapGeneric(err)
 		}
-		db = d
+		SetConnection(d)
 	default:
 		return errors.WrapGeneric(fmt.Errorf("database drive %s not supported", driver))
 	}
@@ -67,9 +72,13 @@ func DB(c golly.Context) *gorm.DB {
 
 func middleware(next golly.HandlerFunc) golly.HandlerFunc {
 	return func(c golly.WebContext) {
-		c.Set(contextKey, db.Session(&gorm.Session{NewDB: true}))
+		SetDBOnContext(c.Context)
 		next(c)
 	}
+}
+
+func SetDBOnContext(c golly.Context) {
+	c.Set(contextKey, db.Session(&gorm.Session{NewDB: true}))
 }
 
 // Sane defaults TODO: Clean this up

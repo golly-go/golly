@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/gob"
 	"reflect"
+	"strings"
 )
 
 func GetBytes(key interface{}) []byte {
@@ -17,9 +18,29 @@ func GetBytes(key interface{}) []byte {
 }
 
 func GetType(myvar interface{}) string {
+	return GetRawType(myvar).Name()
+}
+
+func GetTypeWithPackage(myvar interface{}) string {
+	return GetRawType(myvar).String()
+}
+
+func GetRawType(myvar interface{}) reflect.Type {
 	t := reflect.TypeOf(myvar)
 	if t.Kind() == reflect.Ptr {
-		return t.Elem().Name()
+		return t.Elem()
 	}
-	return t.Name()
+	return t
+}
+
+// GetTypeName of given struct
+func GetTypeName(source interface{}) (reflect.Type, string) {
+	rawType := GetRawType(source)
+
+	name := rawType.String()
+	if idx := strings.Index(name, "."); idx >= 0 {
+		name = name[idx+1:]
+	}
+
+	return rawType, name
 }
