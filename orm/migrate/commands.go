@@ -34,12 +34,14 @@ func newVersionString() string {
 }
 
 func findOrCreateFolder() error {
+	dbFolderPath := "./" + migrationPath
 
-	if _, err := os.Stat(migrationPath); err != nil {
+	if _, err := os.Stat(dbFolderPath); !os.IsNotExist(err) {
 		return nil
 	}
-	fmt.Println("Creating migration folder: ", migrationPath)
-	return os.MkdirAll(migrationPath, 0700)
+
+	fmt.Println("Creating migration folder: ", dbFolderPath)
+	return os.MkdirAll(dbFolderPath, 0700)
 }
 
 func MigrationInit(v *viper.Viper, db *gorm.DB, args []string) error {
