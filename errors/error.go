@@ -57,7 +57,6 @@ func SetData(err error, key string, value interface{}) error {
 		ae.Data[key] = value
 		return ae
 	}
-
 	return err
 }
 
