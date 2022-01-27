@@ -1,6 +1,7 @@
 package orm
 
 import (
+	"context"
 	"fmt"
 	"sync"
 
@@ -68,6 +69,17 @@ func DB(c golly.Context) *gorm.DB {
 		return db.(*gorm.DB)
 	}
 	return Connection()
+}
+
+func ToContext(parent context.Context, db *gorm.DB) context.Context {
+	return context.WithValue(parent, gorm.DB{}, db)
+}
+
+func FromContext(ctx context.Context) *gorm.DB {
+	if db, ok := ctx.Value(gorm.DB{}).(*gorm.DB); ok {
+		return db
+	}
+	return nil
 }
 
 func middleware(next golly.HandlerFunc) golly.HandlerFunc {
