@@ -7,9 +7,13 @@ import (
 	"github.com/spf13/viper"
 )
 
+type ContextKeyT string
+type storeKeyT string
+
 const (
 	// LoggerKey key to the data map for the logger
-	LoggerKey = "logger"
+	LoggerKey ContextKeyT = "logger"
+	StoreKey  ContextKeyT = "store"
 )
 
 type Context struct {
@@ -56,12 +60,28 @@ func (c *Context) SetLogger(l *log.Entry) {
 	c.store.Set(LoggerKey, l)
 }
 
+func FromContext(ctx context.Context) Context {
+	if c, ok := ctx.Value(StoreKey).(Context); ok {
+		return c
+	}
+	return NewContext(ctx)
+}
+
+func (c Context) ToContext() context.Context {
+	return context.WithValue(c.context, StoreKey, c)
+}
+
 func (c Context) Logger() *log.Entry {
 	if lgr, found := c.store.Get(LoggerKey); found {
 		if l, ok := lgr.(*log.Entry); ok {
 			return l
 		}
 	}
+
+	if lgr, ok := c.context.Value(LoggerKey).(*log.Entry); ok {
+		return lgr
+	}
+
 	// Always make sure we return a log
 	// this may be required for some applications
 	return log.NewEntry(log.New())
