@@ -35,6 +35,10 @@ func (base *ModelUUID) BeforeCreate(tx *gorm.DB) error {
 }
 
 func TestModelUUID() ModelUUID {
+	return NewModelUUID()
+}
+
+func NewModelUUID() ModelUUID {
 	uuid1, _ := uuid.NewUUID()
 	return ModelUUID{ID: uuid1}
 }

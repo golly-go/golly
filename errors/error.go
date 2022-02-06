@@ -50,12 +50,14 @@ func (ae Error) NewError(err error) Error {
 }
 
 func SetData(err error, key string, value interface{}) error {
-	if ae, ok := err.(Error); ok {
-		if ae.Data == nil {
-			ae.Data = map[string]interface{}{}
+	if err != nil {
+		if ae, ok := err.(Error); ok {
+			if ae.Data == nil {
+				ae.Data = map[string]interface{}{}
+			}
+			ae.Data[key] = value
+			return ae
 		}
-		ae.Data[key] = value
-		return ae
 	}
 	return err
 }
