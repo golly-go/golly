@@ -8,7 +8,6 @@ import (
 )
 
 type ContextKeyT string
-type storeKeyT string
 
 const (
 	// LoggerKey key to the data map for the logger

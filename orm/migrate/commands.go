@@ -15,7 +15,7 @@ import (
 )
 
 type SchemaMigration struct {
-	Version string `gorm:"primary_key"`
+	Version string `gorm:"primaryKey;autoIncrement:false"`
 	File    string
 }
 
