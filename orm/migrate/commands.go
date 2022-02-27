@@ -19,7 +19,7 @@ import (
 type SchemaMigration struct {
 	orm.Model
 
-	Version string
+	Version string `gorm:"index"`
 	File    string
 }
 
