@@ -26,12 +26,13 @@ type Context struct {
 }
 
 // Set set a value on the context
-func (c *Context) Set(key string, value interface{}) {
+func (c *Context) Set(key interface{}, value interface{}) Context {
 	c.store.Set(key, value)
+	return *c
 }
 
 // Get get a value from the context
-func (c *Context) Get(key string) (interface{}, bool) {
+func (c *Context) Get(key interface{}) (interface{}, bool) {
 	return c.store.Get(key)
 }
 
