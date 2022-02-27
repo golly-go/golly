@@ -10,12 +10,16 @@ import (
 	"strings"
 	"time"
 
+	"github.com/slimloans/golly/errors"
+	"github.com/slimloans/golly/orm"
 	"github.com/spf13/viper"
 	"gorm.io/gorm"
 )
 
 type SchemaMigration struct {
-	Version string `gorm:"primaryKey;autoIncrement:false"`
+	orm.Model
+
+	Version string
 	File    string
 }
 
@@ -142,6 +146,9 @@ func MigrationPerform(v *viper.Viper, db *gorm.DB, args []string) error {
 }
 
 func migrate(db *gorm.DB) error {
+
+	fmt.Printf("HERE\n\n")
+
 	missing := missingMigrations(db)
 	if len(missing) == 0 {
 		fmt.Println("Nothing to migrate")
@@ -160,7 +167,7 @@ func migrate(db *gorm.DB) error {
 		}
 
 		if err := db.Create(&sm).Error; err != nil {
-			return err
+			return errors.WrapGeneric(err)
 		}
 		fmt.Println("Migrated to: ", migration[0])
 	}
@@ -214,7 +221,10 @@ func formatSlug(str string) string {
 }
 
 func missingMigrations(db *gorm.DB) [][]string {
+	fmt.Print("HERE")
+
 	if err := db.AutoMigrate(&SchemaMigration{}); err != nil {
+
 		fmt.Println("Cannot create schema migrations table: ", err)
 		return [][]string{}
 	}
