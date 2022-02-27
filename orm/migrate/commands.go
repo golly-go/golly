@@ -11,15 +11,12 @@ import (
 	"time"
 
 	"github.com/slimloans/golly/errors"
-	"github.com/slimloans/golly/orm"
 	"github.com/spf13/viper"
 	"gorm.io/gorm"
 )
 
 type SchemaMigration struct {
-	orm.Model
-
-	Version string `gorm:"index"`
+	Version string `gorm:"primaryKey;autoIncrement:false"`
 	File    string
 }
 
