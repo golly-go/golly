@@ -146,9 +146,6 @@ func MigrationPerform(v *viper.Viper, db *gorm.DB, args []string) error {
 }
 
 func migrate(db *gorm.DB) error {
-
-	fmt.Printf("HERE\n\n")
-
 	missing := missingMigrations(db)
 	if len(missing) == 0 {
 		fmt.Println("Nothing to migrate")
