@@ -3,7 +3,6 @@ package passport
 import (
 	"fmt"
 	"regexp"
-	"sync"
 	"time"
 
 	jwt "github.com/dgrijalva/jwt-go"
@@ -24,8 +23,6 @@ var (
 	ErrorInvalidSource = fmt.Errorf("invalid source for token")
 
 	ErrorInvalidClaim = fmt.Errorf("invalid claim for token")
-
-	lock sync.RWMutex
 )
 
 // Identity holds the JWT identity of a user
@@ -34,7 +31,7 @@ type JWT struct {
 }
 
 // JWT - jwtEncode
-func (ident JWT) JWT() (string, error) {
+func (ident JWT) String() (string, error) {
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, ident)
 	return token.SignedString(golly.Secret())
 }
