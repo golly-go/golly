@@ -10,14 +10,19 @@ import (
 
 func JWTMiddleware(passportObject Identity) func(next golly.HandlerFunc) golly.HandlerFunc {
 	var passportType = reflect.TypeOf(passportObject)
+	var passportValue = reflect.ValueOf(passportObject)
+
+	if passportValue.Kind() == reflect.Ptr {
+		passportType = passportType.Elem()
+	}
 
 	return func(next golly.HandlerFunc) golly.HandlerFunc {
-		passport := reflect.New(passportType).Elem().Addr()
-
 		return func(c golly.WebContext) {
+			passport := reflect.New(passportType).Interface()
+
 			token := DecodeAuthorizationHeader(c.Request().Header.Get("Authorization"))
 			if token != "" {
-				ident, err := DecodeToken(token, passport.Interface().(Identity))
+				ident, err := DecodeToken(token, passport.(Identity))
 				if err == nil {
 					ToContext(c.Context, ident)
 				}
