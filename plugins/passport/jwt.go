@@ -2,6 +2,7 @@ package passport
 
 import (
 	"fmt"
+	"os"
 	"regexp"
 	"time"
 
@@ -33,14 +34,24 @@ type JWT struct {
 // JWT - jwtEncode
 func (ident JWT) String() (string, error) {
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, ident)
-	return token.SignedString(golly.Secret())
+	return token.SignedString(secret())
+}
+
+func secret() []byte {
+	if s := os.Getenv("JWT_SECRET"); s != "" {
+		return []byte(s)
+	}
+	return []byte(golly.Secret())
 }
 
 // Issue issues a new ident
 func (ident JWT) Issue() JWT {
-	ident.IssuedAt = time.Now().Unix()
-	ident.ExpiresAt = time.Now().Add(time.Hour * 1).Unix()
+	t := time.Now()
+
+	ident.IssuedAt = t.Unix()
+	ident.ExpiresAt = t.Add(time.Hour * 1).Unix()
 	ident.NotBefore = ident.IssuedAt
+
 	return ident
 }
 

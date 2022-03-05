@@ -33,7 +33,7 @@ func DecodeToken(token string, passport Identity) (Identity, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 		}
-		return golly.Secret(), nil
+		return secret(), nil
 	})
 	return passport, err
 }
