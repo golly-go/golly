@@ -12,7 +12,7 @@ func JWTMiddleware(passportObject Identity) func(next golly.HandlerFunc) golly.H
 	var passportType = reflect.TypeOf(passportObject)
 
 	return func(next golly.HandlerFunc) golly.HandlerFunc {
-		passport := reflect.New(passportType).Elem()
+		passport := reflect.New(passportType).Elem().Addr()
 
 		return func(c golly.WebContext) {
 			token := DecodeAuthorizationHeader(c.Request().Header.Get("Authorization"))
