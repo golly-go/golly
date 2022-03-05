@@ -7,7 +7,7 @@ type identCtx string
 var identCtxKey identCtx = "identity"
 
 type Identity interface {
-	ToContext(ctx golly.Context)
+	ToContext(ctx golly.Context) golly.Context
 	FromContext(ctx golly.Context) Identity
 	Valid() error
 }
