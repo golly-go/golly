@@ -143,3 +143,10 @@ func (a Application) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (a *Application) Routes() *Route {
 	return a.routes
 }
+
+func Secret() string {
+	if p := os.Getenv("ENC_TOKEN"); p != "" {
+		return p
+	}
+	return "miss-configured"
+}
