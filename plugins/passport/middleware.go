@@ -19,7 +19,7 @@ func JWTMiddleware(passportObject Identity) func(next golly.HandlerFunc) golly.H
 			if token != "" {
 				ident, err := DecodeToken(token, passport.Interface().(Identity))
 				if err == nil {
-					ident.ToContext(c.Context)
+					ToContext(c.Context, ident)
 				}
 			}
 			next(c)
