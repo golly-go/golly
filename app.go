@@ -12,7 +12,8 @@ import (
 	"gorm.io/gorm"
 )
 
-type InitializerFunc func(Application) error
+type GollyAppFunc func(Application) error
+
 type PrebootFunc func() error
 
 var (
@@ -30,13 +31,11 @@ var (
 
 	startTime = time.Now()
 
-	source = ""
-
 	hostName, _ = os.Hostname()
 
 	appName string
 
-	initializers = []InitializerFunc{}
+	initializers = []GollyAppFunc{}
 	preboots     = []PrebootFunc{}
 
 	lock sync.RWMutex
@@ -47,12 +46,17 @@ type Application struct {
 	Config *viper.Viper `json:"-"`
 	DB     *gorm.DB     `json:"-"`
 
-	Name    string `json:"name"`
-	Version string `json:"version"`
-	Logger  *log.Entry
+	Args []string `json:"args"`
+
+	Name     string `json:"name"`
+	Version  string `json:"version"`
+	Hostname string `json:"hostname"`
+
+	Logger *log.Entry
 
 	StartedAt time.Time
-	routes    *Route
+
+	routes *Route
 
 	store *Store
 }
@@ -76,7 +80,7 @@ func SetGlobalTimezone(tz string) error {
 // RegisterInitializer registers a function to be called prior to boot
 // Initializers take an application and return error
 // on error they will panic() and prevent the app from loading
-func RegisterInitializer(fns ...InitializerFunc) {
+func RegisterInitializer(fns ...GollyAppFunc) {
 	lock.Lock()
 	defer lock.Unlock()
 
@@ -128,6 +132,7 @@ func NewApplication() Application {
 		Config:    initConfig(),
 		Logger:    NewLogger(),
 		StartedAt: startTime,
+		Hostname:  hostName,
 		store:     NewStore(),
 		routes: NewRoute().
 			mount("/", func(r *Route) {

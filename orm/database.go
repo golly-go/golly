@@ -16,7 +16,7 @@ var lock sync.RWMutex
 
 const contextKey = "database"
 
-func InitializerWithMigration(app golly.Application, modelsToMigrate ...interface{}) golly.InitializerFunc {
+func InitializerWithMigration(app golly.Application, modelsToMigrate ...interface{}) golly.GollyAppFunc {
 	return func(app golly.Application) error {
 		if err := Initializer(app); err != nil {
 			return err

@@ -5,18 +5,25 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"sync"
 
 	"github.com/spf13/cobra"
 )
 
 type RunMode string
 
-var (
+const (
 	RunModeDefault RunMode = "default"
 
 	RunModeWeb RunMode = "web"
 
 	RunModeWorkers RunMode = "workers"
+
+	RunModeRunner RunMode = "runner"
+)
+
+var (
+	runnerlock sync.RWMutex
 
 	AppCommands = []*cobra.Command{
 		{
@@ -38,6 +45,13 @@ var (
 		},
 
 		{
+			Use:   "run [runnerName]",
+			Short: "Run a registered runner method",
+			Run:   func(cmd *cobra.Command, args []string) { Run(RunModeRunner, args...) },
+			Args:  cobra.MinimumNArgs(1),
+		},
+
+		{
 			Use:   "routes",
 			Short: "Display the currently defined routes",
 			Run: func(cmd *cobra.Command, args []string) {
@@ -50,8 +64,35 @@ var (
 	}
 )
 
-func Run(mode RunMode) {
-	if err := Boot(func(a Application) error { return a.Run(mode) }); err != nil {
+var runners = map[string]GollyAppFunc{}
+
+// RegisterRunner - registers a runner mode that can be fired up using
+// golly run <runner>
+// returns a preboot function so it can be initialized during preboot
+func RegisterRunner(name string, handler GollyAppFunc) PrebootFunc {
+	return func() error {
+		defer runnerlock.Unlock()
+		runnerlock.Lock()
+
+		runners[name] = handler
+
+		return nil
+	}
+}
+
+func noOpRunner(a Application) error {
+	return nil
+}
+
+func runner(name string) (GollyAppFunc, bool) {
+	if fnc, found := runners[name]; found {
+		return fnc, found
+	}
+	return noOpRunner, false
+}
+
+func Run(mode RunMode, args ...string) {
+	if err := Boot(func(a Application) error { return a.Run(mode, args...) }); err != nil {
 		panic(err)
 	}
 }
@@ -102,10 +143,15 @@ func Boot(f func(Application) error) error {
 	return nil
 }
 
-func (a Application) Run(mode RunMode) error {
+func (a Application) Run(mode RunMode, args ...string) error {
 	a.Logger.Infof("Good Golly were booting %s (%s)", a.Name, a.Version)
 
 	switch mode {
+	case RunModeRunner:
+		if r, found := runner(args[0]); found {
+			return r(a)
+		}
+		panic(fmt.Errorf("runner %s not found", args[0]))
 	case RunModeWorkers:
 		fallthrough
 	case RunModeWeb:
