@@ -64,7 +64,9 @@ type Application struct {
 	context context.Context
 	cancel  context.CancelFunc
 
-	server *http.Server
+	plugins []Plugin
+
+	eventchain *EventChain
 }
 
 func init() {
@@ -81,6 +83,12 @@ func SetGlobalTimezone(tz string) error {
 	}
 	time.Local = location
 	return nil
+}
+
+func (a Application) Shutdown(ctx Context) {
+	a.eventchain.Dispatch(ctx, "app:shutdown:before", struct{}{})
+	a.cancel()
+	a.eventchain.Dispatch(ctx, "app:shutdown", struct{}{})
 }
 
 // RegisterInitializer registers a function to be called prior to boot
@@ -133,27 +141,24 @@ func Name() string {
 // NewApplication creates a new application for consumption
 func NewApplication() Application {
 	ctx, cancel := context.WithCancel(context.Background())
+	chain := &EventChain{}
 
 	return Application{
-		Version:   Version(),
-		Name:      appName,
-		Config:    initConfig(),
-		Logger:    NewLogger(),
-		StartedAt: startTime,
-		Hostname:  hostName,
-		store:     NewStore(),
-		context:   ctx,
-		cancel:    cancel,
+		Version:    Version(),
+		Name:       appName,
+		Config:     initConfig(),
+		Logger:     NewLogger(),
+		StartedAt:  startTime,
+		Hostname:   hostName,
+		store:      NewStore(),
+		context:    ctx,
+		cancel:     cancel,
+		eventchain: chain,
 		routes: NewRoute().
 			mount("/", func(r *Route) {
 				r.Get("/routes", renderRoutes(r))
 			}),
 	}
-}
-
-func (a Application) Quit() {
-	a.cancel()
-
 }
 
 func (a Application) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -162,6 +167,10 @@ func (a Application) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func (a *Application) Routes() *Route {
 	return a.routes
+}
+
+func (a *Application) EventChain() *EventChain {
+	return a.eventchain
 }
 
 func Secret() string {

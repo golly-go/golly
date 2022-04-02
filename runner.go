@@ -153,8 +153,8 @@ func (a Application) handleSignals() {
 	go func(c <-chan os.Signal) {
 		signal := <-c
 
-		a.Logger.Info("shutting down due to signal (%s)", signal.String())
-		a.cancel()
+		a.Logger.Infof("shutting down due to signal (%s)", signal.String())
+		a.Shutdown(NewContext(a.context))
 	}(sig)
 }
 
