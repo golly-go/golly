@@ -76,9 +76,8 @@ func (evl *EventChain) Dispatch(ctx Context, path string, evt Event) error {
 	if node := FindEventCallback(evl, path); node != nil {
 		return node.emit(evt)
 	}
-	err = errors.WrapGeneric(fmt.Errorf("event not found %s", path))
 
-	return err
+	return nil
 }
 
 func (evl EventChain) emit(evt Event) error {

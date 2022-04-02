@@ -7,7 +7,7 @@ import (
 )
 
 func HeaderTokens(headers http.Header, header string) []string {
-	return utils.Tokenize(headers.Get(http.CanonicalHeaderKey(header)), ',')
+	return utils.Tokenize(headers.Get(header), ',')
 }
 
 func HeaderTokenContains(headers http.Header, header, value string) bool {

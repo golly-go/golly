@@ -18,6 +18,10 @@ func WrapNotFound(err error) error {
 	return WrapWithStatus(ErrorRecordNotFound, err, http.StatusNotFound)
 }
 
+func WrapFatal(err error) error {
+	return Wrap(ErrorFatal, err)
+}
+
 func WrapForbidden(err error) error {
 	return Wrap(ErrorForbidden, err)
 }

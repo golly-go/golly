@@ -10,4 +10,6 @@ var (
 	ErrorNotAuthorized = Error{Key: "ERROR.NOT_LOGGED_IN", Status: http.StatusUnauthorized}
 
 	ErrorForbidden = Error{Key: "ERROR.FORBIDDEN", Status: http.StatusForbidden}
+
+	ErrorFatal = Error{Key: "ERROR.FATAL"}
 )

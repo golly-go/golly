@@ -9,6 +9,7 @@ import (
 	"time"
 
 	log "github.com/sirupsen/logrus"
+	"github.com/slimloans/golly/errors"
 	"github.com/spf13/viper"
 	"gorm.io/gorm"
 )
@@ -161,12 +162,18 @@ func NewApplication() Application {
 	}
 }
 
-func (a Application) Initialize() {
-	for _, plugin := range a.plugins {
-		plugin.Initialize(a)
+func (a Application) Initialize() error {
+	a.handleSignals()
+
+	for _, initializer := range initializers {
+		if err := initializer(a); err != nil {
+			return errors.WrapFatal(err)
+		}
 	}
 
-	a.eventchain.Dispatch(a.NewContext(a.context), EventAppInitialize, struct{}{})
+	return errors.WrapFatal(
+		a.eventchain.Dispatch(a.NewContext(a.context), EventAppInitialize, struct{}{}),
+	)
 }
 
 func (a Application) ServeHTTP(w http.ResponseWriter, r *http.Request) {

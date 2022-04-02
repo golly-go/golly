@@ -68,17 +68,24 @@ var (
 	}
 )
 
-var runners = map[string]GollyAppFunc{}
+type Runner struct {
+	IgnoreDefault bool
+	Handler       GollyAppFunc
+}
+
+var runners = map[string]Runner{
+	"web": {Handler: runWeb},
+}
 
 // RegisterRunner - registers a runner mode that can be fired up using
 // golly run <runner>
 // returns a preboot function so it can be initialized during preboot
-func RegisterRunner(name string, handler GollyAppFunc) PrebootFunc {
+func RegisterRunner(name string, runner Runner) PrebootFunc {
 	return func() error {
 		defer runnerlock.Unlock()
 		runnerlock.Lock()
 
-		runners[name] = handler
+		runners[name] = runner
 
 		return nil
 	}
@@ -88,11 +95,11 @@ func noOpRunner(a Application) error {
 	return nil
 }
 
-func runner(name string) (GollyAppFunc, bool) {
-	if fnc, found := runners[name]; found {
-		return fnc, found
+func runner(name string) *Runner {
+	if runner, found := runners[name]; found {
+		return &runner
 	}
-	return noOpRunner, false
+	return nil
 }
 
 func Run(mode RunMode, args ...string) {
@@ -129,23 +136,18 @@ func Seed(a Application, name string, fn func(Context) error) {
 func Boot(f func(Application) error) error {
 	for _, preboot := range preboots {
 		if err := preboot(); err != nil {
-			panic(err)
+			return err
 		}
 	}
 
 	a := NewApplication()
-	a.handleSignals()
 
-	for _, initializer := range initializers {
-		if err := initializer(a); err != nil {
-			panic(err)
-		}
+	if err := a.Initialize(); err != nil {
+		return err
 	}
 
-	a.Initialize()
-
 	if err := f(a); err != nil {
-		panic(err)
+		return err
 	}
 
 	return nil
@@ -159,7 +161,7 @@ func (a Application) handleSignals() {
 	go func(c <-chan os.Signal) {
 		signal := <-c
 
-		a.Logger.Infof("shutting down due to signal (%s)", signal.String())
+		a.Logger.Infof("issuing shutdown due to signal (%s)", signal.String())
 		a.Shutdown(NewContext(a.context))
 	}(sig)
 }
@@ -169,18 +171,22 @@ func (a Application) Run(mode RunMode, args ...string) error {
 
 	switch mode {
 	case RunModeRunner:
-		if r, found := runner(args[0]); found {
-			return r(a)
-		}
-		panic(fmt.Errorf("runner %s not found", args[0]))
-	case RunModeWorkers:
-		fallthrough
-	case RunModeWeb:
-		return runWeb(a)
+		return runMode(a, args[0])
+	case RunModeWorkers, RunModeWeb:
+		return runMode(a, string(mode))
 	default:
-		if err := runWeb(a); err != nil {
-			return err
+		for name, runner := range runners {
+			if !runner.IgnoreDefault && name != "web" {
+				go runner.Handler(a)
+			}
 		}
+		return runWeb(a)
+	}
+}
+
+func runMode(a Application, mode string) error {
+	if r := runner(mode); r != nil {
+		return r.Handler(a)
 	}
 	return nil
 }
