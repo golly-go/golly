@@ -1,6 +1,7 @@
 package golly
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"os"
@@ -59,6 +60,11 @@ type Application struct {
 	routes *Route
 
 	store *Store
+
+	context context.Context
+	cancel  context.CancelFunc
+
+	server *http.Server
 }
 
 func init() {
@@ -126,6 +132,8 @@ func Name() string {
 
 // NewApplication creates a new application for consumption
 func NewApplication() Application {
+	ctx, cancel := context.WithCancel(context.Background())
+
 	return Application{
 		Version:   Version(),
 		Name:      appName,
@@ -134,11 +142,18 @@ func NewApplication() Application {
 		StartedAt: startTime,
 		Hostname:  hostName,
 		store:     NewStore(),
+		context:   ctx,
+		cancel:    cancel,
 		routes: NewRoute().
 			mount("/", func(r *Route) {
 				r.Get("/routes", renderRoutes(r))
 			}),
 	}
+}
+
+func (a Application) Quit() {
+	a.cancel()
+
 }
 
 func (a Application) ServeHTTP(w http.ResponseWriter, r *http.Request) {

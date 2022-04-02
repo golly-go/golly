@@ -175,5 +175,7 @@ func runWeb(a Application) error {
 
 	a.Logger.Infof("Webserver running on %s", bind)
 
+	// a.server = &http.Server{Addr: bind, Handler: a}
+
 	return http.ListenAndServe(bind, a)
 }
