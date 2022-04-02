@@ -67,6 +67,8 @@ type Application struct {
 	plugins []Plugin
 
 	eventchain *EventChain
+
+	server *http.Server
 }
 
 func init() {
@@ -86,8 +88,8 @@ func SetGlobalTimezone(tz string) error {
 }
 
 func (a Application) Shutdown(ctx Context) {
-	a.eventchain.Dispatch(ctx, "app:shutdown:before", struct{}{})
-	a.cancel()
+	defer a.cancel()
+	// Dispatch is blocking
 	a.eventchain.Dispatch(ctx, "app:shutdown", struct{}{})
 }
 

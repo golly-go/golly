@@ -8,7 +8,9 @@ import (
 	"os/signal"
 	"sync"
 	"syscall"
+	"time"
 
+	"github.com/slimloans/golly/errors"
 	"github.com/spf13/cobra"
 )
 
@@ -192,7 +194,14 @@ func runWeb(a Application) error {
 
 	a.Logger.Infof("Webserver running on %s", bind)
 
-	// a.server = &http.Server{Addr: bind, Handler: a}
+	a.server = &http.Server{Addr: bind, Handler: a}
 
-	return http.ListenAndServe(bind, a)
+	a.eventchain.Add("app:shutdown", func(evt Event) error {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		return errors.WrapGeneric(a.server.Shutdown(ctx))
+	})
+
+	return a.server.ListenAndServe()
 }
