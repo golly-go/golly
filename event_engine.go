@@ -51,6 +51,12 @@ func FindEventCallback(root *EventChain, path string) *EventChain {
 	return root.search(tokens)
 }
 
+// AsyncDispatch - wraps the event in a go function allow for async event dispatch
+// golly builtin events are all fired non async and are blocking
+func (evl *EventChain) AsyncDispatch(ctx Context, path string, evt Event) {
+	go evl.Dispatch(ctx, path, evt)
+}
+
 // Dispatch fires down the event chain searching for the node within root
 // from there it will call emit which halts on first error in handlers
 func (evl *EventChain) Dispatch(ctx Context, path string, evt Event) error {

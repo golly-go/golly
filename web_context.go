@@ -34,9 +34,7 @@ type WebContext struct {
 func NewWebContext(a Application, r *http.Request, w http.ResponseWriter, requestID string) WebContext {
 	req := r.WithContext(a.context) // cancelable context
 
-	ctx := NewContext(req.Context())
-	ctx.root = a.routes
-	ctx.config = a.Config
+	ctx := a.NewContext(req.Context())
 	ctx.SetLogger(a.Logger.WithFields(webLogParams(requestID, r)))
 
 	return WebContext{

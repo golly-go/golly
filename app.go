@@ -67,8 +67,6 @@ type Application struct {
 	plugins []Plugin
 
 	eventchain *EventChain
-
-	server *http.Server
 }
 
 func init() {
@@ -90,7 +88,7 @@ func SetGlobalTimezone(tz string) error {
 func (a Application) Shutdown(ctx Context) {
 	defer a.cancel()
 	// Dispatch is blocking
-	a.eventchain.Dispatch(ctx, "app:shutdown", struct{}{})
+	a.eventchain.Dispatch(ctx, EventAppShutdown, struct{}{})
 }
 
 // RegisterInitializer registers a function to be called prior to boot
@@ -161,6 +159,14 @@ func NewApplication() Application {
 				r.Get("/routes", renderRoutes(r))
 			}),
 	}
+}
+
+func (a Application) Initialize() {
+	for _, plugin := range a.plugins {
+		plugin.Initialize(a)
+	}
+
+	a.eventchain.Dispatch(a.NewContext(a.context), EventAppInitialize, struct{}{})
 }
 
 func (a Application) ServeHTTP(w http.ResponseWriter, r *http.Request) {

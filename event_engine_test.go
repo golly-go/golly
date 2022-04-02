@@ -20,13 +20,12 @@ func TestEventDispatch(t *testing.T) {
 		root := EventChain{}
 
 		root.
-			Add("test:event", func(e Event) error {
-				fmt.Printf("Firing")
-
+			Namespace("test").
+			Add("event", func(e Event) error {
 				cnt += 1
 				return nil
 			}).
-			Add("test:event", func(e Event) error {
+			Add("event", func(e Event) error {
 				cnt += 1
 				return nil
 			})
@@ -48,8 +47,6 @@ func TestEventDispatch(t *testing.T) {
 
 		root.
 			Add("test:event", func(e Event) error {
-				fmt.Printf("Firing")
-
 				cnt += 1
 				return nil
 			}).

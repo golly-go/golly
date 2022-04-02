@@ -134,11 +134,15 @@ func Boot(f func(Application) error) error {
 	}
 
 	a := NewApplication()
+	a.handleSignals()
+
 	for _, initializer := range initializers {
 		if err := initializer(a); err != nil {
 			panic(err)
 		}
 	}
+
+	a.Initialize()
 
 	if err := f(a); err != nil {
 		panic(err)
@@ -162,8 +166,6 @@ func (a Application) handleSignals() {
 
 func (a Application) Run(mode RunMode, args ...string) error {
 	a.Logger.Infof("Good Golly were booting %s (%s)", a.Name, a.Version)
-
-	a.handleSignals()
 
 	switch mode {
 	case RunModeRunner:

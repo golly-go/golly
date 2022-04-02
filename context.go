@@ -47,6 +47,14 @@ func (c *Context) Config() *viper.Viper {
 	return c.config
 }
 
+func (a Application) NewContext(parent context.Context) Context {
+	ctx := NewContext(parent)
+	ctx.root = a.routes
+	ctx.config = a.Config
+
+	return ctx
+}
+
 func (c *Context) WithContext(ctx context.Context) context.Context {
 	c.context = ctx
 	return c.context
