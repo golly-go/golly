@@ -31,7 +31,6 @@ type EventChain struct {
 func (evl EventChain) findChild(token string) *EventChain {
 	for _, child := range evl.children {
 		if child.Name == token {
-			fmt.Printf("Child found: %s %#v\n", token, child)
 			return child
 		}
 	}
@@ -60,9 +59,9 @@ func (evl *EventChain) Dispatch(ctx Context, path string, evt Event) error {
 	defer func(p string, start time.Time) {
 		dur := time.Since(start)
 		var status = "success"
+
 		if err != nil {
 			status = fmt.Sprintf("error %s", err.Error())
-			return
 		}
 
 		ctx.Logger().Debug("[EVENT]: Error in event %s (%s) after %v", path, status, dur)
@@ -126,8 +125,6 @@ func (evl *EventChain) add(path string, handler EventHandlerFunc) *EventChain {
 }
 
 func (evl EventChain) search(tokens []string) *EventChain {
-	fmt.Printf("Looking @ %s looking for [remain: %#v]\n", evl.Name, tokens)
-
 	if evl.Name != "" {
 		if evl.Name != tokens[0] {
 			return nil
@@ -136,7 +133,6 @@ func (evl EventChain) search(tokens []string) *EventChain {
 	}
 
 	if len(tokens) == 0 {
-		fmt.Printf("Found node: %#v\n", evl)
 		return &evl
 	}
 
