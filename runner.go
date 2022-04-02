@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"os/signal"
 	"sync"
+	"syscall"
 
 	"github.com/spf13/cobra"
 )
@@ -143,8 +145,23 @@ func Boot(f func(Application) error) error {
 	return nil
 }
 
+func (a Application) handleSignals() {
+	sig := make(chan os.Signal, 1)
+
+	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
+
+	go func(c <-chan os.Signal) {
+		signal := <-c
+
+		a.Logger.Info("shutting down due to signal (%s)", signal.String())
+		a.cancel()
+	}(sig)
+}
+
 func (a Application) Run(mode RunMode, args ...string) error {
 	a.Logger.Infof("Good Golly were booting %s (%s)", a.Name, a.Version)
+
+	a.handleSignals()
 
 	switch mode {
 	case RunModeRunner:
