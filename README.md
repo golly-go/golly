@@ -9,7 +9,7 @@ we recommend you grab our skeleton app [Skeleton Application](https://github.com
 
 ## Configuration
 
-Golly leverages Viper configuration tool to load configuration from various sources. 
+Golly leverages [Viper](https://github.com/spf13/viper) configuration tool to load configuration from various sources. 
 
 JSON configuration can be located in any files:
 - `$PWD/<yourAppName>.json`
