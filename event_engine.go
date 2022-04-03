@@ -3,34 +3,46 @@ package golly
 import (
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/slimloans/golly/errors"
+	"github.com/slimloans/golly/utils"
 )
 
 const (
 	eventDelim = ":"
 )
 
-type EventHandlerFunc func(Event) error
+var (
+	eventchain = &EventChain{}
+)
+
+type EventHandlerFunc func(Context, Event) error
 
 type Event interface{}
 
 // Not sure if I like this event engine 100%
 // but will come back around and refactor it later
 type EventChain struct {
-	Name     string
+	Name     utils.WildcardString
 	children []*EventChain
 
 	parent *EventChain
 
 	handlers []EventHandlerFunc
+
+	lock sync.RWMutex
+}
+
+func Events() *EventChain {
+	return eventchain
 }
 
 // FindChildByToken find a child given a route token
 func (evl EventChain) findChild(token string) *EventChain {
 	for _, child := range evl.children {
-		if child.Name == token {
+		if child.Name.Match(token) {
 			return child
 		}
 	}
@@ -74,15 +86,15 @@ func (evl *EventChain) Dispatch(ctx Context, path string, evt Event) error {
 	}(path, time.Now())
 
 	if node := FindEventCallback(evl, path); node != nil {
-		return node.emit(evt)
+		return node.emit(ctx, evt)
 	}
 
 	return nil
 }
 
-func (evl EventChain) emit(evt Event) error {
+func (evl EventChain) emit(ctx Context, evt Event) error {
 	for _, handler := range evl.handlers {
-		if err := handler(evt); err != nil {
+		if err := handler(ctx, evt); err != nil {
 			return errors.WrapGeneric(err)
 		}
 	}
@@ -101,6 +113,10 @@ func (evl *EventChain) Namespace(path string) *EventChain {
 func (evl *EventChain) add(path string, handler EventHandlerFunc) *EventChain {
 	e := evl
 
+	// For now make this safe for multiple threads to add events
+	evl.lock.Lock()
+	defer evl.lock.Unlock()
+
 	tokens := eventPathTokens(path)
 	lng := len(tokens)
 
@@ -115,7 +131,7 @@ func (evl *EventChain) add(path string, handler EventHandlerFunc) *EventChain {
 		if node := e.findChild(token); node != nil {
 			e = node
 		} else {
-			node := &EventChain{Name: token, parent: e}
+			node := &EventChain{Name: utils.WildcardString(token), parent: e}
 
 			e.children = append(e.children, node)
 			e = node
@@ -131,7 +147,7 @@ func (evl *EventChain) add(path string, handler EventHandlerFunc) *EventChain {
 
 func (evl EventChain) search(tokens []string) *EventChain {
 	if evl.Name != "" {
-		if evl.Name != tokens[0] {
+		if !evl.Name.Match(tokens[0]) {
 			return nil
 		}
 		tokens = tokens[1:]

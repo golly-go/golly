@@ -2,6 +2,18 @@ package utils
 
 import "strings"
 
+type WildcardString string
+
+func (ws WildcardString) Match(str string) bool {
+	s := string(ws)
+
+	if w := NewWildcard(s); w != nil {
+		return w.Match(s)
+	}
+
+	return s == str
+}
+
 type Wildcard struct {
 	Prefix string
 	Suffix string

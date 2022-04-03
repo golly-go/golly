@@ -21,7 +21,13 @@ type Context struct {
 	context context.Context
 	config  *viper.Viper
 
+	runmode string
+
 	root *Route
+}
+
+func (c *Context) RunMode() string {
+	return c.runmode
 }
 
 // Set set a value on the context
@@ -51,6 +57,7 @@ func (a Application) NewContext(parent context.Context) Context {
 	ctx := NewContext(parent)
 	ctx.root = a.routes
 	ctx.config = a.Config
+	ctx.runmode = a.RunMode
 
 	return ctx
 }

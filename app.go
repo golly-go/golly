@@ -53,6 +53,7 @@ type Application struct {
 	Name     string `json:"name"`
 	Version  string `json:"version"`
 	Hostname string `json:"hostname"`
+	RunMode  string `json:"runmode"`
 
 	Logger *log.Entry
 
@@ -64,10 +65,10 @@ type Application struct {
 
 	context context.Context
 	cancel  context.CancelFunc
+}
 
-	plugins []Plugin
-
-	eventchain *EventChain
+func (a Application) GoContext() context.Context {
+	return a.context
 }
 
 func init() {
@@ -89,7 +90,7 @@ func SetGlobalTimezone(tz string) error {
 func (a Application) Shutdown(ctx Context) {
 	defer a.cancel()
 	// Dispatch is blocking
-	a.eventchain.Dispatch(ctx, EventAppShutdown, struct{}{})
+	Events().Dispatch(ctx, EventAppShutdown, AppEvent{a})
 }
 
 // RegisterInitializer registers a function to be called prior to boot
@@ -142,19 +143,17 @@ func Name() string {
 // NewApplication creates a new application for consumption
 func NewApplication() Application {
 	ctx, cancel := context.WithCancel(context.Background())
-	chain := &EventChain{}
 
 	return Application{
-		Version:    Version(),
-		Name:       appName,
-		Config:     initConfig(),
-		Logger:     NewLogger(),
-		StartedAt:  startTime,
-		Hostname:   hostName,
-		store:      NewStore(),
-		context:    ctx,
-		cancel:     cancel,
-		eventchain: chain,
+		Version:   Version(),
+		Name:      appName,
+		Config:    initConfig(),
+		Logger:    NewLogger(),
+		StartedAt: startTime,
+		Hostname:  hostName,
+		store:     NewStore(),
+		context:   ctx,
+		cancel:    cancel,
 		routes: NewRoute().
 			mount("/", func(r *Route) {
 				r.Get("/routes", renderRoutes(r))
@@ -163,7 +162,11 @@ func NewApplication() Application {
 }
 
 func (a Application) Initialize() error {
+	ctx := a.NewContext(a.context)
+
 	a.handleSignals()
+
+	Events().Dispatch(ctx, EventAppBeforeInitalize, AppEvent{a})
 
 	for _, initializer := range initializers {
 		if err := initializer(a); err != nil {
@@ -172,7 +175,7 @@ func (a Application) Initialize() error {
 	}
 
 	return errors.WrapFatal(
-		a.eventchain.Dispatch(a.NewContext(a.context), EventAppInitialize, struct{}{}),
+		Events().Dispatch(ctx, EventAppInitialize, AppEvent{a}),
 	)
 }
 
@@ -182,10 +185,6 @@ func (a Application) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func (a *Application) Routes() *Route {
 	return a.routes
-}
-
-func (a *Application) EventChain() *EventChain {
-	return a.eventchain
 }
 
 func Secret() string {
