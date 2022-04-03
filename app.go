@@ -161,6 +161,10 @@ func NewApplication() Application {
 	}
 }
 
+func (a *Application) SetRunMode(mode string) {
+	a.RunMode = mode
+}
+
 func (a Application) Initialize() error {
 	ctx := a.NewContext(a.context)
 

@@ -77,22 +77,25 @@ var runners = map[string]Runner{
 	"web": {Handler: runWeb},
 }
 
-// RegisterRunner - registers a runner mode that can be fired up using
+// RegisterRunnerPreboot - registers a runner mode that can be fired up using
 // golly run <runner>
 // returns a preboot function so it can be initialized during preboot
-func RegisterRunner(name string, runner Runner) PrebootFunc {
+func RegisterRunnerPreboot(name string, runner Runner) PrebootFunc {
 	return func() error {
-		defer runnerlock.Unlock()
-		runnerlock.Lock()
-
-		runners[name] = runner
-
+		RegisterRunner(name, runner)
 		return nil
 	}
 }
 
-func noOpRunner(a Application) error {
-	return nil
+// RegisterRunner - registers a runner mode that can be fired up using
+// golly run <runner>
+func RegisterRunner(name string, runner Runner) {
+	defer runnerlock.Unlock()
+	runnerlock.Lock()
+
+	fmt.Println("Registering Runner: ", name)
+
+	runners[name] = runner
 }
 
 func runner(name string) *Runner {
@@ -171,6 +174,17 @@ func (a Application) Run(mode RunMode, args ...string) error {
 
 	switch mode {
 	case RunModeRunner:
+		if args[0] == "help" {
+			fmt.Printf("Run a custom boot mode:\n")
+			fmt.Println("Available Modes: ")
+
+			for key := range runners {
+				fmt.Println("\t", key)
+			}
+
+			return nil
+		}
+
 		return runMode(a, args[0])
 	case RunModeWorkers, RunModeWeb:
 		return runMode(a, string(mode))

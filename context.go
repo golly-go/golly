@@ -2,6 +2,7 @@ package golly
 
 import (
 	"context"
+	"fmt"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
@@ -58,6 +59,8 @@ func (a Application) NewContext(parent context.Context) Context {
 	ctx.root = a.routes
 	ctx.config = a.Config
 	ctx.runmode = a.RunMode
+
+	fmt.Println("RM: ", a.RunMode)
 
 	return ctx
 }
