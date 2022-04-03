@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"time"
 
 	redis "github.com/go-redis/redis/v8"
 	"github.com/slimloans/golly"
@@ -22,6 +21,8 @@ var (
 type Redis struct {
 	*golly.Application
 
+	Standalone bool
+
 	Client *redis.Client
 	PubSub *redis.PubSub
 
@@ -29,6 +30,8 @@ type Redis struct {
 	events       *golly.EventChain
 }
 
+// Leave this in place we want to make sure we are initalized before the initalizers or
+// non befores are called for now.
 func init() {
 	golly.
 		Events().
@@ -69,7 +72,6 @@ func Subscribe(handler golly.EventHandlerFunc, channels ...string) error {
 	for _, channel := range channels {
 		server.events.Add(channel, handler)
 	}
-	server.subscription <- channels
 	return nil
 }
 
@@ -79,8 +81,15 @@ func Publish(ctx golly.Context, channel string, payload interface{}) {
 	server.Client.Publish(ctx.Context(), channel, p)
 }
 
-func runner(a golly.Application) error {
+func Run() {
+	if err := golly.Boot(func(a golly.Application) error { return run(a) }); err != nil {
+		panic(err)
+	}
+}
+
+func run(a golly.Application) error {
 	quit := make(chan struct{})
+
 	a.Logger.Info("Booting redis pubsub listener")
 
 	golly.Events().Add(golly.EventAppShutdown, func(golly.Context, golly.Event) error {
@@ -92,8 +101,9 @@ func runner(a golly.Application) error {
 }
 
 func (s Redis) Receive(a golly.Application, quit <-chan struct{}) error {
-	ch := make(chan *redis.Message, 100)
 	ctx, cancel := context.WithCancel(a.GoContext())
+
+	defer cancel()
 
 	defer func() {
 		if r := recover(); r != nil {
@@ -103,25 +113,17 @@ func (s Redis) Receive(a golly.Application, quit <-chan struct{}) error {
 
 	var quitting = false
 
-	pubsub := s.Client.Subscribe(ctx)
-
-	go func(ctx context.Context, ch chan *redis.Message) {
-		for ctx.Err() == nil {
-			if message, _ := pubsub.ReceiveMessage(ctx); message != nil {
-				ch <- message
-			}
-			time.Sleep(1 * time.Millisecond)
-		}
-	}(ctx, ch)
+	pubsub := s.Client.PSubscribe(ctx, "*")
 
 	for !quitting {
 		select {
-		case message := <-ch:
-			fmt.Printf("Message: %#v\n", message)
-		case channels := <-s.subscription:
-			fmt.Printf("%#v\n", channels)
-
-			pubsub.Subscribe(a.GoContext(), channels...)
+		case message := <-pubsub.Channel():
+			event := Event{Channel: message.Channel}
+			if err := json.Unmarshal([]byte(message.Payload), &event.Payload); err == nil {
+				server.events.AsyncDispatch(a.NewContext(ctx), message.Channel, event)
+			} else {
+				a.Logger.Errorf("unable to unmarshal event: %#v\n", err)
+			}
 		case <-quit:
 			cancel()
 			quitting = true
