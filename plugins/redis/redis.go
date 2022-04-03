@@ -34,6 +34,11 @@ func newRedis() Redis {
 	}
 }
 
+func Preboot() error {
+	golly.RegisterInitializerEx(true, initializer)
+	return nil
+}
+
 func config(a golly.Application) (string, string, int) {
 	a.Config.SetDefault("redis", map[string]string{
 		"password": "",
@@ -46,7 +51,7 @@ func config(a golly.Application) (string, string, int) {
 		a.Config.GetInt("redis.db")
 }
 
-func Initializer(a golly.Application) error {
+func initializer(a golly.Application) error {
 	address, password, db := config(a)
 
 	a.Logger.Infof("Redis connection initalized to %s", address)

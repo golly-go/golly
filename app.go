@@ -92,10 +92,23 @@ func (a Application) Shutdown(ctx Context) {
 // Initializers take an application and return error
 // on error they will panic() and prevent the app from loading
 func RegisterInitializer(fns ...GollyAppFunc) {
+	RegisterInitializerEx(false, fns...)
+}
+
+// RegisterInitializerEx registers a function to be called prior to boot
+// it also allows you to either prepend or append this function if load order
+// is important to you
+// Initializers take an application and return error
+// on error they will panic() and prevent the app from loading
+func RegisterInitializerEx(prepend bool, fns ...GollyAppFunc) {
 	lock.Lock()
 	defer lock.Unlock()
 
-	initializers = append(initializers, fns...)
+	if prepend {
+		initializers = append(fns, initializers...)
+	} else {
+		initializers = append(initializers, fns...)
+	}
 }
 
 // RegisterPreboot registers a function to be called prior to application
