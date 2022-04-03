@@ -10,8 +10,9 @@ import (
 )
 
 type Event struct {
-	Channel string
-	Payload map[string]interface{}
+	Channel       string
+	Payload       map[string]interface{}
+	PayloadString string
 }
 
 var (
@@ -31,7 +32,7 @@ type Redis struct {
 }
 
 // Leave this in place we want to make sure we are initalized before the initalizers or
-// non befores are called for now.
+// non-befores are called for now.
 func init() {
 	golly.
 		Events().
@@ -101,8 +102,9 @@ func run(a golly.Application) error {
 }
 
 func (s Redis) Receive(a golly.Application, quit <-chan struct{}) error {
-	ctx, cancel := context.WithCancel(a.GoContext())
+	var quitting = false
 
+	ctx, cancel := context.WithCancel(a.GoContext())
 	defer cancel()
 
 	defer func() {
@@ -111,24 +113,18 @@ func (s Redis) Receive(a golly.Application, quit <-chan struct{}) error {
 		}
 	}()
 
-	var quitting = false
-
 	pubsub := s.Client.PSubscribe(ctx, "*")
 
 	for !quitting {
 		select {
 		case message := <-pubsub.Channel():
-			event := Event{Channel: message.Channel}
+			event := Event{Channel: message.Channel, PayloadString: message.Payload}
 			if err := json.Unmarshal([]byte(message.Payload), &event.Payload); err == nil {
 				server.events.AsyncDispatch(a.NewContext(ctx), message.Channel, event)
-			} else {
-				a.Logger.Errorf("unable to unmarshal event: %#v\n", err)
 			}
 		case <-quit:
-			cancel()
 			quitting = true
 		}
 	}
-
 	return nil
 }
