@@ -3,7 +3,6 @@ package golly
 import (
 	"fmt"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/slimloans/golly/errors"
@@ -31,8 +30,6 @@ type EventChain struct {
 	parent *EventChain
 
 	handlers []EventHandlerFunc
-
-	lock sync.RWMutex
 }
 
 func Events() *EventChain {
@@ -40,7 +37,7 @@ func Events() *EventChain {
 }
 
 // FindChildByToken find a child given a route token
-func (evl EventChain) findChild(token string) *EventChain {
+func (evl *EventChain) findChild(token string) *EventChain {
 	for _, child := range evl.children {
 		if child.Name.Match(token) {
 			return child
@@ -82,7 +79,7 @@ func (evl *EventChain) Dispatch(ctx Context, path string, evt Event) error {
 			status = fmt.Sprintf("error %s", err.Error())
 		}
 
-		ctx.Logger().Debug("[EVENT]: Error in event %s (%s) after %v", path, status, dur)
+		ctx.Logger().Debugf("[EVENT]: Error in event %s (%s) after %v", path, status, dur)
 	}(path, time.Now())
 
 	if node := FindEventCallback(evl, path); node != nil {
@@ -92,7 +89,7 @@ func (evl *EventChain) Dispatch(ctx Context, path string, evt Event) error {
 	return nil
 }
 
-func (evl EventChain) emit(ctx Context, evt Event) error {
+func (evl *EventChain) emit(ctx Context, evt Event) error {
 	for _, handler := range evl.handlers {
 		if err := handler(ctx, evt); err != nil {
 			return errors.WrapGeneric(err)
@@ -112,10 +109,6 @@ func (evl *EventChain) Namespace(path string) *EventChain {
 
 func (evl *EventChain) add(path string, handler EventHandlerFunc) *EventChain {
 	e := evl
-
-	// For now make this safe for multiple threads to add events
-	evl.lock.Lock()
-	defer evl.lock.Unlock()
 
 	tokens := eventPathTokens(path)
 	lng := len(tokens)

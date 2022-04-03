@@ -2,7 +2,6 @@ package golly
 
 import (
 	"context"
-	"fmt"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
@@ -58,10 +57,6 @@ func (a Application) NewContext(parent context.Context) Context {
 	ctx := NewContext(parent)
 	ctx.root = a.routes
 	ctx.config = a.Config
-	ctx.runmode = a.RunMode
-
-	fmt.Println("RM: ", a.RunMode)
-
 	return ctx
 }
 
@@ -90,14 +85,18 @@ func (c Context) ToContext() context.Context {
 }
 
 func (c Context) Logger() *log.Entry {
-	if lgr, found := c.store.Get(LoggerKey); found {
-		if l, ok := lgr.(*log.Entry); ok {
-			return l
+	if c.store != nil {
+		if lgr, found := c.store.Get(LoggerKey); found {
+			if l, ok := lgr.(*log.Entry); ok {
+				return l
+			}
 		}
 	}
 
-	if lgr, ok := c.context.Value(LoggerKey).(*log.Entry); ok {
-		return lgr
+	if c.context != nil {
+		if lgr, ok := c.context.Value(LoggerKey).(*log.Entry); ok {
+			return lgr
+		}
 	}
 
 	// Always make sure we return a log
