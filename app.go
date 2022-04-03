@@ -50,19 +50,14 @@ type Application struct {
 
 	Args []string `json:"args"`
 
-	Name     string `json:"name"`
-	Version  string `json:"version"`
-	Hostname string `json:"hostname"`
-	RunMode  string `json:"runmode"`
-
-	Logger *log.Entry
-
+	Name      string `json:"name"`
+	Version   string `json:"version"`
+	Hostname  string `json:"hostname"`
+	RunMode   string `json:"runmode"`
+	Logger    *log.Entry
 	StartedAt time.Time
 
-	routes *Route
-
-	store *Store
-
+	routes  *Route
 	context context.Context
 	cancel  context.CancelFunc
 }
@@ -151,7 +146,6 @@ func NewApplication() Application {
 		Logger:    NewLogger(),
 		StartedAt: startTime,
 		Hostname:  hostName,
-		store:     NewStore(),
 		context:   ctx,
 		cancel:    cancel,
 		routes: NewRoute().

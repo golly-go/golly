@@ -9,63 +9,46 @@ import (
 	"github.com/slimloans/golly"
 )
 
+var (
+	server Redis
+)
+
 type Event struct {
 	Channel       string
 	Payload       map[string]interface{}
 	PayloadString string
 }
 
-var (
-	server Redis
-)
-
 type Redis struct {
-	*golly.Application
+	*redis.Client
 
-	Standalone bool
-
-	Client *redis.Client
 	PubSub *redis.PubSub
 
-	subscription chan []string
-	events       *golly.EventChain
+	events *golly.EventChain
 }
 
-// Leave this in place we want to make sure we are initalized before the initalizers or
-// non-befores are called for now.
-func init() {
-	golly.
-		Events().
-		Add(golly.EventAppBeforeInitalize, BeforeInitialize)
-}
+func Initializer(address, password string) golly.GollyAppFunc {
+	return func(a golly.Application) error {
+		a.Logger.Infof("Redis connection initalized to %s", address)
 
-func BeforeInitialize(gctx golly.Context, evt golly.Event) error {
-	gctx.Config().SetDefault("redis", map[string]string{
-		"password": "",
-		"address":  "127.0.0.1:6379",
-	})
+		server := Redis{
+			events: &golly.EventChain{},
+			Client: redis.NewClient(&redis.Options{
+				Addr:     address,
+				Password: password,
+				DB:       0,
+			}),
+		}
 
-	addr := gctx.Config().GetString("redis.address")
-	gctx.Logger().Infof("Redis connection initalized to %s (Run Mode: %s)", addr, gctx.RunMode())
+		if server.Client == nil {
+			return fmt.Errorf("unable to initalize redis")
+		}
 
-	server = Redis{
-		subscription: make(chan []string, 10),
-		events:       &golly.EventChain{},
-		Client: redis.NewClient(&redis.Options{
-			Addr:     addr,
-			Password: gctx.Config().GetString("redis.password"),
-			DB:       0,
-		}),
+		return nil
 	}
-
-	if server.Client == nil {
-		return fmt.Errorf("unable to initalize redis")
-	}
-
-	return nil
 }
 
-func Server() Redis {
+func Client() Redis {
 	return server
 }
 
@@ -101,16 +84,19 @@ func run(a golly.Application) error {
 	return server.Receive(a, quit)
 }
 
+// This is the next thing we need to manage this doesnt quite work 100% and with golly's
+// concept of run modes to allow seperation of app and resources, we need a better way of handling
+// this
 func (s Redis) Receive(a golly.Application, quit <-chan struct{}) error {
 	var quitting = false
 
 	ctx, cancel := context.WithCancel(a.GoContext())
-	defer cancel()
 
 	defer func() {
 		if r := recover(); r != nil {
 			a.Logger.Errorln("panic in redis receive: ", r)
 		}
+		cancel()
 	}()
 
 	pubsub := s.Client.PSubscribe(ctx, "*")
@@ -119,6 +105,7 @@ func (s Redis) Receive(a golly.Application, quit <-chan struct{}) error {
 		select {
 		case message := <-pubsub.Channel():
 			event := Event{Channel: message.Channel, PayloadString: message.Payload}
+
 			if err := json.Unmarshal([]byte(message.Payload), &event.Payload); err == nil {
 				server.events.AsyncDispatch(a.NewContext(ctx), message.Channel, event)
 			}
