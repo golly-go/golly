@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"sync"
 	"syscall"
 	"time"
 
@@ -16,43 +15,18 @@ import (
 
 type RunMode string
 
-const (
-	RunModeDefault RunMode = "default"
-
-	RunModeWeb RunMode = "web"
-
-	RunModeWorkers RunMode = "workers"
-
-	RunModeRunner RunMode = "runner"
-)
-
 var (
-	runnerlock sync.RWMutex
-
 	AppCommands = []*cobra.Command{
 		{
 			Use:   "start",
 			Short: "Start the web and workers server",
-			Run:   func(cmd *cobra.Command, args []string) { Run(RunModeDefault) },
+			Run:   func(cmd *cobra.Command, args []string) { Run(runWeb) },
 		},
 
 		{
 			Use:   "web",
 			Short: "Start the web server",
-			Run:   func(cmd *cobra.Command, args []string) { Run(RunModeWeb) },
-		},
-
-		{
-			Use:   "workers",
-			Short: "Start the workers server",
-			Run:   func(cmd *cobra.Command, args []string) { Run(RunModeWorkers) },
-		},
-
-		{
-			Use:   "run [runnerName]",
-			Short: "Run a registered runner method",
-			Run:   func(cmd *cobra.Command, args []string) { Run(RunModeRunner, args...) },
-			Args:  cobra.MinimumNArgs(1),
+			Run:   func(cmd *cobra.Command, args []string) { Run(runWeb) },
 		},
 
 		{
@@ -68,45 +42,12 @@ var (
 	}
 )
 
-type Runner struct {
-	IgnoreDefault bool
-	Handler       GollyAppFunc
+func AddAppCommands(commands []*cobra.Command) {
+	AppCommands = append(AppCommands, commands...)
 }
 
-var runners = map[string]Runner{
-	"web": {Handler: runWeb},
-}
-
-// RegisterRunnerPreboot - registers a runner mode that can be fired up using
-// golly run <runner>
-// returns a preboot function so it can be initialized during preboot
-func RegisterRunnerPreboot(name string, runner Runner) PrebootFunc {
-	return func() error {
-		RegisterRunner(name, runner)
-		return nil
-	}
-}
-
-// RegisterRunner - registers a runner mode that can be fired up using
-// golly run <runner>
-func RegisterRunner(name string, runner Runner) {
-	defer runnerlock.Unlock()
-	runnerlock.Lock()
-
-	fmt.Println("Registering Runner: ", name)
-
-	runners[name] = runner
-}
-
-func runner(name string) *Runner {
-	if runner, found := runners[name]; found {
-		return &runner
-	}
-	return nil
-}
-
-func Run(mode RunMode, args ...string) {
-	if err := Boot(func(a Application) error { return a.Run(mode, args...) }); err != nil {
+func Run(fn GollyAppFunc) {
+	if err := Boot(fn); err != nil {
 		panic(err)
 	}
 }
@@ -169,41 +110,21 @@ func (a Application) handleSignals() {
 	}(sig)
 }
 
-func (a Application) Run(mode RunMode, args ...string) error {
-	a.Logger.Infof("Good Golly were booting %s (%s)", a.Name, a.Version)
+// func (a Application) Run(mode RunMode, args ...string) error {
+// 	a.Logger.Infof("Good Golly were booting %s (%s)", a.Name, a.Version)
 
-	switch mode {
-	case RunModeRunner:
-		if args[0] == "help" {
-			fmt.Printf("Run a custom boot mode:\n")
-			fmt.Println("Available Modes: ")
-
-			for key := range runners {
-				fmt.Println("\t", key)
-			}
-
-			return nil
-		}
-
-		return runMode(a, args[0])
-	case RunModeWorkers, RunModeWeb:
-		return runMode(a, string(mode))
-	default:
-		for name, runner := range runners {
-			if !runner.IgnoreDefault && name != "web" {
-				go runner.Handler(a)
-			}
-		}
-		return runWeb(a)
-	}
-}
-
-func runMode(a Application, mode string) error {
-	if r := runner(mode); r != nil {
-		return r.Handler(a)
-	}
-	return nil
-}
+// 	switch mode {
+// 	case RunModeWorkers:
+// 		fallthrough
+// 	case RunModeWeb:
+// 		return runWeb(a)
+// 	default:
+// 		if err := runWeb(a); err != nil {
+// 			return err
+// 		}
+// 	}
+// 	return nil
+// }
 
 func runWeb(a Application) error {
 	var bind string

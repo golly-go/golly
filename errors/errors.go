@@ -12,4 +12,6 @@ var (
 	ErrorForbidden = Error{Key: "ERROR.FORBIDDEN", Status: http.StatusForbidden}
 
 	ErrorFatal = Error{Key: "ERROR.FATAL"}
+
+	ErrorMissConfigured = Error{Key: "ERROR.MISSCONFIGUIRED", Status: http.StatusInternalServerError}
 )

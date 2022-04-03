@@ -7,10 +7,11 @@ import (
 
 	redis "github.com/go-redis/redis/v8"
 	"github.com/slimloans/golly"
+	"github.com/slimloans/golly/errors"
 )
 
 var (
-	server Redis
+	server Redis = newRedis()
 )
 
 type Event struct {
@@ -27,25 +28,37 @@ type Redis struct {
 	events *golly.EventChain
 }
 
-func Initializer(address, password string) golly.GollyAppFunc {
-	return func(a golly.Application) error {
-		a.Logger.Infof("Redis connection initalized to %s", address)
-
-		server := Redis{
-			events: &golly.EventChain{},
-			Client: redis.NewClient(&redis.Options{
-				Addr:     address,
-				Password: password,
-				DB:       0,
-			}),
-		}
-
-		if server.Client == nil {
-			return fmt.Errorf("unable to initalize redis")
-		}
-
-		return nil
+func newRedis() Redis {
+	return Redis{
+		events: &golly.EventChain{},
 	}
+}
+
+func config(a golly.Application) (string, string, int) {
+	a.Config.SetDefault("redis", map[string]string{
+		"password": "",
+		"address":  "127.0.0.1:6379",
+		"db":       "0",
+	})
+
+	return a.Config.GetString("redis.address"),
+		a.Config.GetString("redis.password"),
+		a.Config.GetInt("redis.db")
+}
+
+func Initializer(a golly.Application) error {
+	address, password, db := config(a)
+
+	a.Logger.Infof("Redis connection initalized to %s", address)
+
+	server.Client = redis.NewClient(
+		&redis.Options{
+			Addr:     address,
+			Password: password,
+			DB:       db,
+		})
+
+	return nil
 }
 
 func Client() Redis {
@@ -60,9 +73,11 @@ func Subscribe(handler golly.EventHandlerFunc, channels ...string) error {
 }
 
 func Publish(ctx golly.Context, channel string, payload interface{}) {
-	p, _ := json.Marshal(payload)
-
-	server.Client.Publish(ctx.Context(), channel, p)
+	// Guard against missconfigured
+	if server.Client != nil {
+		p, _ := json.Marshal(payload)
+		server.Client.Publish(ctx.Context(), channel, p)
+	}
 }
 
 func Run() {
@@ -98,6 +113,11 @@ func (s Redis) Receive(a golly.Application, quit <-chan struct{}) error {
 		}
 		cancel()
 	}()
+
+	if s.Client == nil {
+		a.Logger.Error("redis client is nil check to see if the initializer has been ran.")
+		return errors.Wrap(errors.ErrorMissConfigured, fmt.Errorf("redis is not configured correct"))
+	}
 
 	pubsub := s.Client.PSubscribe(ctx, "*")
 
