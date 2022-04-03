@@ -38,6 +38,11 @@ func init() {
 }
 
 func BeforeInitialize(gctx golly.Context, evt golly.Event) error {
+	gctx.Config().SetDefault("redis", map[string]string{
+		"password": "",
+		"address":  "127.0.0.1:6379",
+	})
+
 	server = Redis{
 		EnableSubscription: gctx.RunMode() == "pubsub",
 		subscription:       make(chan []string),
