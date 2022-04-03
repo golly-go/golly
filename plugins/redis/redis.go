@@ -40,7 +40,6 @@ func init() {
 func BeforeInitialize(gctx golly.Context, evt golly.Event) error {
 	server = Redis{
 		EnableSubscription: gctx.RunMode() == "pubsub",
-		PubSub:             server.Client.Subscribe(server.GoContext()),
 		subscription:       make(chan []string),
 		events:             &golly.EventChain{},
 		Client: redis.NewClient(&redis.Options{
@@ -49,6 +48,9 @@ func BeforeInitialize(gctx golly.Context, evt golly.Event) error {
 			DB:       0,
 		}),
 	}
+
+	server.PubSub = server.Client.Subscribe(server.GoContext())
+
 	return nil
 }
 
