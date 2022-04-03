@@ -2,7 +2,7 @@ package migrate
 
 import (
 	"github.com/slimloans/golly"
-	orm "github.com/slimloans/golly/orm"
+	orm "github.com/slimloans/golly/plugins/orm"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"gorm.io/gorm"
