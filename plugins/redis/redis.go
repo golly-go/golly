@@ -34,36 +34,20 @@ func newRedis() Redis {
 	}
 }
 
-func Preboot() error {
-	golly.RegisterInitializerEx(true, initializer)
-	return nil
-}
+// Initializer builds an initializer for redis
+func Initializer(address, password string, db int) golly.GollyAppFunc {
+	return func(a golly.Application) error {
+		a.Logger.Infof("Redis connection initalized to %s", address)
 
-func config(a golly.Application) (string, string, int) {
-	a.Config.SetDefault("redis", map[string]string{
-		"password": "",
-		"address":  "127.0.0.1:6379",
-		"db":       "0",
-	})
+		server.Client = redis.NewClient(
+			&redis.Options{
+				Addr:     address,
+				Password: password,
+				DB:       db,
+			})
 
-	return a.Config.GetString("redis.address"),
-		a.Config.GetString("redis.password"),
-		a.Config.GetInt("redis.db")
-}
-
-func initializer(a golly.Application) error {
-	address, password, db := config(a)
-
-	a.Logger.Infof("Redis connection initalized to %s", address)
-
-	server.Client = redis.NewClient(
-		&redis.Options{
-			Addr:     address,
-			Password: password,
-			DB:       db,
-		})
-
-	return nil
+		return nil
+	}
 }
 
 func Client() Redis {
