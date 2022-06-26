@@ -24,6 +24,7 @@ var (
 	FormatTypeText       FormatOption = 0x0004
 	FormatTypeData       FormatOption = 0x0008
 	FormatTypeAttachment FormatOption = 0x0010
+	FormatTypeHTML       FormatOption = 0x0020
 
 	ErrorInvalidType = fmt.Errorf("invalid resposne type provided")
 
@@ -34,6 +35,7 @@ var (
 		FormatTypeXML:  {xml.Marshal, "application/xml"},
 		FormatTypeData: {marshalData, ""},
 		FormatTypeText: {marshalText, "text/none"},
+		FormatTypeHTML: {marshalText, "text/html; charset=UTF-8"},
 	}
 )
 
@@ -100,6 +102,10 @@ func (wctx WebContext) RenderData(data []byte) {
 
 func (wctx WebContext) RenderText(data string) {
 	wctx.Render(data, RenderOptions{Format: FormatTypeText})
+}
+
+func (wctx WebContext) RenderHTML(data string) {
+	wctx.Render(data, RenderOptions{Format: FormatTypeHTML})
 }
 
 func marshalData(v interface{}) ([]byte, error) {
