@@ -56,6 +56,7 @@ func (l Logger) Trace(ctx context.Context, begin time.Time, fc func() (string, i
 	logger := l.logger.WithFields(logrus.Fields{
 		"elapsed":  duration,
 		"duration": fmt.Sprintf("%v", duration),
+		"caller":   utils.FileWithLineNum(),
 	})
 
 	sql, rows := fc()
