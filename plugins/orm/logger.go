@@ -69,6 +69,6 @@ func (l Logger) Trace(ctx context.Context, begin time.Time, fc func() (string, i
 	case elapsed >= time.Second:
 		logger.Warnf("SLOW SQL >= %v (%s)", time.Second, sql)
 	default:
-		logger.Info(sql)
+		logger.Debug(sql)
 	}
 }
