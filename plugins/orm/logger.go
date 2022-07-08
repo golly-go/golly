@@ -53,7 +53,7 @@ func (l Logger) Trace(ctx context.Context, begin time.Time, fc func() (string, i
 	elapsed := time.Since(begin)
 	duration := float64(elapsed.Nanoseconds()) / 1e6
 
-	logger := l.logger.WithFields(logrus.Fields{
+	logger := l.WithSourceFields().WithFields(logrus.Fields{
 		"elapsed":  duration,
 		"duration": fmt.Sprintf("%v", duration),
 	})
