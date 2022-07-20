@@ -32,8 +32,8 @@ type JWT struct {
 }
 
 // JWT - jwtEncode
-func (ident JWT) String() (string, error) {
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, ident)
+func (ident JWT) Token(identity Identity) (string, error) {
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, identity)
 	return token.SignedString(secret())
 }
 
