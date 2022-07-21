@@ -3,30 +3,32 @@ package golly
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
-	"github.com/slimloans/golly/errors"
 	"github.com/spf13/cobra"
 )
-
-type RunMode string
 
 var (
 	AppCommands = []*cobra.Command{
 		{
 			Use:   "start",
-			Short: "Start the web and workers server",
-			Run:   func(cmd *cobra.Command, args []string) { Run(runWeb) },
+			Short: "Start services",
+			Run:   func(cmd *cobra.Command, args []string) { Run(StartAllServices) },
 		},
 
 		{
 			Use:   "web",
 			Short: "Start the web server",
-			Run:   func(cmd *cobra.Command, args []string) { Run(runWeb) },
+			Run:   func(cmd *cobra.Command, args []string) { Run(ServiceAppFunction("web")) },
+		},
+
+		{
+			Use:   "service [serviceName]",
+			Short: "Start a service",
+			Args:  cobra.ExactArgs(1),
+			Run:   func(cmd *cobra.Command, args []string) { Run(ServiceAppFunction(args[0])) },
 		},
 
 		{
@@ -90,6 +92,8 @@ func Boot(f func(Application) error) error {
 		return err
 	}
 
+	a.Logger.Infof("Good Golly were booting %s (%s)", a.Name, a.Version)
+
 	if err := f(a); err != nil {
 		return err
 	}
@@ -108,47 +112,4 @@ func (a Application) handleSignals() {
 		a.Logger.Infof("issuing shutdown due to signal (%s)", signal.String())
 		a.Shutdown(NewContext(a.context))
 	}(sig)
-}
-
-// func (a Application) Run(mode RunMode, args ...string) error {
-// 	a.Logger.Infof("Good Golly were booting %s (%s)", a.Name, a.Version)
-
-// 	switch mode {
-// 	case RunModeWorkers:
-// 		fallthrough
-// 	case RunModeWeb:
-// 		return runWeb(a)
-// 	default:
-// 		if err := runWeb(a); err != nil {
-// 			return err
-// 		}
-// 	}
-// 	return nil
-// }
-
-func runWeb(a Application) error {
-	var bind string
-
-	if port := a.Config.GetString("port"); port != "" {
-		bind = fmt.Sprintf(":%s", port)
-	} else {
-		bind = a.Config.GetString("bind")
-	}
-
-	a.Logger.Infof("Webserver running on %s", bind)
-
-	server := &http.Server{Addr: bind, Handler: a}
-
-	Events().Add("app:shutdown", func(gctx Context, evt Event) error {
-		ctx, cancel := context.WithTimeout(gctx.Context(), 5*time.Second)
-		defer cancel()
-
-		return errors.WrapGeneric(server.Shutdown(ctx))
-	})
-
-	if err := server.ListenAndServe(); err != http.ErrServerClosed {
-		return err
-	}
-
-	return nil
 }
