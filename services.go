@@ -71,20 +71,26 @@ func StartService(a Application, service Service) {
 		return nil
 	})
 
+	logger := a.Logger.WithField("runner", service.Name())
+
 	if err := service.Initialize(a); err != nil {
+		logger.Errorf("error initializing service:%s (%v)", service.Name(), err)
 		panic(errors.WrapFatal(err))
 	}
 
 	ctx := a.NewContext(a.GoContext())
-	ctx.SetLogger(ctx.Logger().WithField("runner", service.Name()))
+	ctx.SetLogger(logger)
 
-	Events().Dispatch(ctx, EventAppServiceBefore, ServiceEvent{})
+	Events().Dispatch(ctx, EventAppServiceBefore, ServiceEvent{service})
 
 	defer func(ctx Context) {
-		Events().Dispatch(ctx, EventAppServiceBefore, ServiceEvent{})
+		Events().Dispatch(ctx, EventAppServiceAfter, ServiceEvent{service})
 	}(ctx)
 
+	logger.Debugf("%s: started", service.Name())
+
 	if err := service.Run(ctx); err != nil {
-		panic(errors.WrapFatal(err))
+		logger.Errorf("error when running service:%s (%v)", service.Name(), err)
+		panic(err)
 	}
 }

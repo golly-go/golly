@@ -79,7 +79,7 @@ func (evl *EventChain) Dispatch(ctx Context, path string, evt Event) error {
 			status = fmt.Sprintf("error %s", err.Error())
 		}
 
-		ctx.Logger().Debugf("[EVENT]: Error in event %s (%s) after %v", path, status, dur)
+		ctx.Logger().Debugf("[EVENT]: %s (%s) after %v", path, status, dur)
 	}(path, time.Now())
 
 	if node := FindEventCallback(evl, path); node != nil {

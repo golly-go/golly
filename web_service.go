@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net/http"
 	"time"
+
+	"github.com/slimloans/golly/errors"
 )
 
 type WebService struct {
@@ -15,7 +17,6 @@ type WebService struct {
 func (*WebService) Name() string { return "web" }
 
 func (w *WebService) Initialize(a Application) error {
-	w.server = &http.Server{Addr: w.Bind, Handler: a}
 
 	if port := a.Config.GetString("port"); port != "" {
 		w.Bind = fmt.Sprintf(":%s", port)
@@ -23,14 +24,16 @@ func (w *WebService) Initialize(a Application) error {
 		w.Bind = a.Config.GetString("bind")
 	}
 
+	w.server = &http.Server{Addr: w.Bind, Handler: a}
+
 	return nil
 }
 
 func (w *WebService) Run(ctx Context) error {
-	ctx.Logger().Infof("Service running on %s", w.Bind)
+	ctx.Logger().Infof("service %s running on %s", w.Name(), w.Bind)
 
 	if err := w.server.ListenAndServe(); err != http.ErrServerClosed {
-		return err
+		return errors.WrapFatal(err)
 	}
 
 	return nil
