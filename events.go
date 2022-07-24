@@ -22,7 +22,3 @@ const (
 type AppEvent struct {
 	App Application
 }
-
-type ServiceEvent struct {
-	Service Service
-}

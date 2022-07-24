@@ -2,6 +2,7 @@ package golly
 
 import (
 	"context"
+	"sync"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
@@ -16,7 +17,7 @@ const (
 )
 
 type Context struct {
-	store *Store
+	data *sync.Map
 
 	context context.Context
 	config  *viper.Viper
@@ -32,20 +33,20 @@ func (c *Context) RunMode() string {
 
 // Set set a value on the context
 func (c *Context) Set(key interface{}, value interface{}) Context {
-	c.store.Set(key, value)
+	c.data.Store(key, value)
 	return *c
 }
 
 // Get get a value from the context
 func (c *Context) Get(key interface{}) (interface{}, bool) {
-	return c.store.Get(key)
+	return c.data.Load(key)
 }
 
 // NewContext returns a new application context provided some basic information
 func NewContext(ctx context.Context) Context {
 	return Context{
 		context: ctx,
-		store:   NewStore(),
+		data:    &sync.Map{},
 	}
 }
 
@@ -66,11 +67,15 @@ func (c *Context) WithContext(ctx context.Context) context.Context {
 }
 
 func (c *Context) UpdateLogFields(fields log.Fields) {
-	c.store.Set(LoggerKey, c.Logger().WithFields(fields))
+	c.data.Store(LoggerKey, c.Logger().WithFields(fields))
 }
 
 func (c *Context) SetLogger(l *log.Entry) {
-	c.store.Set(LoggerKey, l)
+	c.data.Store(LoggerKey, l)
+}
+
+func (c *Context) Dup() Context {
+	return *c
 }
 
 func FromContext(ctx context.Context) Context {
@@ -85,8 +90,8 @@ func (c Context) ToContext() context.Context {
 }
 
 func (c Context) Logger() *log.Entry {
-	if c.store != nil {
-		if lgr, found := c.store.Get(LoggerKey); found {
+	if c.data != nil {
+		if lgr, found := c.data.Load(LoggerKey); found {
 			if l, ok := lgr.(*log.Entry); ok {
 				return l
 			}

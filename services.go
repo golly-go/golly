@@ -2,9 +2,12 @@ package golly
 
 import (
 	"fmt"
+	"io"
+	"os"
 	"strings"
 
 	"github.com/slimloans/golly/errors"
+	"github.com/spf13/cobra"
 )
 
 const (
@@ -17,7 +20,7 @@ const (
 
 var (
 	// Initialize Core Services Here
-	services = []Service{
+	services = ServiceArray{
 		&WebService{},
 	}
 )
@@ -30,8 +33,27 @@ type Service interface {
 
 	Initialize(Application) error
 	Run(Context) error
-
+	Running() bool
 	Quit()
+}
+
+type ServiceArray []Service
+
+func (sa ServiceArray) Find(name string) Service {
+	for _, service := range services {
+		if strings.EqualFold(service.Name(), name) {
+			return service
+		}
+	}
+	return nil
+}
+
+func serviceCommand(cmd *cobra.Command, args []string) {
+	if strings.EqualFold(args[0], "list") {
+		writeServices(os.Stdout)
+		return
+	}
+	Run(serviceAppFunction(args[0]))
 }
 
 func RegisterServices(svcs ...Service) {
@@ -41,28 +63,13 @@ func RegisterServices(svcs ...Service) {
 	services = append(services, svcs...)
 }
 
-func StartAllServices(a Application) error {
-	for _, service := range services {
-		go StartService(a, service)
-	}
-	<-a.GoContext().Done()
-	return nil
-}
-
 func StartServiceByName(a Application, name string) error {
-	for _, service := range services {
-		if strings.EqualFold(service.Name(), name) {
-			StartService(a, service)
-			return nil
-		}
+	if service := services.Find(name); service != nil {
+		StartService(a, service)
+		return nil
 	}
-	return errors.WrapFatal(fmt.Errorf("service %s not found", name))
-}
 
-func ServiceAppFunction(name string) GollyAppFunc {
-	return func(a Application) error {
-		return StartServiceByName(a, name)
-	}
+	return errors.WrapFatal(fmt.Errorf("service %s not found", name))
 }
 
 func StartService(a Application, service Service) {
@@ -81,16 +88,31 @@ func StartService(a Application, service Service) {
 	ctx := a.NewContext(a.GoContext())
 	ctx.SetLogger(logger)
 
-	Events().Dispatch(ctx, EventAppServiceBefore, ServiceEvent{service})
-
-	defer func(ctx Context) {
-		Events().Dispatch(ctx, EventAppServiceAfter, ServiceEvent{service})
-	}(ctx)
-
 	logger.Debugf("%s: started", service.Name())
 
 	if err := service.Run(ctx); err != nil {
 		logger.Errorf("error when running service:%s (%v)", service.Name(), err)
 		panic(err)
+	}
+}
+
+func startAllServices(a Application) error {
+	for _, service := range services {
+		go StartService(a, service)
+	}
+	<-a.GoContext().Done()
+	return nil
+}
+
+func serviceAppFunction(name string) GollyAppFunc {
+	return func(a Application) error {
+		return StartServiceByName(a, name)
+	}
+}
+
+func writeServices(writer io.Writer) {
+	writer.Write([]byte("Registered Services: \n"))
+	for _, service := range services {
+		writer.Write([]byte("\t" + service.Name() + "\n"))
 	}
 }

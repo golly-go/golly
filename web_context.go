@@ -94,10 +94,6 @@ func (wctx *WebContext) RequestBody() []byte {
 	return b
 }
 
-func (wctx *WebContext) setURLParams(params map[string]string) {
-	wctx.urlParams = params
-}
-
 // URLParam returns a URL parameter
 func (wctx *WebContext) URLParam(key string) string {
 	// Lazy load url params

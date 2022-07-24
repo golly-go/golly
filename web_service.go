@@ -10,11 +10,13 @@ import (
 )
 
 type WebService struct {
-	server *http.Server
-	Bind   string
+	server  *http.Server
+	Bind    string
+	running bool
 }
 
-func (*WebService) Name() string { return "web" }
+func (*WebService) Name() string    { return "web" }
+func (w *WebService) Running() bool { return w.running }
 
 func (w *WebService) Initialize(a Application) error {
 
@@ -32,6 +34,7 @@ func (w *WebService) Initialize(a Application) error {
 func (w *WebService) Run(ctx Context) error {
 	ctx.Logger().Infof("service %s running on %s", w.Name(), w.Bind)
 
+	w.running = true
 	if err := w.server.ListenAndServe(); err != http.ErrServerClosed {
 		return errors.WrapFatal(err)
 	}
@@ -43,5 +46,6 @@ func (ws *WebService) Quit() {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
+	ws.running = false
 	ws.server.Shutdown(ctx)
 }

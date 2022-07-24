@@ -6,7 +6,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
-	"sync"
+	"sync/atomic"
 
 	"github.com/slimloans/golly/env"
 )
@@ -459,21 +459,14 @@ func handleRouteVariables(re *Route, path string) map[string]string {
 }
 
 var (
-	requestLock sync.RWMutex
-	reqcount    int
+	reqcount    int64
 	hostname, _ = os.Hostname()
 )
 
-func requestCount() int {
-	requestLock.Lock()
-	defer requestLock.Unlock()
-
-	reqcount++
-	return reqcount
-}
-
 func makeRequestID() string {
-	return fmt.Sprintf("%s/%06d", hostname, requestCount())
+	atomic.AddInt64(&reqcount, 1)
+
+	return fmt.Sprintf("%s/%06d", hostname, reqcount)
 }
 
 func processWebRequest(a Application, r *http.Request, w http.ResponseWriter) {
@@ -501,12 +494,12 @@ func processWebRequest(a Application, r *http.Request, w http.ResponseWriter) {
 
 func renderRoutes(routes *Route) HandlerFunc {
 	return func(c WebContext) {
-		if env.IsDevelopment() {
-			text := strings.Join(buildPath(routes, ""), "\n")
-			c.RenderText(text)
-		} else {
+		if !env.IsDevelopment() {
 			c.RenderStatus(http.StatusNotFound)
 		}
+
+		text := strings.Join(buildPath(routes, ""), "\n")
+		c.RenderText(text)
 	}
 }
 

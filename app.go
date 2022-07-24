@@ -175,8 +175,6 @@ func (a *Application) SetRunMode(mode string) {
 func (a Application) Initialize() error {
 	ctx := a.NewContext(a.context)
 
-	a.handleSignals()
-
 	Events().Dispatch(ctx, EventAppBeforeInitalize, AppEvent{a})
 
 	for _, initializer := range initializers {

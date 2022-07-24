@@ -1,8 +1,6 @@
 package golly
 
 import (
-	"context"
-	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
@@ -15,20 +13,20 @@ var (
 		{
 			Use:   "start",
 			Short: "Start services",
-			Run:   func(cmd *cobra.Command, args []string) { Run(StartAllServices) },
+			Run:   func(cmd *cobra.Command, args []string) { Run(startAllServices) },
 		},
 
 		{
 			Use:   "web",
 			Short: "Start the web server",
-			Run:   func(cmd *cobra.Command, args []string) { Run(ServiceAppFunction("web")) },
+			Run:   func(cmd *cobra.Command, args []string) { Run(serviceAppFunction("web")) },
 		},
 
 		{
 			Use:   "service [serviceName]",
-			Short: "Start a service",
+			Short: "Start a named service service",
 			Args:  cobra.ExactArgs(1),
-			Run:   func(cmd *cobra.Command, args []string) { Run(ServiceAppFunction(args[0])) },
+			Run:   serviceCommand,
 		},
 
 		{
@@ -54,31 +52,6 @@ func Run(fn GollyAppFunc) {
 	}
 }
 
-// Seed calls seed for on a function TODO: make this based more on cobra
-func Seed(a Application, name string, fn func(Context) error) {
-	ctx := context.TODO()
-
-	running := "all"
-	if len(os.Args) > 1 {
-		running = os.Args[1]
-	}
-
-	if running == "list" {
-		fmt.Println("\t-\t", name)
-	}
-
-	if running == "all" || running == name {
-
-		aCtx := NewContext(ctx)
-		aCtx.config = a.Config
-
-		if err := fn(aCtx); err != nil {
-			a.Logger.Error(err.Error())
-			panic(err)
-		}
-	}
-}
-
 func Boot(f func(Application) error) error {
 	for _, preboot := range preboots {
 		if err := preboot(); err != nil {
@@ -87,12 +60,13 @@ func Boot(f func(Application) error) error {
 	}
 
 	a := NewApplication()
+	handleSignals(&a)
 
 	if err := a.Initialize(); err != nil {
 		return err
 	}
 
-	a.Logger.Infof("Good Golly were booting %s (%s)", a.Name, a.Version)
+	a.Logger.Infof("Good golly were booting %s (%s)", a.Name, a.Version)
 
 	if err := f(a); err != nil {
 		return err
@@ -101,7 +75,7 @@ func Boot(f func(Application) error) error {
 	return nil
 }
 
-func (a Application) handleSignals() {
+func handleSignals(app *Application) {
 	sig := make(chan os.Signal, 1)
 
 	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
@@ -109,7 +83,7 @@ func (a Application) handleSignals() {
 	go func(c <-chan os.Signal) {
 		signal := <-c
 
-		a.Logger.Infof("issuing shutdown due to signal (%s)", signal.String())
-		a.Shutdown(NewContext(a.context))
+		app.Logger.Infof("issuing shutdown due to signal (%s)", signal.String())
+		app.Shutdown(NewContext(app.context))
 	}(sig)
 }
