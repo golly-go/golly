@@ -93,6 +93,11 @@ func SetDBOnContext(c golly.Context, db *gorm.DB) {
 	c.Set(contextKey, db.Session(&gorm.Session{NewDB: true}))
 }
 
+func CreateTestContext(c golly.Context, modelsToMigration ...interface{}) golly.Context {
+	SetDBOnContext(c, NewInMemoryConnection(modelsToMigration...))
+	return c
+}
+
 // Sane defaults TODO: Clean this up
 func setConfigDefaults(appName string, v *viper.Viper) *viper.Viper {
 	v.SetDefault(appName, map[string]interface{}{
