@@ -30,6 +30,13 @@ var (
 		},
 
 		{
+			Use:   "services [serviceName]",
+			Short: "Alias of service",
+			Args:  cobra.ExactArgs(1),
+			Run:   serviceCommand,
+		},
+
+		{
 			Use:   "routes",
 			Short: "Display the currently defined routes",
 			Run: func(cmd *cobra.Command, args []string) {
