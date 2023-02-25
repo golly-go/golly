@@ -1,22 +1,32 @@
 package golly
 
 import (
+	"os"
+
 	log "github.com/sirupsen/logrus"
 	"github.com/slimloans/golly/env"
 )
 
-func init() {
-	if env.IsDevelopment() {
-		log.SetLevel(log.DebugLevel)
-		log.SetFormatter(&log.TextFormatter{})
-		return
-	}
-	log.SetFormatter(&log.JSONFormatter{})
-}
-
 // NewLogger returns a new logger intance
 func NewLogger() *log.Entry {
-	return log.WithFields(log.Fields{
+	var formatter log.Formatter = &log.JSONFormatter{}
+	level := log.InfoLevel
+
+	if env.IsDevelopment() {
+		level = log.DebugLevel
+		formatter = &log.TextFormatter{}
+	}
+
+	l := &log.Logger{
+		Out:          os.Stderr,
+		Formatter:    formatter,
+		Hooks:        make(log.LevelHooks),
+		Level:        level,
+		ExitFunc:     os.Exit,
+		ReportCaller: false,
+	}
+
+	return l.WithFields(log.Fields{
 		"service": appName,
 		"version": Version(),
 		"env":     env.CurrentENV(),

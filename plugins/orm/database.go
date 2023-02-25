@@ -44,6 +44,8 @@ func Initializer(app golly.Application) error {
 	switch driver {
 	case "in-memory":
 		SetConnection(NewInMemoryConnection())
+	case "sqlite":
+		SetConnection(NewSQLiteConnection(app.Name))
 	case "postgres":
 		d, err := NewPostgresConnection(v, app.Name)
 		if err != nil {

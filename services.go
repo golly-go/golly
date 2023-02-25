@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/slimloans/golly/errors"
-	"github.com/spf13/cobra"
 )
 
 const (
@@ -48,12 +47,23 @@ func (sa ServiceArray) Find(name string) Service {
 	return nil
 }
 
-func serviceCommand(cmd *cobra.Command, args []string) {
-	if strings.EqualFold(args[0], "list") {
+func RunService(name string) {
+	// Try and catch non init() function registers
+	// this is much cleaner then tying it to init
+	// will probably want a light boot
+	runPreboot()
+
+	if strings.EqualFold(name, "list") {
 		writeServices(os.Stdout)
 		return
 	}
-	Run(serviceAppFunction(args[0]))
+
+	Run(func(app Application) error {
+		if strings.EqualFold(name, "all") {
+			return startAllServices(app)
+		}
+		return StartServiceByName(app, name)
+	})
 }
 
 func RegisterServices(svcs ...Service) {
@@ -64,6 +74,7 @@ func RegisterServices(svcs ...Service) {
 }
 
 func StartServiceByName(a Application, name string) error {
+
 	if service := services.Find(name); service != nil {
 		StartService(a, service)
 		return nil
@@ -102,12 +113,6 @@ func startAllServices(a Application) error {
 	}
 	<-a.GoContext().Done()
 	return nil
-}
-
-func serviceAppFunction(name string) GollyAppFunc {
-	return func(a Application) error {
-		return StartServiceByName(a, name)
-	}
 }
 
 func writeServices(writer io.Writer) {
