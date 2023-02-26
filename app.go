@@ -16,6 +16,8 @@ import (
 
 type GollyAppFunc func(Application) error
 
+type GollyFunc func(Context) error
+
 type PrebootFunc func() error
 
 var (
