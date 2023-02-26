@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/slimloans/golly"
+	"github.com/golly-go/golly"
 )
 
 type wsClient struct {

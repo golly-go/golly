@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/golly-go/golly"
 	"github.com/sirupsen/logrus"
-	"github.com/slimloans/golly"
 )
 
 // RequestLogger middleware that adds request logging

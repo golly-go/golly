@@ -3,8 +3,8 @@ package golly
 import (
 	"os"
 
+	"github.com/golly-go/golly/env"
 	log "github.com/sirupsen/logrus"
-	"github.com/slimloans/golly/env"
 )
 
 // NewLogger returns a new logger intance

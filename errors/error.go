@@ -3,8 +3,8 @@ package errors
 import (
 	"reflect"
 
+	"github.com/golly-go/golly/utils"
 	"github.com/sirupsen/logrus"
-	"github.com/slimloans/golly/utils"
 )
 
 // Error struct holds the wrapped error

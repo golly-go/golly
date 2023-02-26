@@ -6,7 +6,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/slimloans/golly/errors"
+	"github.com/golly-go/golly/errors"
 )
 
 const (

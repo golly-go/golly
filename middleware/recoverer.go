@@ -4,8 +4,8 @@ import (
 	"net/http"
 	"runtime"
 
+	"github.com/golly-go/golly"
 	"github.com/sirupsen/logrus"
-	"github.com/slimloans/golly"
 )
 
 // Recoverer middleware that adds panic recovering

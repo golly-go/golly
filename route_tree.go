@@ -8,7 +8,7 @@ import (
 	"strings"
 	"sync/atomic"
 
-	"github.com/slimloans/golly/env"
+	"github.com/golly-go/golly/env"
 )
 
 type methodType uint

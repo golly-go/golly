@@ -1,4 +1,4 @@
-module github.com/slimloans/golly
+module github.com/golly-go/golly
 
 go 1.17
 

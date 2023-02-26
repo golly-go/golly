@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/slimloans/golly/errors"
+	"github.com/golly-go/golly/errors"
 	"github.com/stretchr/testify/assert"
 )
 

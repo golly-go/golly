@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/golly-go/golly/errors"
 	log "github.com/sirupsen/logrus"
-	"github.com/slimloans/golly/errors"
 	"github.com/spf13/viper"
 	"gorm.io/gorm"
 )

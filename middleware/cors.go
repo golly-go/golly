@@ -4,8 +4,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/slimloans/golly"
-	"github.com/slimloans/golly/utils"
+	"github.com/golly-go/golly"
+	"github.com/golly-go/golly/utils"
 )
 
 const (

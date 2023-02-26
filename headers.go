@@ -3,7 +3,7 @@ package golly
 import (
 	"net/http"
 
-	"github.com/slimloans/golly/utils"
+	"github.com/golly-go/golly/utils"
 )
 
 func HeaderTokens(headers http.Header, header string) []string {

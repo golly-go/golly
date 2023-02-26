@@ -5,8 +5,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/slimloans/golly/errors"
-	"github.com/slimloans/golly/utils"
+	"github.com/golly-go/golly/errors"
+	"github.com/golly-go/golly/utils"
 )
 
 const (

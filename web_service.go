@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/slimloans/golly/errors"
+	"github.com/golly-go/golly/errors"
 )
 
 type WebService struct {

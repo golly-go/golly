@@ -5,7 +5,7 @@ This is a work in progress check back soon :)
 ## Getting Started
 
 We are still fairly new and undergoing alot of changes, if you want to check out Golly in the absence of any cli-tools
-we recommend you grab our skeleton app [Skeleton Application](https://github.com/slimloans/golly-skeleton). 
+we recommend you grab our skeleton app [Skeleton Application](https://github.com/golly-go/golly-skeleton). 
 
 ## Configuration
 
@@ -52,6 +52,6 @@ To use the ORM plugin add orm.Initializer to golly's initializer by default loca
 
 ## Examples
 Below is a list of examples:
-- [Skeleton Application](https://github.com/slimloans/golly-skeleton)
+- [Skeleton Application](https://github.com/golly-go/golly-skeleton)
 
 

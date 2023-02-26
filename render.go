@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/slimloans/golly/errors"
+	"github.com/golly-go/golly/errors"
 )
 
 type FormatOption uint

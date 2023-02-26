@@ -6,7 +6,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/slimloans/golly/errors"
+	"github.com/golly-go/golly/errors"
 	"github.com/spf13/cobra"
 )
 
