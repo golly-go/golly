@@ -10,6 +10,7 @@ import (
 )
 
 type StatusEndpointService struct {
+	ServiceBase
 	WebService
 }
 
@@ -24,7 +25,16 @@ func (w *StatusEndpointService) Initialize(a Application) error {
 	return nil
 }
 
+func (w *StatusEndpointService) Run(ctx Context) error {
+	if ctx.config.GetBool("STANDALONE") {
+		w.WebService.Run(ctx)
+	}
+	return nil
+}
+
 type WebService struct {
+	ServiceBase
+
 	server  *http.Server
 	Bind    string
 	running bool

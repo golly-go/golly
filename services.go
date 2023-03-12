@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"sync"
 
 	"github.com/golly-go/golly/errors"
 )
@@ -21,6 +22,7 @@ var (
 	// Initialize Core Services Here
 	services = ServiceArray{
 		&WebService{},
+		&StatusEndpointService{},
 	}
 )
 
@@ -33,6 +35,37 @@ type Service interface {
 	Run(Context) error
 	Running() bool
 	Quit()
+	IssueQuit(s Service)
+
+	RunSideCar(Application, string) error
+}
+
+type ServiceBase struct {
+	sidecars []Service
+	lock     sync.RWMutex
+}
+
+func (sb *ServiceBase) RunSideCar(a Application, service string) error {
+	sb.lock.Lock()
+	defer sb.lock.Unlock()
+
+	if service := services.Find(service); service != nil {
+		go StartService(a, service)
+
+		sb.sidecars = append(sb.sidecars, service)
+	}
+
+	return errors.WrapGeneric(fmt.Errorf("service not found"))
+}
+
+func (sb *ServiceBase) IssueQuit(s Service) {
+	for _, service := range sb.sidecars {
+		if service.Running() {
+			service.IssueQuit(s)
+		}
+	}
+
+	s.Quit()
 }
 
 type ServiceArray []Service
