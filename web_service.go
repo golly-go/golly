@@ -14,12 +14,7 @@ type StatusEndpointService struct {
 }
 
 func (w *StatusEndpointService) Initialize(a Application) error {
-
-	if port := a.Config.GetString("port"); port != "" {
-		w.Bind = fmt.Sprintf(":%s", port)
-	} else {
-		w.Bind = a.Config.GetString("bind")
-	}
+	w.WebService.Initialize(a)
 
 	a.routes = NewRoute().Get("/status", func(wctx WebContext) {
 		wctx.RenderStatus(http.StatusOK)
@@ -35,20 +30,19 @@ type WebService struct {
 	running bool
 }
 
-func (*WebService) Dependencies() []string { return []string{} }
-func (*WebService) Name() string           { return "web" }
-func (w *WebService) Running() bool        { return w.running }
+func (*WebService) Name() string    { return "web" }
+func (w *WebService) Running() bool { return w.running }
 
 func (w *WebService) Initialize(a Application) error {
-
-	if port := a.Config.GetString("port"); port != "" {
-		w.Bind = fmt.Sprintf(":%s", port)
-	} else {
-		w.Bind = a.Config.GetString("bind")
+	if w.Bind == "" {
+		if port := a.Config.GetString("port"); port != "" {
+			w.Bind = fmt.Sprintf(":%s", port)
+		} else {
+			w.Bind = a.Config.GetString("bind")
+		}
 	}
 
 	w.server = &http.Server{Addr: w.Bind, Handler: a}
-
 	return nil
 }
 
@@ -64,9 +58,11 @@ func (w *WebService) Run(ctx Context) error {
 }
 
 func (ws *WebService) Quit() {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
+	if ws.running {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
 
-	ws.running = false
-	ws.server.Shutdown(ctx)
+		ws.running = false
+		ws.server.Shutdown(ctx)
+	}
 }
