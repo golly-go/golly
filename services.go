@@ -29,7 +29,6 @@ var (
 // as i decouple various pieces i flush this out
 type Service interface {
 	Name() string
-
 	Initialize(Application) error
 	Run(Context) error
 	Running() bool
@@ -111,6 +110,7 @@ func startAllServices(a Application) error {
 	for _, service := range services {
 		go StartService(a, service)
 	}
+
 	<-a.GoContext().Done()
 	return nil
 }
@@ -120,4 +120,11 @@ func writeServices(writer io.Writer) {
 	for _, service := range services {
 		writer.Write([]byte("\t" + service.Name() + "\n"))
 	}
+}
+
+func ServiceIsRunning(serviceName string) bool {
+	if service := services.Find(serviceName); service != nil {
+		return service.Running()
+	}
+	return false
 }

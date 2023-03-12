@@ -9,14 +9,35 @@ import (
 	"github.com/golly-go/golly/errors"
 )
 
+type StatusEndpointService struct {
+	WebService
+}
+
+func (w *StatusEndpointService) Initialize(a Application) error {
+
+	if port := a.Config.GetString("port"); port != "" {
+		w.Bind = fmt.Sprintf(":%s", port)
+	} else {
+		w.Bind = a.Config.GetString("bind")
+	}
+
+	a.routes = NewRoute().Get("/status", func(wctx WebContext) {
+		wctx.RenderStatus(http.StatusOK)
+	})
+
+	w.server = &http.Server{Addr: w.Bind, Handler: a}
+	return nil
+}
+
 type WebService struct {
 	server  *http.Server
 	Bind    string
 	running bool
 }
 
-func (*WebService) Name() string    { return "web" }
-func (w *WebService) Running() bool { return w.running }
+func (*WebService) Dependencies() []string { return []string{} }
+func (*WebService) Name() string           { return "web" }
+func (w *WebService) Running() bool        { return w.running }
 
 func (w *WebService) Initialize(a Application) error {
 
