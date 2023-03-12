@@ -14,6 +14,7 @@ type StatusEndpointService struct {
 	WebService
 }
 
+func (*StatusEndpointService) Name() string { return "status-endpoint-service" }
 func (w *StatusEndpointService) Initialize(a Application) error {
 	w.WebService.Initialize(a)
 
