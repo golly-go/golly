@@ -10,7 +10,7 @@ import (
 // NewLogger returns a new logger intance
 func NewLogger() *log.Entry {
 	var formatter log.Formatter = &log.JSONFormatter{}
-	level := logLevel()
+	level := LogLevel()
 
 	if env.IsDevelopment() {
 		level = log.DebugLevel
@@ -33,7 +33,7 @@ func NewLogger() *log.Entry {
 	})
 }
 
-func logLevel() log.Level {
+func LogLevel() log.Level {
 	switch os.Getenv("LOG_LEVEL") {
 	case "debug":
 		return log.DebugLevel
