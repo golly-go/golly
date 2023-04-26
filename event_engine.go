@@ -2,6 +2,7 @@ package golly
 
 import (
 	"fmt"
+	"reflect"
 	"strings"
 	"time"
 
@@ -136,6 +137,26 @@ func (evl *EventChain) add(path string, handler EventHandlerFunc) *EventChain {
 	}
 
 	return e
+}
+
+func (evl *EventChain) Del(path string, handler EventHandlerFunc) *EventChain {
+	e := evl
+
+	tokens := eventPathTokens(path)
+
+	for _, token := range tokens {
+		if node := e.findChild(token); node != nil {
+			e = node
+		}
+	}
+
+	for pos, h := range e.handlers {
+		if reflect.ValueOf(handler).Pointer() != reflect.ValueOf(h).Pointer() {
+			fmt.Printf("Found at %d", pos)
+		}
+	}
+
+	return evl
 }
 
 func (evl EventChain) search(tokens []string) *EventChain {

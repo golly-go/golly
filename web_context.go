@@ -2,6 +2,7 @@ package golly
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -31,18 +32,31 @@ type WebContext struct {
 }
 
 // NewWebContext returns a new web context
-func NewWebContext(a Application, r *http.Request, w http.ResponseWriter, requestID string) WebContext {
-	req := r.WithContext(a.context) // cancelable context
+func NewWebContext(gctx Context, r *http.Request, w http.ResponseWriter, requestID string) WebContext {
+	req := r.WithContext(gctx.context) // cancelable context
+	gctx.context = req.Context()
 
-	ctx := a.NewContext(req.Context())
-	ctx.SetLogger(a.Logger.WithFields(webLogParams(requestID, r)))
+	gctx.SetLogger(gctx.Logger().WithFields(webLogParams(requestID, r)))
 
 	return WebContext{
-		Context:   ctx,
+		Context:   gctx,
 		request:   r,
 		writer:    w,
 		requestID: requestID,
 	}
+}
+
+const wctxKey ContextKeyT = "webcontext"
+
+func WebContextToGoContext(ctx context.Context, wctx WebContext) context.Context {
+	return context.WithValue(ctx, wctxKey, &wctx)
+}
+
+func WebContextFromGoContext(ctx context.Context, wctx WebContext) *WebContext {
+	if wctx, ok := ctx.Value(wctxKey).(*WebContext); ok {
+		return wctx
+	}
+	return nil
 }
 
 func (wctx WebContext) RequestID() string {

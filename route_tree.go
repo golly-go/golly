@@ -14,7 +14,7 @@ import (
 type methodType uint
 
 const (
-	STUB    methodType = 0x01
+	STUB    methodType = 0x001
 	CONNECT            = 0x002
 	DELETE             = 0x004
 	GET                = 0x008
@@ -471,7 +471,8 @@ func makeRequestID() string {
 
 func processWebRequest(a Application, r *http.Request, w http.ResponseWriter) {
 	writer := NewWrapResponseWriter(w, r.ProtoMajor)
-	wctx := NewWebContext(a, r, writer, makeRequestID())
+
+	wctx := NewWebContext(a.NewContext(a.context), r, writer, makeRequestID())
 
 	if re := FindRoute(a.routes, r.URL.Path); re != nil {
 		// We may just be a parent node
