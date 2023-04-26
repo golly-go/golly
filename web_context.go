@@ -52,7 +52,7 @@ func WebContextToGoContext(ctx context.Context, wctx WebContext) context.Context
 	return context.WithValue(ctx, wctxKey, &wctx)
 }
 
-func WebContextFromGoContext(ctx context.Context, wctx WebContext) *WebContext {
+func WebContextFromGoContext(ctx context.Context) *WebContext {
 	if wctx, ok := ctx.Value(wctxKey).(*WebContext); ok {
 		return wctx
 	}

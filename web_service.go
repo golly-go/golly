@@ -44,6 +44,20 @@ type WebService struct {
 func (*WebService) Name() string    { return "web" }
 func (w *WebService) Running() bool { return w.running }
 
+// ReadTimeout:       1 * time.Second,
+//     WriteTimeout:      1 * time.Second,
+//     IdleTimeout:       30 * time.Second,
+//     ReadHeaderTimeout: 2 * time.Second,
+
+func webServiceDefaultConfig(a Application) {
+	a.Config.SetDefault("timeouts", map[string]interface{}{
+		"read":   2 * time.Second,
+		"write":  5 * time.Second,
+		"idle":   30 * time.Second,
+		"header": 2 * time.Second,
+	})
+}
+
 func (w *WebService) Initialize(a Application) error {
 	if w.Bind == "" {
 		if port := a.Config.GetString("port"); port != "" {
@@ -53,7 +67,14 @@ func (w *WebService) Initialize(a Application) error {
 		}
 	}
 
-	w.server = &http.Server{Addr: w.Bind, Handler: a}
+	w.server = &http.Server{
+		Addr:              w.Bind,
+		Handler:           a,
+		ReadTimeout:       a.Config.GetDuration("timeouts.read"),
+		WriteTimeout:      a.Config.GetDuration("timeouts.write"),
+		IdleTimeout:       a.Config.GetDuration("timeouts.idle"),
+		ReadHeaderTimeout: a.Config.GetDuration("timeouts.header"),
+	}
 	return nil
 }
 

@@ -20,6 +20,8 @@ const (
 type Context struct {
 	data *sync.Map
 
+	cancel context.CancelFunc
+
 	context context.Context
 	config  *viper.Viper
 
@@ -52,14 +54,13 @@ func (c *Context) Get(key interface{}) (interface{}, bool) {
 	return c.data.Load(key)
 }
 
-const forceNewContext ContextKeyT = "x"
-
 // NewContext returns a new application context provided some basic information
 func NewContext(ctx context.Context) Context {
-	c := context.WithValue(ctx, forceNewContext, nil)
+	c, cancel := context.WithCancel(ctx)
 
 	return Context{
 		context: c,
+		cancel:  cancel,
 		data:    &sync.Map{},
 	}
 }
