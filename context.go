@@ -3,6 +3,7 @@ package golly
 import (
 	"context"
 	"sync"
+	"time"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
@@ -31,6 +32,15 @@ func (c *Context) RunMode() string {
 	return c.runmode
 }
 
+// TODO Implement
+func (*Context) Deadline() (time.Time, bool) { return time.Time{}, false }
+func (*Context) Done() <-chan struct{}       { return nil }
+func (*Context) Err() error                  { return nil }
+
+func (c *Context) Value(key interface{}) interface{} {
+	return c.context.Value(key)
+}
+
 // Set set a value on the context
 func (c *Context) Set(key interface{}, value interface{}) Context {
 	c.data.Store(key, value)
@@ -42,10 +52,14 @@ func (c *Context) Get(key interface{}) (interface{}, bool) {
 	return c.data.Load(key)
 }
 
+const forceNewContext ContextKeyT = "x"
+
 // NewContext returns a new application context provided some basic information
 func NewContext(ctx context.Context) Context {
+	c := context.WithValue(ctx, forceNewContext, nil)
+
 	return Context{
-		context: ctx,
+		context: c,
 		data:    &sync.Map{},
 	}
 }
