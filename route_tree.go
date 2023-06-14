@@ -484,12 +484,12 @@ func ProcessRoutes(a Application, routes *Route, r *http.Request, w http.Respons
 		}
 	}
 
-	notFoundHandler := a.routes.notFoundHandler
+	notFoundHandler := routes.notFoundHandler
 	if notFoundHandler == nil {
 		notFoundHandler = func(c WebContext) { c.RenderStatus(http.StatusNotFound) }
 	}
 
-	h := chain(a.routes.middleware, notFoundHandler)
+	h := chain(routes.middleware, notFoundHandler)
 	h(wctx)
 }
 
