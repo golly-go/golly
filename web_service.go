@@ -44,11 +44,6 @@ type WebService struct {
 func (*WebService) Name() string    { return "web" }
 func (w *WebService) Running() bool { return w.running }
 
-// ReadTimeout:       1 * time.Second,
-//     WriteTimeout:      1 * time.Second,
-//     IdleTimeout:       30 * time.Second,
-//     ReadHeaderTimeout: 2 * time.Second,
-
 func webServiceDefaultConfig(a Application) {
 	a.Config.SetDefault("timeouts", map[string]interface{}{
 		"read":   2 * time.Second,

@@ -493,7 +493,7 @@ func ProcessRoutes(a Application, routes *Route, r *http.Request, w http.Respons
 	h(wctx)
 }
 
-func renderRoutes(routes *Route) HandlerFunc {
+func RenderRoutes(routes *Route) HandlerFunc {
 	return func(c WebContext) {
 		if !env.IsDevelopment() {
 			c.RenderStatus(http.StatusNotFound)
