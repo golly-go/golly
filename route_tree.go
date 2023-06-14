@@ -469,7 +469,7 @@ func makeRequestID() string {
 	return fmt.Sprintf("%s/%06d", hostname, reqcount)
 }
 
-func processWebRequest(a Application, r *http.Request, w http.ResponseWriter) {
+func ProcessWebRequest(a Application, r *http.Request, w http.ResponseWriter) {
 	writer := NewWrapResponseWriter(w, r.ProtoMajor)
 
 	wctx := NewWebContext(a.NewContext(a.context), r, writer, makeRequestID())

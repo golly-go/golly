@@ -191,7 +191,7 @@ func (a Application) Initialize() error {
 }
 
 func (a Application) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	processWebRequest(a, r, w)
+	ProcessWebRequest(a, r, w)
 }
 
 func (a *Application) Routes() *Route {
