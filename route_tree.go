@@ -469,12 +469,12 @@ func makeRequestID() string {
 	return fmt.Sprintf("%s/%06d", hostname, reqcount)
 }
 
-func ProcessWebRequest(a Application, r *http.Request, w http.ResponseWriter) {
+func ProcessRoutes(a Application, routes *Route, r *http.Request, w http.ResponseWriter) {
 	writer := NewWrapResponseWriter(w, r.ProtoMajor)
 
 	wctx := NewWebContext(a.NewContext(a.context), r, writer, makeRequestID())
 
-	if re := FindRoute(a.routes, r.URL.Path); re != nil {
+	if re := FindRoute(routes, r.URL.Path); re != nil {
 		// We may just be a parent node
 		wctx.Route = re
 
