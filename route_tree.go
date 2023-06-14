@@ -162,11 +162,16 @@ func FindRoute(root *Route, path string) *Route {
 		p = p[1:]
 	}
 
+	if p == "" {
+		return root
+	}
+
 	tokens := strings.Split(p, "/")
 
 	if len(tokens) == 0 {
 		return nil
 	}
+
 	return root.search(tokens)
 }
 
@@ -484,7 +489,7 @@ func ProcessRoutes(a Application, routes *Route, r *http.Request, w http.Respons
 		}
 	}
 
-	notFoundHandler := routes.notFoundHandler
+	notFoundHandler := a.routes.notFoundHandler
 	if notFoundHandler == nil {
 		notFoundHandler = func(c WebContext) { c.RenderStatus(http.StatusNotFound) }
 	}
@@ -519,16 +524,21 @@ func buildPath(route *Route, prefix string) []string {
 		}
 	}
 
-	for _, child := range route.Children {
-		ret = append(ret, buildPath(child, prefix)...)
-	}
-
 	if route.allowed != 0 {
 		for k, meth := range methods {
 			if route.allowed&meth != 0 {
-				ret = append(ret, fmt.Sprintf("[%s] %s", k, prefix))
+				p := prefix
+
+				if p == "" {
+					p = "/"
+				}
+				ret = append(ret, fmt.Sprintf("[%s] %s", k, p))
 			}
 		}
+	}
+
+	for _, child := range route.Children {
+		ret = append(ret, buildPath(child, prefix)...)
 	}
 
 	return ret
