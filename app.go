@@ -165,7 +165,7 @@ func NewApplication() Application {
 		cancel:    cancel,
 		routes: NewRoute().
 			mount("/", func(r *Route) {
-				r.Get("/routes", renderRoutes(r))
+				r.Get("/routes", RenderRoutes(r))
 			}),
 	}
 }
