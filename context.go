@@ -73,6 +73,7 @@ func (a Application) NewContext(parent context.Context) Context {
 	ctx := NewContext(parent)
 	ctx.root = a.routes
 	ctx.config = a.Config
+
 	ctx.SetLogger(a.Logger)
 
 	return ctx
@@ -123,7 +124,7 @@ func (c Context) Logger() *log.Entry {
 
 	// Always make sure we return a log
 	// this may be required for some applications
-	return log.NewEntry(log.New())
+	return NewLogger()
 }
 
 // Context returns the context

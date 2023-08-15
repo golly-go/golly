@@ -46,5 +46,6 @@ func LogLevel() log.Level {
 	case "fatal":
 		return log.FatalLevel
 	}
+
 	return log.InfoLevel
 }
