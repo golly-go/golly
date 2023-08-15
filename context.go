@@ -73,6 +73,8 @@ func (a Application) NewContext(parent context.Context) Context {
 	ctx := NewContext(parent)
 	ctx.root = a.routes
 	ctx.config = a.Config
+	ctx.SetLogger(a.Logger)
+
 	return ctx
 }
 
