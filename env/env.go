@@ -6,15 +6,16 @@ import (
 	"strings"
 )
 
-const envVarName = "APP_ENV"
+const (
+	envVarName = "APP_ENV"
 
-var (
-	currentENV  = ""
-	production  = "production"
-	staging     = "staging"
-	development = "development"
-	test        = "test"
+	Production  = "production"
+	Staging     = "staging"
+	Development = "development"
+	Test        = "test"
 )
+
+var currentENV = ""
 
 // CurrentENV returns the current environment of the application
 func CurrentENV() string {
@@ -27,21 +28,21 @@ func CurrentENV() string {
 	}
 
 	if strings.HasSuffix(os.Args[0], ".test") {
-		currentENV = "test"
+		currentENV = Test
 		return currentENV
 	}
 
 	if strings.Contains(os.Args[0], "/_test/") {
-		currentENV = "test"
+		currentENV = Test
 		return currentENV
 	}
 
 	if flag.Lookup("test.v") != nil {
-		currentENV = "test"
+		currentENV = Test
 		return currentENV
 	}
 
-	currentENV = "development"
+	currentENV = Development
 	return currentENV
 }
 
@@ -52,22 +53,22 @@ func Is(str string) bool {
 
 // IsTest returns if current env is test
 func IsTest() bool {
-	return Is(test)
+	return Is(Test)
 }
 
 // IsProduction returns true if we are running in production mode
 func IsProduction() bool {
-	return Is(production)
+	return Is(Production)
 }
 
 // IsDevelopment returns true if current env is development
 func IsDevelopment() bool {
-	return Is(development)
+	return Is(Development)
 }
 
 // IsStaging is staging returns true if current env is staging
 func IsStaging() bool {
-	return Is(staging)
+	return Is(Staging)
 }
 
 // IsDevelopmentOrTest returns true if we are development or test mode
