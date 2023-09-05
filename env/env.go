@@ -1,6 +1,7 @@
 package env
 
 import (
+	"flag"
 	"os"
 	"strings"
 )
@@ -25,7 +26,17 @@ func CurrentENV() string {
 		return currentENV
 	}
 
+	if strings.HasSuffix(os.Args[0], ".test") {
+		currentENV = "test"
+		return currentENV
+	}
+
 	if strings.Contains(os.Args[0], "/_test/") {
+		currentENV = "test"
+		return currentENV
+	}
+
+	if flag.Lookup("test.v") != nil {
 		currentENV = "test"
 		return currentENV
 	}
