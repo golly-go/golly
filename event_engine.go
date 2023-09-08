@@ -178,30 +178,3 @@ func (evl EventChain) search(tokens []string) *EventChain {
 	}
 	return nil
 }
-
-// func buildEvenChainTree(event EventChain, prefix string) []string {
-// 	ret := []string{}
-
-// 	if event.Name != "" {
-// 		if prefix != "" {
-// 			prefix = fmt.Sprintf("%s:%s", prefix, event.Name)
-// 		} else {
-// 			prefix = event.Name
-// 		}
-// 	}
-
-// 	for _, child := range event.children {
-// 		ret = append(ret, buildEvenChainTree(*child, prefix)...)
-// 	}
-
-// 	if len(event.handlers) > 0 {
-// 		for _, handler := range event.handlers {
-// 			ret = append(ret, fmt.Sprintf("[%s] %p", prefix, handler))
-// 		}
-// 	}
-// 	return ret
-// }
-
-// func printEventChain(evc EventChain) {
-// 	fmt.Printf("%s\n", strings.Join(buildEvenChainTree(evc, ""), "\n"))
-// }

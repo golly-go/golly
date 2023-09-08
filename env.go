@@ -1,4 +1,4 @@
-package env
+package golly
 
 import (
 	"flag"
@@ -18,8 +18,7 @@ const (
 var currentENV = ""
 
 // CurrentENV returns the current environment of the application
-// Deprecated: use golly.Env() functions
-func CurrentENV() string {
+func Env() string {
 	if currentENV != "" {
 		return currentENV
 	}
@@ -47,39 +46,28 @@ func CurrentENV() string {
 	return currentENV
 }
 
-// Is checks the current Environment against the current string
-// Deprecated: use golly.Env
-func Is(str string) bool {
-	return CurrentENV() == str
-}
-
 // IsTest returns if current env is test
-// Deprecated: use golly.IsTest()
 func IsTest() bool {
-	return Is(Test)
+	return Env() == Test
 }
 
 // IsProduction returns true if we are running in production mode
-// Deprecated: use golly.Env
 func IsProduction() bool {
-	return Is(Production)
+	return Env() == Production
 }
 
 // IsDevelopment returns true if current env is development
-// Deprecated: use golly.IsDevelopment() functions
 func IsDevelopment() bool {
-	return Is(Development)
+	return Env() == Development
 }
 
 // IsStaging is staging returns true if current env is staging
-// Deprecated: use golly.IsStaging() functions
 func IsStaging() bool {
-	return Is(Staging)
+	return Env() == Staging
 }
 
 // IsDevelopmentOrTest returns true if we are development or test mode
 // this is good for stubs
-// Deprecated: use golly.IsDevelopmentOrTest() functions
 func IsDevelopmentOrTest() bool {
 	return IsTest() || IsDevelopment()
 }

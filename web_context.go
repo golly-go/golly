@@ -5,7 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"strconv"
 	"time"
@@ -18,6 +18,7 @@ import (
 // this will allow us not to pass down Context
 type WebContext struct {
 	Context
+
 	requestID string
 	request   *http.Request
 	writer    http.ResponseWriter
@@ -103,8 +104,8 @@ func (wctx WebContext) Response() http.ResponseWriter {
 
 // RequestBody return the request body in a buffer
 func (wctx *WebContext) RequestBody() []byte {
-	b, _ := ioutil.ReadAll(wctx.request.Body)
-	wctx.request.Body = ioutil.NopCloser(bytes.NewBuffer(b))
+	b, _ := io.ReadAll(wctx.request.Body)
+	wctx.request.Body = io.NopCloser(bytes.NewBuffer(b))
 	return b
 }
 
