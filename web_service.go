@@ -130,8 +130,10 @@ func bindFromConfig(a Application, fullBindEnv, portEnv string) string {
 		bind = a.Config.GetString(portEnv)
 	}
 
-	if bind[0] != ':' {
-		bind = ":" + bind
+	if bind != "" {
+		if bind[0] != ':' {
+			bind = ":" + bind
+		}
 	}
 
 	return bind
