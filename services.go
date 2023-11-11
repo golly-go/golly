@@ -18,6 +18,10 @@ const (
 	EventAppServiceAfter = "service:terminated"
 )
 
+type ServiceEvent struct {
+	Service Service
+}
+
 var (
 	// Initialize Core Services Here
 	services = ServiceArray{&WebService{}, &StatusEndpointService{}}
@@ -34,17 +38,12 @@ type Service interface {
 	Run(Context) error
 	Running() bool
 	Quit()
-	IssueQuit(s Service)
 
 	// RunSideCar(Application, string) error
 }
 
 type ServiceBase struct {
 	lock sync.RWMutex
-}
-
-func (sb *ServiceBase) IssueQuit(s Service) {
-	s.Quit()
 }
 
 type ServiceArray []Service
@@ -135,6 +134,10 @@ func StartService(a Application, service Service) {
 	ctx.SetLogger(logger)
 
 	logger.Debugf("%s: started", service.Name())
+
+	Events().Dispatch(ctx, EventAppServiceBefore, ServiceEvent{
+		Service: service,
+	})
 
 	if err := service.Run(ctx); err != nil {
 		logger.Errorf("error when running service:%s (%v)", service.Name(), err)
