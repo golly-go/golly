@@ -39,6 +39,11 @@ func (status *StatusEndpointService) ServeHTTP(w http.ResponseWriter, r *http.Re
 
 func (status *StatusEndpointService) Run(ctx Context) error {
 	// We do not have a bind do not start
+	if ServiceShouldRun("web") {
+		ctx.Logger().Debugf("service %s skipped due to web service running", status.Name())
+		return nil
+	}
+
 	if status.bind != "" {
 		status.running = true
 

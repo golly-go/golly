@@ -76,7 +76,7 @@ func RunService(name string) {
 
 		AddServiceToRunListByName(name)
 
-		if !ServiceShouldRun("web-service") && !ServiceShouldRun("status-endpoint-service") {
+		if !ServiceShouldRun("web") && !ServiceShouldRun("status-endpoint-service") {
 			// Always start status endpoint service
 			// it will disable its self if not configured
 			go StartServiceByName(app, "status-endpoint-service")
