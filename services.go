@@ -21,6 +21,8 @@ const (
 var (
 	// Initialize Core Services Here
 	services = ServiceArray{&WebService{}, &StatusEndpointService{}}
+
+	servicesToRun = ServiceArray{}
 )
 
 // Service this holds a service definition for golly,
@@ -72,7 +74,9 @@ func RunService(name string) {
 			return startAllServices(app)
 		}
 
-		if !ServiceIsRunning("status-endpoint-service") {
+		AddServiceToRunListByName(name)
+
+		if !ServiceShouldRun("web-service") && !ServiceShouldRun("status-endpoint-service") {
 			// Always start status endpoint service
 			// it will disable its self if not configured
 			go StartServiceByName(app, "status-endpoint-service")
@@ -80,6 +84,18 @@ func RunService(name string) {
 
 		return StartServiceByName(app, name)
 	})
+}
+
+func AddServicesToRunList(services ...Service) {
+	lock.Lock()
+	servicesToRun = append(servicesToRun, services...)
+	lock.Unlock()
+}
+
+func AddServiceToRunListByName(serviceName string) {
+	if service := services.Find(serviceName); service != nil {
+		AddServicesToRunList(service)
+	}
 }
 
 func RegisterServices(svcs ...Service) {
@@ -90,7 +106,6 @@ func RegisterServices(svcs ...Service) {
 }
 
 func StartServiceByName(a Application, name string) error {
-
 	if service := services.Find(name); service != nil {
 		StartService(a, service)
 		return nil
@@ -124,6 +139,8 @@ func StartService(a Application, service Service) {
 }
 
 func startAllServices(a Application) error {
+	AddServicesToRunList(services...)
+
 	for _, service := range services {
 		go StartService(a, service)
 	}
@@ -139,7 +156,19 @@ func writeServices(writer io.Writer) {
 	}
 }
 
+func ServiceShouldRun(serviceName string) bool {
+	lock.RLock()
+	defer lock.RUnlock()
+
+	if service := servicesToRun.Find(serviceName); service != nil {
+		return true
+	}
+
+	return false
+}
+
 func ServiceIsRunning(serviceName string) bool {
+
 	if service := services.Find(serviceName); service != nil {
 		return service.Running()
 	}
