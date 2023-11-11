@@ -2,36 +2,66 @@ package golly
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"time"
 
 	"github.com/golly-go/golly/errors"
 )
 
+//**********************************************************************************************************************
+// StatusEndpointService
+// Used for Kubernetes to determine weather or not the service is ready
+//**********************************************************************************************************************
+
 type StatusEndpointService struct {
 	ServiceBase
-	WebService
+
+	running bool
+	server  *http.Server
+	bind    string
+
+	Route *Route
 }
 
-func (*StatusEndpointService) Name() string { return "status-endpoint-service" }
-func (w *StatusEndpointService) Initialize(a Application) error {
-	w.WebService.Initialize(a)
+func (*StatusEndpointService) Name() string         { return "status-endpoint-service" }
+func (status *StatusEndpointService) Running() bool { return status.running }
 
-	a.routes = NewRoute().Get("/status", func(wctx WebContext) {
-		wctx.RenderStatus(http.StatusOK)
-	})
+func (status *StatusEndpointService) Initialize(a Application) error {
+	status.bind = bindFromConfig(a, "status.bind", "status.port")
+	status.server = &http.Server{Addr: status.bind, Handler: status}
 
-	w.server = &http.Server{Addr: w.Bind, Handler: a}
 	return nil
 }
 
-func (w *StatusEndpointService) Run(ctx Context) error {
-	if ctx.config.GetBool("STANDALONE") {
-		w.WebService.Run(ctx)
+func (status *StatusEndpointService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusOK)
+}
+
+func (status *StatusEndpointService) Run(ctx Context) error {
+	// We do not have a bind do not start
+	if status.bind != "" {
+		status.running = true
+
+		if err := status.server.ListenAndServe(); err != http.ErrServerClosed {
+			return errors.WrapFatal(err)
+		}
 	}
 	return nil
 }
+
+func (status *StatusEndpointService) Quit() {
+	if status.running {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		status.running = false
+		status.server.Shutdown(ctx)
+	}
+}
+
+//**********************************************************************************************************************
+// WebService
+//**********************************************************************************************************************
 
 type WebService struct {
 	ServiceBase
@@ -55,11 +85,7 @@ func webServiceDefaultConfig(a Application) {
 
 func (w *WebService) Initialize(a Application) error {
 	if w.Bind == "" {
-		if port := a.Config.GetString("port"); port != "" {
-			w.Bind = fmt.Sprintf(":%s", port)
-		} else {
-			w.Bind = a.Config.GetString("bind")
-		}
+		w.Bind = bindFromConfig(a, "bind", "port")
 	}
 
 	w.server = &http.Server{
@@ -92,4 +118,21 @@ func (ws *WebService) Quit() {
 		ws.running = false
 		ws.server.Shutdown(ctx)
 	}
+}
+
+//**********************************************************************************************************************
+// Helper functions
+//**********************************************************************************************************************
+
+func bindFromConfig(a Application, fullBindEnv, portEnv string) string {
+	bind := a.Config.GetString(fullBindEnv)
+	if bind == "" {
+		bind = a.Config.GetString(portEnv)
+	}
+
+	if bind[0] != ':' {
+		bind = ":" + bind
+	}
+
+	return bind
 }

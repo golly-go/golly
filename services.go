@@ -20,10 +20,7 @@ const (
 
 var (
 	// Initialize Core Services Here
-	services = ServiceArray{
-		&WebService{},
-		&StatusEndpointService{},
-	}
+	services = ServiceArray{&WebService{}, &StatusEndpointService{}}
 )
 
 // Service this holds a service definition for golly,
@@ -37,34 +34,14 @@ type Service interface {
 	Quit()
 	IssueQuit(s Service)
 
-	RunSideCar(Application, string) error
+	// RunSideCar(Application, string) error
 }
 
 type ServiceBase struct {
-	sidecars []Service
-	lock     sync.RWMutex
-}
-
-func (sb *ServiceBase) RunSideCar(a Application, service string) error {
-	sb.lock.Lock()
-	defer sb.lock.Unlock()
-
-	if service := services.Find(service); service != nil {
-		go StartService(a, service)
-
-		sb.sidecars = append(sb.sidecars, service)
-	}
-
-	return errors.WrapGeneric(fmt.Errorf("service not found"))
+	lock sync.RWMutex
 }
 
 func (sb *ServiceBase) IssueQuit(s Service) {
-	for _, service := range sb.sidecars {
-		if service.Running() {
-			service.IssueQuit(s)
-		}
-	}
-
 	s.Quit()
 }
 
@@ -94,6 +71,13 @@ func RunService(name string) {
 		if strings.EqualFold(name, "all") {
 			return startAllServices(app)
 		}
+
+		if !ServiceIsRunning("status-endpoint-service") {
+			// Always start status endpoint service
+			// it will disable its self if not configured
+			go StartServiceByName(app, "status-endpoint-service")
+		}
+
 		return StartServiceByName(app, name)
 	})
 }
