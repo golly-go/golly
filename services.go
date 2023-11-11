@@ -105,7 +105,7 @@ func RegisterServices(svcs ...Service) {
 	services = append(services, svcs...)
 }
 
-func ScheduledServides() ServiceArray {
+func ScheduledServices() ServiceArray {
 	return servicesToRun
 }
 
