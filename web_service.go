@@ -48,7 +48,7 @@ func (status *StatusEndpointService) Run(ctx Context) error {
 			return errors.WrapFatal(err)
 		}
 	} else {
-		ctx.Logger().Infof("service %s not started no status.bind set", status.Name())
+		ctx.Logger().Infof("service %s skilled but marked as started due to no status.bind set", status.Name())
 	}
 
 	return nil
@@ -132,13 +132,7 @@ func (ws *WebService) Quit() {
 func bindFromConfig(a Application, fullBindEnv, portEnv string) string {
 	bind := a.Config.GetString(fullBindEnv)
 	if bind == "" {
-		bind = a.Config.GetString(portEnv)
-	}
-
-	if bind != "" {
-		if bind[0] != ':' {
-			bind = ":" + bind
-		}
+		bind = ":" + a.Config.GetString(portEnv)
 	}
 
 	return bind
