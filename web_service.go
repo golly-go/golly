@@ -42,6 +42,8 @@ func (status *StatusEndpointService) Run(ctx Context) error {
 	if status.bind != "" {
 		status.running = true
 
+		ctx.Logger().Infof("service %s running on %s", status.Name(), status.bind)
+
 		if err := status.server.ListenAndServe(); err != http.ErrServerClosed {
 			return errors.WrapFatal(err)
 		}
