@@ -47,7 +47,10 @@ func (status *StatusEndpointService) Run(ctx Context) error {
 		if err := status.server.ListenAndServe(); err != http.ErrServerClosed {
 			return errors.WrapFatal(err)
 		}
+	} else {
+		ctx.Logger().Infof("service %s not started no status.bind set", status.Name())
 	}
+
 	return nil
 }
 
