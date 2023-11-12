@@ -11,7 +11,6 @@ import (
 	"github.com/golly-go/golly/errors"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
-	"gorm.io/gorm"
 )
 
 type GollyAppFunc func(Application) error
@@ -48,9 +47,7 @@ var (
 // Application base application stuff such as configuration and database connection
 type Application struct {
 	Config *viper.Viper `json:"-"`
-	DB     *gorm.DB     `json:"-"`
-
-	Args []string `json:"args"`
+	Args   []string     `json:"args"`
 
 	Name      string `json:"name"`
 	Version   string `json:"version"`
