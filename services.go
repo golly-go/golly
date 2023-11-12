@@ -5,7 +5,6 @@ import (
 	"io"
 	"os"
 	"strings"
-	"sync"
 
 	"github.com/golly-go/golly/errors"
 )
@@ -42,14 +41,12 @@ type Service interface {
 	// RunSideCar(Application, string) error
 }
 
-type ServiceBase struct {
-	lock sync.RWMutex
-}
+type ServiceBase struct{}
 
 type ServiceArray []Service
 
 func (sa ServiceArray) Find(name string) Service {
-	for _, service := range services {
+	for _, service := range sa {
 		if strings.EqualFold(service.Name(), name) {
 			return service
 		}
