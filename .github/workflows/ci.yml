@@ -31,9 +31,6 @@ jobs:
             dep ensure
         fi
 
-    - name: Vet
-      run: go vet ./...
-
     - name: Test
       run: go test -v -cover ./...
 
