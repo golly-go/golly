@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/golly-go/golly/errors"
+	"github.com/golly-go/golly/utils"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -68,4 +69,125 @@ func TestEventDispatch(t *testing.T) {
 		})
 	})
 
+}
+
+// TestRemoveHandlerTableDriven tests the RemoveHandler function in a table-driven manner
+func TestRemoveHandlerTableDriven(t *testing.T) {
+	// Define a struct for test cases
+	type testCase struct {
+		name          string
+		setupHandlers []EventHandlerFunc
+		removeHandler EventHandlerFunc
+		expectedLen   int
+	}
+
+	// Define some handler functions for testing
+	handler1 := func(Context, Event) error { return nil }
+	handler2 := func(Context, Event) error { return nil }
+	handler3 := func(Context, Event) error { return nil }
+
+	// Create test cases
+	testCases := []testCase{
+		{
+			name:          "Remove handler1 from two handlers",
+			setupHandlers: []EventHandlerFunc{handler1, handler2},
+			removeHandler: handler1,
+			expectedLen:   1,
+		},
+		{
+			name:          "Remove handler2 from three handlers",
+			setupHandlers: []EventHandlerFunc{handler1, handler2, handler3},
+			removeHandler: handler2,
+			expectedLen:   2,
+		},
+		{
+			name:          "Remove non-existent handler from two handlers",
+			setupHandlers: []EventHandlerFunc{handler1, handler2},
+			removeHandler: handler3,
+			expectedLen:   2,
+		},
+	}
+
+	// Run test cases
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Create an EventChain and set up handlers
+			eventChain := &EventChain{}
+			eventChain.handlers = tc.setupHandlers
+
+			// Remove the specified handler
+			eventChain.remove(tc.removeHandler)
+
+			// Assert the results
+			assert.Len(t, eventChain.handlers, tc.expectedLen, tc.name)
+		})
+	}
+}
+
+func TestEventChain_Resolve(t *testing.T) {
+	// Define a struct for test cases
+	type testCase struct {
+		name         string
+		initialChain func(*EventChain) *EventChain
+		path         string
+		expectedName string
+	}
+
+	// Define test cases
+	testCases := []testCase{
+		{
+			name: "Resolve single level",
+			initialChain: func(evl *EventChain) *EventChain {
+				return evl.On("child1", NoOpEventHandler)
+			},
+			path:         "child1",
+			expectedName: "child1",
+		},
+		{
+			name: "Resolve multiple levels",
+			initialChain: func(evl *EventChain) *EventChain {
+				return evl.On("grandchild1:child1", NoOpEventHandler)
+			},
+			path:         "grandchild1:child1",
+			expectedName: "child1",
+		},
+		{
+			name: "Resolve with namespace levels",
+			initialChain: func(evl *EventChain) *EventChain {
+				return evl.Namespace("grandchild1").On("child1", NoOpEventHandler)
+			},
+			path:         "grandchild1:child1",
+			expectedName: "child1",
+		},
+		{
+			name: "Resolve multiple levels",
+			initialChain: func(evl *EventChain) *EventChain {
+				return evl.On("grandchild1:child1", NoOpEventHandler)
+			},
+			path:         "grandchild1",
+			expectedName: "grandchild1",
+		},
+		{
+			name:         "Resolve empty path",
+			path:         "",
+			expectedName: "",
+		},
+		// More test cases can be added here
+	}
+
+	// Run test cases
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			evc := &EventChain{}
+			if tc.initialChain != nil {
+				evc = tc.initialChain(evc)
+			}
+
+			// Resolve the path
+			resolvedChain := evc.resolve(tc.path)
+
+			// Assert that the resolved chain has the correct name
+			assert.Equal(t, utils.WildcardString(tc.expectedName), resolvedChain.Name, tc.name)
+		})
+	}
 }

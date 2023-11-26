@@ -15,12 +15,19 @@ const (
 )
 
 var (
+	// Golly global event chain
+	// going to be used for Reactive design instead of programatic routing
+	// will be used to replace out direct connection to the route tree and allow
+	// us to call before::route and after::route events
 	eventchain = &EventChain{}
 )
 
 type EventHandlerFunc func(Context, Event) error
 
-type Event interface{}
+// Event holds any type use .(type) to get the underlying type
+// this is a bit of a hack but it works
+// TODO: Create a clean simple interface for this
+type Event any
 
 // Not sure if I like this event engine 100%
 // but will come back around and refactor it later
@@ -35,6 +42,10 @@ type EventChain struct {
 
 func Events() *EventChain {
 	return eventchain
+}
+
+func NoOpEventHandler(ctx Context, evt Event) error {
+	return nil
 }
 
 // FindChildByToken find a child given a route token
@@ -99,28 +110,53 @@ func (evl *EventChain) emit(ctx Context, evt Event) error {
 	return nil
 }
 
-func (evl *EventChain) Add(path string, handler EventHandlerFunc) *EventChain {
-	evl.add(path, handler)
+func (evl *EventChain) On(path string, handler EventHandlerFunc) *EventChain {
+	evl.resolve(path).add(handler) // returns the new node
 	return evl
 }
 
-func (evl *EventChain) Namespace(path string) *EventChain {
-	return evl.add(path, nil)
+func (evl *EventChain) Delete(path string, handler EventHandlerFunc) *EventChain {
+	evl.resolve(path).remove(handler)
+	return evl
 }
 
-func (evl *EventChain) add(path string, handler EventHandlerFunc) *EventChain {
-	e := evl
+// @deprecated use Delete for consistency
+func (evl *EventChain) Del(path string, handler EventHandlerFunc) *EventChain {
+	return evl.Delete(path, handler)
+}
 
-	tokens := eventPathTokens(path)
-	lng := len(tokens)
+// @deprecated use On for consistency
+func (evl *EventChain) Add(path string, handler EventHandlerFunc) *EventChain {
+	return evl.On(path, handler)
+}
 
-	if lng == 0 {
-		if handler != nil {
-			e.handlers = append(e.handlers, handler)
+// Namespace creates a namespaced events chain so you dont need todo namespace:event over and over
+// you can just do Namespace("namespace").On("event", handler)
+// shorthand for evl.On("namespace", nil)
+func (evl *EventChain) Namespace(path string) *EventChain {
+	return evl.resolve(path).add(nil)
+}
+
+func (evl *EventChain) remove(handlerToRemove EventHandlerFunc) *EventChain {
+	var newHandlers []EventHandlerFunc
+
+	for _, handler := range evl.handlers {
+		if reflect.ValueOf(handler) != reflect.ValueOf(handlerToRemove) {
+			newHandlers = append(newHandlers, handler)
 		}
-		return e
 	}
 
+	evl.handlers = newHandlers
+	return evl
+}
+
+func (evl *EventChain) resolve(path string) *EventChain {
+	tokens := eventPathTokens(path)
+	if len(tokens) == 0 {
+		return evl
+	}
+
+	e := evl
 	for _, token := range tokens {
 		if node := e.findChild(token); node != nil {
 			e = node
@@ -131,29 +167,12 @@ func (evl *EventChain) add(path string, handler EventHandlerFunc) *EventChain {
 			e = node
 		}
 	}
-
-	if handler != nil {
-		e.handlers = append(e.handlers, handler)
-	}
-
 	return e
 }
 
-func (evl *EventChain) Del(path string, handler EventHandlerFunc) *EventChain {
-	e := evl
-
-	tokens := eventPathTokens(path)
-
-	for _, token := range tokens {
-		if node := e.findChild(token); node != nil {
-			e = node
-		}
-	}
-
-	for pos, h := range e.handlers {
-		if reflect.ValueOf(handler).Pointer() != reflect.ValueOf(h).Pointer() {
-			fmt.Printf("Found at %d", pos)
-		}
+func (evl *EventChain) add(handler EventHandlerFunc) *EventChain {
+	if handler != nil {
+		evl.handlers = append(evl.handlers, handler)
 	}
 
 	return evl
