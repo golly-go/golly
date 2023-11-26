@@ -7,8 +7,6 @@ import (
 	"regexp"
 	"strings"
 	"sync/atomic"
-
-	"github.com/golly-go/golly/env"
 )
 
 type methodType uint
@@ -500,7 +498,7 @@ func ProcessRoutes(a Application, routes *Route, r *http.Request, w http.Respons
 
 func RenderRoutes(routes *Route) HandlerFunc {
 	return func(c WebContext) {
-		if !env.IsDevelopment() {
+		if !IsDevelopment() {
 			c.RenderStatus(http.StatusNotFound)
 		}
 

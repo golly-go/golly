@@ -3,7 +3,6 @@ package golly
 import (
 	"os"
 
-	"github.com/golly-go/golly/env"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -12,7 +11,7 @@ func NewLogger() *log.Entry {
 	var formatter log.Formatter = &log.JSONFormatter{}
 	level := LogLevel()
 
-	if env.IsDevelopment() {
+	if IsDevelopmentOrTest() {
 		level = log.DebugLevel
 		formatter = &log.TextFormatter{}
 	}
@@ -29,7 +28,7 @@ func NewLogger() *log.Entry {
 	return l.WithFields(log.Fields{
 		"service": appName,
 		"version": Version(),
-		"env":     env.CurrentENV(),
+		"env":     Env(),
 	})
 }
 
