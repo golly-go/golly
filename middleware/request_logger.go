@@ -19,7 +19,7 @@ func RequestLogger(next golly.HandlerFunc) golly.HandlerFunc {
 				return
 			}
 
-			elapsed := time.Now().Sub(t)
+			elapsed := time.Since(t)
 			status := writer.Status()
 
 			logger := wctx.Logger().WithFields(logrus.Fields{
