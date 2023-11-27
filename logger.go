@@ -11,7 +11,7 @@ func NewLogger() *log.Entry {
 	var formatter log.Formatter = &log.JSONFormatter{}
 	level := LogLevel()
 
-	if IsDevelopmentOrTest() {
+	if Env().IsDevelopmentOrTest() {
 		level = log.DebugLevel
 		formatter = &log.TextFormatter{}
 	}

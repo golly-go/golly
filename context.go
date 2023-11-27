@@ -26,12 +26,20 @@ type Context struct {
 	config  *viper.Viper
 
 	runmode string
+	env     EnvName
 
 	root *Route
 }
 
 func (c *Context) RunMode() string {
 	return c.runmode
+}
+
+func (c *Context) Env() EnvName {
+	if c.env == "" {
+		return Env()
+	}
+	return c.env
 }
 
 // TODO Implement
@@ -71,6 +79,8 @@ func (c *Context) Config() *viper.Viper {
 
 func (a Application) NewContext(parent context.Context) Context {
 	ctx := NewContext(parent)
+
+	ctx.env = a.Env
 	ctx.root = a.routes
 	ctx.config = a.Config
 

@@ -15,15 +15,17 @@ const (
 	Test        = "test"
 )
 
-var currentENV = ""
+type EnvName string
+
+var currentENV EnvName = ""
 
 // CurrentENV returns the current environment of the application
-func Env() string {
+func Env() EnvName {
 	if currentENV != "" {
 		return currentENV
 	}
 
-	if currentENV = os.Getenv(envVarName); currentENV != "" {
+	if currentENV = EnvName(os.Getenv(envVarName)); currentENV != "" {
 		return currentENV
 	}
 
@@ -47,27 +49,27 @@ func Env() string {
 }
 
 // IsTest returns if current env is test
-func IsTest() bool {
-	return Env() == Test
+func (env EnvName) IsTest() bool {
+	return env == Test
 }
 
 // IsProduction returns true if we are running in production mode
-func IsProduction() bool {
-	return Env() == Production
+func (env EnvName) IsProduction() bool {
+	return env == Production
 }
 
 // IsDevelopment returns true if current env is development
-func IsDevelopment() bool {
-	return Env() == Development
+func (env EnvName) IsDevelopment() bool {
+	return env == Development
 }
 
 // IsStaging is staging returns true if current env is staging
-func IsStaging() bool {
-	return Env() == Staging
+func (env EnvName) IsStaging() bool {
+	return env == Staging
 }
 
 // IsDevelopmentOrTest returns true if we are development or test mode
 // this is good for stubs
-func IsDevelopmentOrTest() bool {
-	return IsTest() || IsDevelopment()
+func (env EnvName) IsDevelopmentOrTest() bool {
+	return env.IsTest() || env.IsDevelopment()
 }

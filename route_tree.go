@@ -498,7 +498,7 @@ func ProcessRoutes(a Application, routes *Route, r *http.Request, w http.Respons
 
 func RenderRoutes(routes *Route) HandlerFunc {
 	return func(c WebContext) {
-		if !IsDevelopment() {
+		if !c.Env().IsDevelopment() {
 			c.RenderStatus(http.StatusNotFound)
 		}
 

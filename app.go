@@ -46,8 +46,8 @@ var (
 
 // Application base application stuff such as configuration and database connection
 type Application struct {
-	Config *viper.Viper `json:"-"`
-	Args   []string     `json:"args"`
+	Env  EnvName  `json:"env"`
+	Args []string `json:"args"`
 
 	Name      string `json:"name"`
 	Version   string `json:"version"`
@@ -56,6 +56,7 @@ type Application struct {
 	Logger    *log.Entry
 	StartedAt time.Time
 
+	Config  *viper.Viper `json:"-"`
 	routes  *Route
 	context context.Context
 	cancel  context.CancelFunc
@@ -153,6 +154,7 @@ func NewApplication() Application {
 
 	return Application{
 		Version:   Version(),
+		Env:       Env(),
 		Name:      appName,
 		Config:    initConfig(),
 		Logger:    NewLogger(),
