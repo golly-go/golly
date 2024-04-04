@@ -105,6 +105,10 @@ func ScheduledServices() ServiceArray {
 	return servicesToRun
 }
 
+func RegisteredServices() ServiceArray {
+	return services
+}
+
 func StartServiceByName(a Application, name string) error {
 	if service := services.Find(name); service != nil {
 		StartService(a, service)
