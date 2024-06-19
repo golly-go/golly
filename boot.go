@@ -109,3 +109,21 @@ func handleSignals(app *Application) {
 		app.Shutdown(NewContext(app.context))
 	}(sig)
 }
+
+type GollyStartOptions struct {
+	Preboots     []PrebootFunc
+	Initializers []GollyAppFunc
+	CLICommands  []*cobra.Command
+}
+
+func Start(opts GollyStartOptions) {
+	rootCMD := cobra.Command{}
+	rootCMD.AddCommand(opts.CLICommands...)
+
+	RegisterPreboot(opts.Preboots...)
+	RegisterInitializer(opts.Initializers...)
+
+	if err := rootCMD.Execute(); err != nil {
+		panic(err)
+	}
+}
