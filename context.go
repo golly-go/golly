@@ -18,7 +18,8 @@ const (
 )
 
 type Context struct {
-	data *sync.Map
+	loader *DataLoader
+	data   *sync.Map
 
 	cancel context.CancelFunc
 
@@ -67,14 +68,22 @@ func NewContext(ctx context.Context) Context {
 	c, cancel := context.WithCancel(ctx)
 
 	return Context{
+		loader:  NewDataLoader(),
 		context: c,
 		cancel:  cancel,
-		data:    &sync.Map{},
+		// We probably want to deprecate this
+		// as both it and the dataloader are not necessary
+
+		data: &sync.Map{},
 	}
 }
 
 func (c *Context) Config() *viper.Viper {
 	return c.config
+}
+
+func (c *Context) Loader() *DataLoader {
+	return c.loader
 }
 
 func (a Application) NewContext(parent context.Context) Context {
@@ -141,3 +150,5 @@ func (c Context) Logger() *log.Entry {
 func (c Context) Context() context.Context {
 	return c.context
 }
+
+var _ context.Context = &Context{}
