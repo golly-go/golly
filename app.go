@@ -60,6 +60,8 @@ type Application struct {
 	routes  *Route
 	context context.Context
 	cancel  context.CancelFunc
+
+	stopping bool
 }
 
 func (a Application) GoContext() context.Context {
@@ -83,6 +85,16 @@ func SetGlobalTimezone(tz string) error {
 }
 
 func (a Application) Shutdown(ctx Context) {
+	lock.Lock()
+
+	if a.stopping {
+		lock.Unlock()
+		return
+	}
+
+	a.stopping = true
+	lock.Unlock()
+
 	defer a.cancel()
 	// Dispatch is blocking
 	Events().Dispatch(ctx, EventAppShutdown, AppEvent{a})

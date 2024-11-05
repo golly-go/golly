@@ -88,6 +88,8 @@ func Boot(f func(Application) error) error {
 		return err
 	}
 
+	defer a.Shutdown(NewContext(a.context))
+
 	a.Logger.Infof("Good golly were booting %s (%s)", a.Name, a.Version)
 
 	if err := f(a); err != nil {
@@ -126,4 +128,5 @@ func Start(opts GollyStartOptions) {
 	if err := rootCMD.Execute(); err != nil {
 		panic(err)
 	}
+
 }
