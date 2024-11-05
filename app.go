@@ -84,7 +84,7 @@ func SetGlobalTimezone(tz string) error {
 	return nil
 }
 
-func (a Application) Shutdown(ctx Context) {
+func (a *Application) Shutdown(ctx Context) {
 	lock.Lock()
 
 	if a.stopping {
@@ -97,7 +97,7 @@ func (a Application) Shutdown(ctx Context) {
 
 	defer a.cancel()
 	// Dispatch is blocking
-	Events().Dispatch(ctx, EventAppShutdown, AppEvent{a})
+	Events().Dispatch(ctx, EventAppShutdown, AppEvent{*a})
 }
 
 // RegisterInitializer registers a function to be called prior to boot
