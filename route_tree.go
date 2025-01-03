@@ -243,7 +243,7 @@ func (re *Route) ServeHTTP(ctx WebContext) {
 		}
 	}
 
-	chain(ctx.root.middleware, func(wc WebContext) {
+	chain(ctx.route.middleware, func(wc WebContext) {
 		wc.AddHeader("Allow", strings.Join(re.Allow(), ","))
 		wc.RenderStatus(405)
 	})(ctx)

@@ -123,6 +123,12 @@ func TestCompact(t *testing.T) {
 			input:    []*int{func() *int { v := 1; return &v }(), nil, func() *int { v := 2; return &v }()},
 			expected: []*int{func() *int { v := 1; return &v }(), func() *int { v := 2; return &v }()},
 		},
+		{
+			name:     "Remove nil elements",
+			input:    []*int{func() *int { v := 1; return &v }(), nil, func() *int { v := 2; return &v }()},
+			expected: []*int{func() *int { v := 1; return &v }(), func() *int { v := 2; return &v }()},
+		},
+
 		// Add more test cases as needed
 	}
 

@@ -27,7 +27,9 @@ func Compact[T any](list []T) []T {
 	for _, x := range list {
 		var c interface{} = x
 
-		if c == nil || (reflect.ValueOf(c).Kind() == reflect.Ptr && reflect.ValueOf(c).IsNil()) {
+		val := reflect.ValueOf(c)
+
+		if c == nil || val.Kind() == reflect.Ptr && val.IsNil() {
 			continue
 		}
 

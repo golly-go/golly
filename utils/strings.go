@@ -2,12 +2,13 @@ package utils
 
 import (
 	"crypto/sha512"
+	"errors"
 	"fmt"
+	"regexp"
+	"strings"
 
 	"github.com/google/uuid"
 )
-
-const toLower = 'a' - 'A'
 
 // RandomHex returns a random generated hex from rand package
 func RandomHex(n int) (string, error) {
@@ -88,4 +89,17 @@ func Compair(str1, str2 string) bool {
 
 	}
 	return true
+}
+
+var (
+	ErrUnsupportedDataType = errors.New("unsupported data type")
+
+	matchFirstCap = regexp.MustCompile("(.)([A-Z][a-z]+)")
+	matchAllCap   = regexp.MustCompile("([a-z0-9])([A-Z])")
+)
+
+func SnakeCase(str string) string {
+	snake := matchFirstCap.ReplaceAllString(str, "${1}_${2}")
+	snake = matchAllCap.ReplaceAllString(snake, "${1}_${2}")
+	return strings.ToLower(snake)
 }

@@ -34,14 +34,13 @@ type WebContext struct {
 
 // NewWebContext returns a new web context
 func NewWebContext(gctx Context, r *http.Request, w http.ResponseWriter, requestID string) WebContext {
-	req := r.WithContext(gctx.context) // cancelable context
-	gctx.context = req.Context()
+	req := r.WithContext(gctx) // cancelable context
 
-	gctx.SetLogger(gctx.Logger().WithFields(webLogParams(requestID, r)))
+	gctx.SetLogger(gctx.Logger().WithFields(webLogParams(requestID, req)))
 
 	return WebContext{
 		Context:   gctx,
-		request:   r,
+		request:   req,
 		writer:    w,
 		requestID: requestID,
 	}

@@ -51,17 +51,20 @@ func AddAppCommands(commands []*cobra.Command) {
 	AppCommands = append(AppCommands, commands...)
 }
 
+// Run application lifecycle
 func Run(fn GollyAppFunc) {
 	if err := Boot(fn); err != nil {
-		errorString := err.Error()
-
-		if e, ok := err.(errors.Error); ok {
-			errorString = fmt.Sprintf("(%s) %s", e.Error(), e.Caller)
-		}
-
-		fmt.Printf("Application Error: %s", errorString)
+		fmt.Printf("Application Error: %s\n", formatError(err))
 		os.Exit(1)
 	}
+}
+
+// Format error output
+func formatError(err error) string {
+	if e, ok := err.(errors.Error); ok {
+		return fmt.Sprintf("(%s) %s", e.Error(), e.Caller)
+	}
+	return err.Error()
 }
 
 func runPreboot() error {
