@@ -190,15 +190,20 @@ func (a Application) Initialize() error {
 
 	Events().Dispatch(ctx, EventAppBeforeInitalize, AppEvent{a})
 
-	for _, initializer := range initializers {
-		if err := initializer(a); err != nil {
-			return errors.WrapFatal(err)
-		}
-	}
+	a.RunInitializers(initializers...)
 
 	return errors.WrapFatal(
 		Events().Dispatch(ctx, EventAppInitialize, AppEvent{a}),
 	)
+}
+
+func (a Application) RunInitializers(intializers ...GollyAppFunc) error {
+	for _, fnc := range intializers {
+		if err := fnc(a); err != nil {
+			return errors.WrapFatal(err)
+		}
+	}
+	return nil
 }
 
 func (a Application) ServeHTTP(w http.ResponseWriter, r *http.Request) {
