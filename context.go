@@ -2,6 +2,7 @@ package golly
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -25,6 +26,11 @@ type Context struct {
 	config *viper.Viper
 	env    EnvName
 
+	// backwards compat for now
+	// changing this broke a ton of things
+	// will update in 0.5 golly
+	internal context.Context
+
 	route *Route
 
 	done     chan struct{}
@@ -32,8 +38,19 @@ type Context struct {
 	deadline atomic.Value // Atomic time.Time storag
 }
 
+// Env returns the environment name associated with the context.
+func (c Context) Env() EnvName {
+	if c.env == "" {
+		return EnvName("default")
+	}
+	return c.env
+}
+
 // Deadline returns the time when this context will be canceled, if any.
 func (c Context) Deadline() (time.Time, bool) {
+	if d, ok := c.internal.Deadline(); ok {
+		return d, true
+	}
 	v := c.deadline.Load()
 	if v == nil {
 		return time.Time{}, false
@@ -43,11 +60,14 @@ func (c Context) Deadline() (time.Time, bool) {
 
 // Done returns a channel that is closed when this context is canceled.
 func (c Context) Done() <-chan struct{} {
-	return c.done
+	return c.internal.Done()
 }
 
 // Err returns the error associated with this context, if any.
 func (c Context) Err() error {
+	if err := c.internal.Err(); err != nil {
+		return err
+	}
 	v := c.err.Load()
 	if v == nil {
 		return nil
@@ -57,6 +77,9 @@ func (c Context) Err() error {
 
 // Value returns the value associated with this context for the given key.
 func (c Context) Value(key interface{}) interface{} {
+	if val := c.internal.Value(key); val != nil {
+		return val
+	}
 	if val, ok := c.data.Load(key); ok {
 		return val
 	}
@@ -64,13 +87,19 @@ func (c Context) Value(key interface{}) interface{} {
 }
 
 // Cancel cancels the context, closing the done channel and setting the error.
-func (c Context) Cancel(err error) {
-	select {
-	case <-c.done:
-		// Already closed
-	default:
-		close(c.done)
-		c.err.Store(err)
+func (c *Context) Cancel(err error) {
+	if err == nil {
+		err = errors.New("context canceled")
+	}
+	c.cancel() // Cancel the internal context
+	if c.done != nil {
+		select {
+		case <-c.done:
+			// Already closed
+		default:
+			close(c.done)
+			c.err.Store(err)
+		}
 	}
 }
 
@@ -141,9 +170,14 @@ func (c Context) Logger() *log.Entry {
 	return NewLogger()
 }
 
+func (c Context) Context() context.Context {
+	return c
+}
+
 func (a Application) NewContext(parent context.Context) Context {
 	ctx := NewContext(parent)
 
+	ctx.internal = parent
 	ctx.env = a.Env
 	ctx.route = a.routes
 	ctx.config = a.Config
