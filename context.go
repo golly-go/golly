@@ -30,6 +30,7 @@ type Context struct {
 	// changing this broke a ton of things
 	// will update in 0.5 golly
 	internal context.Context
+	cancel   context.CancelFunc
 
 	route *Route
 
@@ -91,6 +92,7 @@ func (c *Context) Cancel(err error) {
 	if err == nil {
 		err = errors.New("context canceled")
 	}
+
 	c.cancel() // Cancel the internal context
 	if c.done != nil {
 		select {
@@ -112,10 +114,6 @@ func (c *Context) Set(key interface{}, value interface{}) Context {
 // Get get a value from the context
 func (c *Context) Get(key interface{}) (interface{}, bool) {
 	return c.data.Load(key)
-}
-
-func (c Context) Env() EnvName {
-	return c.env
 }
 
 // NewContext returns a new application context provided some basic information
@@ -175,16 +173,19 @@ func (c Context) Context() context.Context {
 }
 
 func (a Application) NewContext(parent context.Context) Context {
-	ctx := NewContext(parent)
+	ctx, cancel := context.WithCancel(context.Background())
 
-	ctx.internal = parent
-	ctx.env = a.Env
-	ctx.route = a.routes
-	ctx.config = a.Config
+	gctx := NewContext(parent)
 
-	ctx.SetLogger(a.Logger)
+	gctx.cancel = cancel
+	gctx.internal = ctx
+	gctx.env = a.Env
+	gctx.route = a.routes
+	gctx.config = a.Config
 
-	return ctx
+	gctx.SetLogger(a.Logger)
+
+	return gctx
 }
 
 var _ context.Context = Context{}
