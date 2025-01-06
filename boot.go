@@ -7,12 +7,19 @@ import (
 	"syscall"
 )
 
-func boot(f func(*Application) error) error {
+func boot(f AppFunc) error {
 	a := &Application{}
 
 	// a := NewApp()
-
 	signals(a)
+
+	{
+		v, err := initConfig(a)
+		if err != nil {
+			return err
+		}
+		a.config = v
+	}
 
 	if err := a.initialize(); err != nil {
 		return err
@@ -29,7 +36,7 @@ func boot(f func(*Application) error) error {
 	return nil
 }
 
-func signals(app *Application) {
+func signals(*Application) {
 	sig := make(chan os.Signal, 1)
 
 	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
@@ -42,7 +49,7 @@ func signals(app *Application) {
 }
 
 // Run application lifecycle
-func Run(fn GollyAppFunc) {
+func Run(fn AppFunc) {
 	if err := boot(fn); err != nil {
 		fmt.Printf("Application Error: %s\n", err)
 		os.Exit(1)

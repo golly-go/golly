@@ -8,6 +8,7 @@ import (
 )
 
 type Context struct {
+	loader *DataLoader
 
 	// context.Context implementation
 	parent   context.Context

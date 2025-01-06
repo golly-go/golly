@@ -238,3 +238,62 @@ func TestPropagateCancel(t *testing.T) {
 
 	assert.Equal(t, context.Canceled, child.Err())
 }
+
+// benchmarks
+
+// Benchmark for context value retrieval.
+func BenchmarkContextValue(b *testing.B) {
+	ctx := WithValue(context.Background(), "key", "value")
+
+	b.Run("BenchmarkContextValue", func(b *testing.B) {
+		b.ReportAllocs()
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			_ = ctx.Value("key")
+		}
+	})
+}
+
+// Benchmark for context cancellation (parent cancel).
+func BenchmarkContextCancel(b *testing.B) {
+	parent, cancel := WithCancel(context.Background())
+	defer cancel()
+	_, childCancel := WithCancel(parent)
+	defer childCancel()
+
+	b.Run("BenchmarkContextCancel", func(b *testing.B) {
+		b.ReportAllocs()
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			cancel()
+		}
+	})
+}
+
+// Benchmark for deadline propagation.
+func BenchmarkContextWithDeadline(b *testing.B) {
+	deadline := time.Now().Add(10 * time.Millisecond)
+	parent := context.Background()
+
+	b.Run("BenchmarkContextWithDeadline", func(b *testing.B) {
+		b.ReportAllocs()
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			_, cancel := WithDeadline(parent, deadline)
+			cancel()
+		}
+	})
+}
+
+// Benchmark for context value propagation.
+func BenchmarkContextWithValuePropagation(b *testing.B) {
+	parent := context.Background()
+
+	b.Run("BenchmarkContextWithValuePropagation", func(b *testing.B) {
+		b.ReportAllocs()
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			_ = WithValue(parent, "key", i)
+		}
+	})
+}
