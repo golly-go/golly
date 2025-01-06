@@ -223,27 +223,27 @@ func BenchmarkFlushWriter(b *testing.B) {
 }
 
 // Benchmark for hijackWriter.
-func BenchmarkHijackWriter(b *testing.B) {
-	benchmarks := []struct {
-		name string
-	}{
-		{"hijack writer"},
-	}
+// func BenchmarkHijackWriter(b *testing.B) {
+// 	benchmarks := []struct {
+// 		name string
+// 	}{
+// 		{"hijack writer"},
+// 	}
 
-	for _, bm := range benchmarks {
-		hijackableRec := &HijackableResponseWriter{ResponseWriter: httptest.NewRecorder()}
-		hw := hijackWriter{basicWriter{ResponseWriter: hijackableRec}}
+// 	for _, bm := range benchmarks {
+// 		hijackableRec := &HijackableResponseWriter{ResponseWriter: httptest.NewRecorder()}
+// 		hw := hijackWriter{basicWriter{ResponseWriter: hijackableRec}}
 
-		b.Run(bm.name, func(b *testing.B) {
+// 		b.Run(bm.name, func(b *testing.B) {
 
-			b.ReportAllocs()
-			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
-				_, _, _ = hw.Hijack()
-			}
-		})
-	}
-}
+// 			b.ReportAllocs()
+// 			b.ResetTimer()
+// 			for i := 0; i < b.N; i++ {
+// 				_, _, _ = hw.Hijack()
+// 			}
+// 		})
+// 	}
+// }
 
 // Benchmark for httpFancyWriter.
 func BenchmarkHttpFancyWriter(b *testing.B) {
