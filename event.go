@@ -31,9 +31,7 @@ func (em *EventManager) Register(name string, fnc EventFunc) {
 func (em *EventManager) Dispatch(gctx *Context, data any) {
 	eventName := TypeNoPtr(data).String()
 
-	gctx.
-		logger.
-		Tracef("dispatching event %s", eventName)
+	Logger().Tracef("dispatching event %s", eventName)
 
 	// Fast path: check existence without locking
 	em.mu.RLock()

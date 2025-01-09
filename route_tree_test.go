@@ -359,23 +359,23 @@ func BenchmarkRouteRequest(b *testing.B) {
 		setup   func(*Route)
 		request *http.Request
 	}{
-		// {
-		// 	name: "Route found with GET method",
-		// 	setup: func(root *Route) {
-		// 		root.Get("/test", func(ctx *WebContext) {
-		// 			ctx.writer.WriteHeader(http.StatusOK)
-		// 			_, _ = ctx.writer.Write([]byte("GET /test"))
-		// 		})
-		// 	},
-		// 	request: httptest.NewRequest(http.MethodGet, "/test", nil),
-		// },
-		// {
-		// 	name: "Route not found",
-		// 	setup: func(root *Route) {
-		// 		// No routes are added
-		// 	},
-		// 	request: httptest.NewRequest(http.MethodGet, "/not-found", nil),
-		// },
+		{
+			name: "Route found with GET method",
+			setup: func(root *Route) {
+				root.Get("/test", func(ctx *WebContext) {
+					ctx.writer.WriteHeader(http.StatusOK)
+					_, _ = ctx.writer.Write([]byte("GET /test"))
+				})
+			},
+			request: httptest.NewRequest(http.MethodGet, "/test", nil),
+		},
+		{
+			name: "Route not found",
+			setup: func(root *Route) {
+				// No routes are added
+			},
+			request: httptest.NewRequest(http.MethodGet, "/not-found", nil),
+		},
 		{
 			name: "Method not allowed",
 			setup: func(root *Route) {
@@ -386,35 +386,35 @@ func BenchmarkRouteRequest(b *testing.B) {
 			},
 			request: httptest.NewRequest(http.MethodPost, "/test", nil),
 		},
-		// {
-		// 	name: "Route with middleware",
-		// 	setup: func(root *Route) {
-		// 		root.Use(func(next HandlerFunc) HandlerFunc {
-		// 			return func(ctx *WebContext) {
-		// 				next(ctx)
-		// 			}
-		// 		})
-		// 		root.Get("/test", func(ctx *WebContext) {
-		// 			ctx.writer.WriteHeader(http.StatusOK)
-		// 			_, _ = ctx.writer.Write([]byte("GET /test"))
-		// 		})
-		// 	},
-		// 	request: httptest.NewRequest(http.MethodGet, "/test", nil),
-		// },
-		// {
-		// 	name: "CORS preflight request",
-		// 	setup: func(root *Route) {
-		// 		root.Get("/test", func(ctx *WebContext) {
-		// 			ctx.writer.WriteHeader(http.StatusOK)
-		// 			_, _ = ctx.writer.Write([]byte("GET /test"))
-		// 		})
-		// 	},
-		// 	request: func() *http.Request {
-		// 		req := httptest.NewRequest(http.MethodOptions, "/test", nil)
-		// 		req.Header.Set("Access-Control-Request-Method", http.MethodGet)
-		// 		return req
-		// 	}(),
-		// },
+		{
+			name: "Route with middleware",
+			setup: func(root *Route) {
+				root.Use(func(next HandlerFunc) HandlerFunc {
+					return func(ctx *WebContext) {
+						next(ctx)
+					}
+				})
+				root.Get("/test", func(ctx *WebContext) {
+					ctx.writer.WriteHeader(http.StatusOK)
+					_, _ = ctx.writer.Write([]byte("GET /test"))
+				})
+			},
+			request: httptest.NewRequest(http.MethodGet, "/test", nil),
+		},
+		{
+			name: "CORS preflight request",
+			setup: func(root *Route) {
+				root.Get("/test", func(ctx *WebContext) {
+					ctx.writer.WriteHeader(http.StatusOK)
+					_, _ = ctx.writer.Write([]byte("GET /test"))
+				})
+			},
+			request: func() *http.Request {
+				req := httptest.NewRequest(http.MethodOptions, "/test", nil)
+				req.Header.Set("Access-Control-Request-Method", http.MethodGet)
+				return req
+			}(),
+		},
 	}
 
 	for _, tt := range tests {

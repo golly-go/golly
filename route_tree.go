@@ -332,8 +332,11 @@ func (re *Route) Route(path string, f func(r *Route)) *Route {
 func RouteRequest(a *Application, r *http.Request, w http.ResponseWriter) {
 	var method string
 
-	wctx := NewWebContext(
-		NewContext(r.Context()),
+	reID := makeRequestID()
+
+	wctx := WebContextWithRequestID(
+		WithLoggerFields(r.Context(), requestLogfields(reID, r)),
+		reID,
 		r,
 		w,
 	)

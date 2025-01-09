@@ -6,7 +6,7 @@ import (
 	"time"
 	"unsafe"
 
-	log "github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 )
 
 type ContextFuncError func(*Context) error
@@ -15,7 +15,8 @@ type ContextFunc func(*Context)
 type Context struct {
 	application *Application
 	loader      *DataLoader
-	logger      *log.Entry
+
+	logger atomic.Value // Stores *logrus.Entry
 
 	// context.Context implementation
 	parent   context.Context
@@ -27,7 +28,19 @@ type Context struct {
 	children unsafe.Pointer
 }
 
-func (c *Context) Logger() *log.Entry { return c.logger }
+func (c *Context) Logger() *logrus.Entry {
+	// Fast path: Load existing logger
+	if logger := c.logger.Load(); logger != nil {
+		return logger.(*logrus.Entry)
+	}
+
+	// Slow path: Initialize and store the logger
+	newLogger := logrus.NewEntry(Logger())
+	c.logger.Store(newLogger)
+
+	return newLogger
+}
+
 func (c *Context) Cache() *DataLoader { return c.loader }
 
 // Application returns a link to the application
@@ -111,11 +124,10 @@ func (c *Context) removeChild(child canceler) {
 		children := *(*[]canceler)(oldPtr)
 
 		var newChildren []canceler
-		for _, c := range children {
-			if c == child {
+		for pos := range children {
+			if children[pos] == child {
 				continue
 			}
-
 			newChildren = append(newChildren, c)
 		}
 
@@ -128,8 +140,8 @@ func (c *Context) removeChild(child canceler) {
 func (c *Context) propagateCancel(err error) {
 	if childrenPtr := atomic.LoadPointer(&c.children); childrenPtr != nil {
 		children := *(*[]canceler)(childrenPtr)
-		for _, child := range children {
-			child.cancel(err)
+		for pos := range children {
+			children[pos].cancel(err)
 		}
 	}
 }
@@ -141,8 +153,8 @@ func (c *Context) addChild(child canceler) {
 		var children []canceler
 		if oldPtr != nil {
 			children = *(*[]canceler)(oldPtr)
-			for _, existingChild := range children {
-				if existingChild == child {
+			for pos := range children {
+				if children[pos] == child {
 					return
 				}
 			}
@@ -159,7 +171,6 @@ func NewContext(parent context.Context) *Context {
 	return &Context{
 		parent:      parent,
 		application: app,
-		logger:      app.logger.WithFields(log.Fields{}),
 		loader:      NewDataLoader(),
 		values:      make(map[interface{}]interface{}),
 		done:        make(chan struct{}),
@@ -217,18 +228,15 @@ func WithDeadline(parent context.Context, d time.Time) (*Context, context.Cancel
 func WithApplication(parent context.Context, app *Application) *Context {
 	gctx := NewContext(parent)
 	gctx.application = app
-	gctx.logger = app.logger.WithFields(log.Fields{})
-
 	return gctx
 }
 
 func WithLoggerFields(parent context.Context, fields map[string]interface{}) *Context {
 	gctx := NewContext(parent)
+	gctx.logger.Store(Logger().WithFields(fields))
 
 	if c, ok := parent.(*Context); ok {
-		gctx.application = c.application
 		gctx.loader = c.loader
-		gctx.logger = c.logger.WithFields(fields)
 	}
 
 	return gctx

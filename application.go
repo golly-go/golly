@@ -160,3 +160,11 @@ func NewApplication(options Options) *Application {
 			}),
 	}
 }
+
+func Logger() *log.Logger {
+	if app != nil {
+		return app.logger
+	}
+	// this happens in test
+	return NewLogger("")
+}

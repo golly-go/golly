@@ -8,6 +8,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -42,6 +44,8 @@ type WebContext struct {
 	params atomic.Value
 
 	mu sync.RWMutex
+
+	logger *logrus.Entry
 }
 
 // Some helper functions
@@ -66,17 +70,23 @@ func (wctx *WebContext) Params() url.Values {
 // NewWebContext returns a new web context
 func NewWebContext(gctx *Context, r *http.Request, w http.ResponseWriter) *WebContext {
 	return &WebContext{
-		path:      r.URL.Path,
-		segments:  pathSegments(r.URL.Path),
-		Context:   gctx,
-		request:   r,
-		writer:    NewWrapResponseWriter(w, r.ProtoMajor),
-		requestID: makeRequestID(),
+		path:     r.URL.Path,
+		segments: pathSegments(r.URL.Path),
+		Context:  gctx,
+		request:  r,
+		writer:   NewWrapResponseWriter(w, r.ProtoMajor),
 	}
 }
 
+func WebContextWithRequestID(gctx *Context, reqID string, r *http.Request, w http.ResponseWriter) *WebContext {
+	wctx := NewWebContext(gctx, r, w)
+	wctx.requestID = reqID
+
+	return wctx
+}
+
 func requestLogfields(requestID string, r *http.Request) map[string]interface{} {
-	logFields := make(map[string]interface{})
+	logFields := make(map[string]interface{}, 11)
 
 	logFields["ts"] = time.Now().UTC().Format(time.RFC1123)
 
