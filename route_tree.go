@@ -2,11 +2,11 @@ package golly
 
 import (
 	"fmt"
+	"maps"
 	"net/http"
-	"os"
-	"regexp"
+	"net/url"
+	"strconv"
 	"strings"
-	"sync/atomic"
 )
 
 type methodType uint
@@ -44,91 +44,68 @@ var (
 	}
 )
 
-type RouteToken interface {
-	Match(string) bool
-	Equal(RouteToken) bool
-	Value() string
-	IsVeradic() bool
-	Pattern() string
-}
-
-type RoutePath struct {
-	Path string
-}
-
-func (rp RoutePath) Pattern() string { return "" }
-func (rp RoutePath) IsVeradic() bool { return false }
-
-func (rp RoutePath) Match(str string) bool {
-	return rp.Path == str
-}
-
-func (rp RoutePath) Equal(token RouteToken) bool {
-	return rp.Path == token.Value()
-}
-
-func (rp RoutePath) Value() string {
-	return rp.Path
-}
-
-type RouteVariable struct {
-	Matcher string
-	Name    string
-}
-
-func (rt RouteVariable) Equal(token RouteToken) bool {
-	return rt.Name == token.Value()
-}
-
-func (rt RouteVariable) Value() string {
-	return rt.Name
-}
-
-func (rt RouteVariable) Pattern() string { return rt.Matcher }
-
-func (rp RouteVariable) IsVeradic() bool { return true }
-
-func (rt RouteVariable) Match(str string) bool {
-	if rt.Matcher == "" {
-		return true
+func routeVariables(re *Route, segments []string) url.Values {
+	if re == nil || len(segments) == 0 {
+		return nil
 	}
 
-	matched, _ := regexp.Match(rt.Matcher, []byte(str))
-	return matched
+	var ret url.Values
+	p := re
+
+	// Walk backwards through the segments
+	for i := len(segments) - 1; i >= 0; i-- {
+
+		if p.token != nil && p.token.isDynamic {
+			if ret == nil {
+				ret = make(url.Values, 2)
+			}
+			ret.Set(p.token.value, segments[i])
+		}
+
+		if p.parent == nil {
+			break
+		}
+
+		p = p.parent
+	}
+
+	return ret
 }
 
 // HandlerFunc Defines our handler function
-type HandlerFunc func(c WebContext)
+type HandlerFunc func(*WebContext)
 
 // MiddlewareFunc defines our middleware function
 type MiddlewareFunc func(HandlerFunc) HandlerFunc
 
 // Route is an entry into our routing tree
 type Route struct {
-	Token RouteToken
+	token *RouteToken
 
-	handlers         map[methodType]HandlerFunc
-	internalHandlers map[methodType]HandlerFunc
+	handlers map[methodType]HandlerFunc
 
-	Children []*Route
-
+	children   []*Route
 	middleware []MiddlewareFunc //TBD
 
 	allowed methodType
 
+	// Keep these here for runtime performance so we do not need to chain
+	// while running (need to think about how to handle this long term)
 	methodNotAllowedHandler HandlerFunc
 	notFoundHandler         HandlerFunc
+	noOp                    HandlerFunc
 
 	parent *Route
+	root   *Route
 }
 
 var routeRoot Route
 
 // FindChildByToken find a child given a route token
-func (re Route) FindChildByToken(token RouteToken) *Route {
-	for _, child := range re.Children {
-		if child.Token.Equal(token) {
-			return child
+func (re Route) FindChildByToken(token *RouteToken) *Route {
+	for pos := range re.children {
+		if re.children[pos].token.Equal(token) {
+			return re.children[pos]
 		}
 	}
 	return nil
@@ -137,8 +114,8 @@ func (re Route) FindChildByToken(token RouteToken) *Route {
 func (re Route) Allow() []string {
 	ret := []string{}
 
-	for name, val := range methods {
-		if re.allowed&val != 0 {
+	for name := range maps.Keys(methods) {
+		if re.IsAllowed(name) {
 			ret = append(ret, name)
 		}
 	}
@@ -153,169 +130,156 @@ func (re Route) IsAllowed(method string) bool {
 	return false
 }
 
-func FindRoute(root *Route, path string) *Route {
+func FindRouteBySegments(root *Route, segments []string) *Route {
+	segLen := len(segments)
 
-	p := path
-	if p[0] == '/' {
-		p = p[1:]
-	}
-
-	if p == "" {
+	if segLen == 0 {
 		return root
 	}
 
-	tokens := strings.Split(p, "/")
-
-	if len(tokens) == 0 {
-		return nil
+	if segLen == 1 && segments[0] == "/" {
+		return root
 	}
 
-	return root.search(tokens)
+	// Pass only filled tokens to search to avoid trailing empty strings
+	return root.search(segments)
 }
 
-func (re Route) search(tokens []string) *Route {
-	if re.Token != nil {
-		if !re.match(tokens[0]) {
+func FindRoute(root *Route, path string) *Route {
+	return FindRouteBySegments(root, pathSegments(path))
+}
+
+func (re *Route) search(segments []string) *Route {
+	tkLen := len(segments)
+
+	if tkLen == 0 {
+		return re // Return current node if no segments left
+	}
+
+	// Match the current token with the first segment
+	if re.token != nil {
+		if !re.token.Match(&segments[0]) {
 			return nil
 		}
-		tokens = tokens[1:]
-	}
-
-	if len(tokens) == 0 {
-		return &re
-	}
-
-	for _, child := range re.Children {
-		if r := child.search(tokens); r != nil {
-			return r
+		// If there are more segments to match, proceed
+		if tkLen > 1 {
+			segments = segments[1:]
+		} else {
+			return re // Final segment matched
 		}
 	}
+
+	// Continue searching in children
+	for _, child := range re.children {
+		if found := child.search(segments); found != nil {
+			return found
+		}
+	}
+
 	return nil
 }
 
-func (re Route) match(str string) bool {
-	return re.Token.Match(str)
-}
-
 func (re Route) Length() (cnt int) {
-	for _, c := range re.Children {
+	for _, c := range re.children {
 		cnt = cnt + c.Length() + 1
 	}
 	return
 }
 
-func NewRoute() *Route {
+func NewRouteRoot() *Route {
+	rt := NewRoute(nil)
+	rt.token = &RouteToken{value: "/"}
+
+	return rt
+}
+
+func NewRoute(root *Route) *Route {
 	return &Route{
-		handlers:         map[methodType]HandlerFunc{},
-		internalHandlers: map[methodType]HandlerFunc{},
-		middleware:       []MiddlewareFunc{},
+		handlers:                map[methodType]HandlerFunc{},
+		middleware:              []MiddlewareFunc{},
+		root:                    root,
+		methodNotAllowedHandler: notAllowedHandler,
+		noOp:                    noOpHandler,
 	}
-}
-
-func (re *Route) NotFoundHandler(fn HandlerFunc) {
-	re.notFoundHandler = fn
-}
-
-func (re *Route) NotAllowedHandler(fn HandlerFunc) {
-	re.methodNotAllowedHandler = fn
-}
-
-func (re *Route) ServeHTTP(ctx WebContext) {
-	r := ctx.Request()
-
-	// Cors work around to resolve the correct handler
-	// this provides us with correct allow headers and 405 behavior
-	method := r.Header.Get("Access-Control-Request-Method")
-	if method == "" {
-		method = r.Method
-	}
-
-	if mt, found := methods[method]; found {
-		if handler, found := re.handlers[mt]; found {
-			// if we are not in the correct method noop
-			// for now need to clean this cors integration up
-			if method != r.Method {
-				handler = chain(re.middleware, NoOpHandler)
-			}
-
-			handler(ctx)
-			return
-		}
-	}
-
-	chain(ctx.route.middleware, func(wc WebContext) {
-		wc.AddHeader("Allow", strings.Join(re.Allow(), ","))
-		wc.RenderStatus(405)
-	})(ctx)
-
-	return
 }
 
 func (re *Route) updateHandlers() {
-	for method, handler := range re.internalHandlers {
+	for method, handler := range re.handlers {
 		re.updateHandler(method, handler)
 	}
+
+	re.methodNotAllowedHandler = chain(re.middleware, notAllowedHandler)
+	re.noOp = chain(re.middleware, noOpHandler)
 }
 
 func (re *Route) updateHandler(method methodType, handler HandlerFunc) {
 	re.handlers[method] = chain(re.middleware, handler)
 }
 
-func (re *Route) Add(path string, handler HandlerFunc, httpMethods methodType) *Route {
-	r := re
+func (re *Route) add(path string, handler HandlerFunc, httpMethods methodType) *Route {
 
 	tokens := tokenize(path)
-
-	lng := len(tokens)
-
-	if lng == 0 {
-		if handler != nil {
-			if r.internalHandlers[ALL] == nil && r.internalHandlers[httpMethods] == nil {
-				r.internalHandlers[httpMethods] = handler
-
-				r.updateHandler(httpMethods, handler)
-
-				r.allowed |= httpMethods
-			}
-		}
-		return r
+	if len(tokens) == 0 {
+		return re
 	}
 
-	for pos, token := range tokens {
-		if node := r.FindChildByToken(token); node != nil {
-			r = node
+	r := re
+
+	root := re.root
+	if root == nil {
+		root = re
+	}
+
+	for pos := range tokens {
+
+		// Look for the token at the current level
+		if tokens[pos].value == "/" {
+			r = re
 		} else {
-			node := NewRoute()
+			node := r.FindChildByToken(tokens[pos])
 
-			node.parent = r
-			node.middleware = r.middleware
-			node.Token = token
-
-			r.Children = append(r.Children, node)
+			// If node doesn't exist, create it
+			if node == nil {
+				node = NewRoute(re.root)
+				node.parent = r
+				node.middleware = r.middleware
+				node.token = tokens[pos]
+				r.children = append(r.children, node)
+			}
 			r = node
 		}
 
-		if pos == lng-1 {
+		// Attach handler at the last token
+		if pos == len(tokens)-1 && handler != nil {
 			if r.handlers[ALL] == nil && r.handlers[httpMethods] == nil {
-
-				r.internalHandlers[httpMethods] = handler
-				r.updateHandler(httpMethods, handler)
-
+				r.handlers[httpMethods] = handler
 				r.allowed |= httpMethods
+				r.updateHandlers()
 			}
 		}
 	}
+
 	return r
 }
 
 func (re *Route) Use(fns ...MiddlewareFunc) *Route {
 	re.middleware = append(re.middleware, fns...)
 
-	for _, child := range re.Children {
+	for _, child := range re.children {
 		child.Use(fns...)
 	}
 
 	re.updateHandlers()
+
+	return re
+}
+
+// Add - adds a route returning the previous route we called add on for chaining
+// There seems to be a chaining expectation and i keep falling into this trap expecting Add() to behave
+// like all the other helpers, so lets just settle this once and for all
+// if you want to chain on a child route use Mount or Namespace
+func (re *Route) Add(path string, h HandlerFunc, meth methodType) *Route {
+	re.add(path, h, meth)
 
 	return re
 }
@@ -344,17 +308,6 @@ func (re *Route) Options(path string, h HandlerFunc) *Route { return re.Add(path
 // Head add a route for a head request
 func (re *Route) Head(path string, h HandlerFunc) *Route { return re.Add(path, h, HEAD) }
 
-// Match adds routes that match the methods
-func (re *Route) Match(path string, h HandlerFunc, meths ...string) *Route {
-	var r *Route
-	for _, method := range meths {
-		if m, found := methods[method]; found {
-			r = re.Add(path, h, m)
-		}
-	}
-	return r
-}
-
 func (re *Route) mount(path string, f func(r *Route)) *Route {
 	re.Namespace(path, f)
 	return re
@@ -365,8 +318,10 @@ func (re *Route) Mount(path string, c Controller) *Route {
 }
 
 func (re *Route) Namespace(path string, f func(r *Route)) *Route {
-	r := re.Add(path, nil, 0)
+	r := re.add(path, nil, 0)
+
 	f(r)
+
 	return re
 }
 
@@ -374,58 +329,55 @@ func (re *Route) Route(path string, f func(r *Route)) *Route {
 	return re.Namespace(path, f)
 }
 
-func (re *Route) MergeRouteTree(r *Route) *Route {
-	re.Children = append(re.Children, r)
-	return re
-}
+func RouteRequest(a *Application, r *http.Request, w http.ResponseWriter) {
+	var method string
 
-func tokenize(path string) []RouteToken {
-	var ret []RouteToken
+	reID := makeRequestID()
 
-	p := path
-	if p[0] == '/' {
-		p = p[1:]
+	wctx := WebContextWithRequestID(
+		WithLoggerFields(r.Context(), requestLogfields(reID, r)),
+		reID,
+		r,
+		w,
+	)
+
+	// Route matching
+	re := FindRouteBySegments(a.routes, wctx.segments)
+	if re == nil {
+		goto notFound
 	}
 
-	pos := 0
-	for len(p) > 0 {
-		switch p[pos] {
-		case '{':
-			end := pos + 1
-			for ; end < len(p); end++ {
-				if p[end] == '}' {
-					break
-				}
-			}
+	wctx.route = re
 
-			piece := p[pos:end]
-
-			if pat := strings.Index(piece, ":"); pat >= 0 {
-				ret = append(ret, RouteVariable{Matcher: piece[pat+1 : end], Name: piece[1:pat]})
-			} else {
-				ret = append(ret, RouteVariable{Name: piece[pos+1 : end]})
-			}
-
-			p = p[end+1:]
-		default:
-			end := pos
-			for ; end < len(p); end++ {
-				if p[end] == '/' || p[end] == '{' {
-					break
-				}
-			}
-
-			ret = append(ret, RoutePath{Path: p[pos:end]})
-			p = p[end:]
-		}
-
-		if pos+1 < len(p) {
-			p = p[pos+1:]
-		} else {
-			p = ""
-		}
+	if re.allowed == 0 {
+		goto notAllowed
 	}
-	return ret
+
+	// Resolve method for CORS preflight or actual request
+	method = r.Header.Get("Access-Control-Request-Method")
+	if method == "" {
+		method = r.Method
+	}
+
+	if handler, ok := re.handlers[methods[method]]; ok {
+		if method == r.Method {
+			handler(wctx)
+			return
+		}
+
+		re.noOp(wctx)
+		return
+	}
+
+	goto notAllowed
+
+notAllowed:
+	notAllowedHandler(wctx)
+	return
+
+notFound:
+	notFoundHandler(wctx)
+	return
 }
 
 func chain(middlewares []MiddlewareFunc, endpoint HandlerFunc) HandlerFunc {
@@ -443,70 +395,16 @@ func chain(middlewares []MiddlewareFunc, endpoint HandlerFunc) HandlerFunc {
 	return h
 }
 
-// This is gross once i start using it ill optimize
-func handleRouteVariables(re *Route, path string) map[string]string {
-	ret := map[string]string{}
-	tokens := tokenize(path)
+// func RenderRoutes(routes *Route) HandlerFunc {
+// 	return func(c WebContext) {
+// 		if !c.Env().IsDevelopment() {
+// 			c.RenderStatus(http.StatusNotFound)
+// 		}
 
-	p := re
-	for i := len(tokens) - 1; i > 0; i-- {
-		switch t := p.Token.(type) {
-		case RouteVariable:
-			if t.Match(tokens[i].Value()) {
-				ret[t.Value()] = tokens[i].Value()
-			}
-		}
-		p = p.parent
-	}
-	return ret
-}
-
-var (
-	reqcount    int64
-	hostname, _ = os.Hostname()
-)
-
-func makeRequestID() string {
-	atomic.AddInt64(&reqcount, 1)
-
-	return fmt.Sprintf("%s/%06d", hostname, reqcount)
-}
-
-func ProcessRoutes(a Application, routes *Route, r *http.Request, w http.ResponseWriter) {
-	writer := NewWrapResponseWriter(w, r.ProtoMajor)
-
-	wctx := NewWebContext(a.NewContext(a.context), r, writer, makeRequestID())
-
-	if re := FindRoute(routes, r.URL.Path); re != nil {
-		// We may just be a parent node
-		wctx.Route = re
-
-		if re.allowed != 0 {
-			re.ServeHTTP(wctx)
-			return
-		}
-	}
-
-	notFoundHandler := a.routes.notFoundHandler
-	if notFoundHandler == nil {
-		notFoundHandler = func(c WebContext) { c.RenderStatus(http.StatusNotFound) }
-	}
-
-	h := chain(routes.middleware, notFoundHandler)
-	h(wctx)
-}
-
-func RenderRoutes(routes *Route) HandlerFunc {
-	return func(c WebContext) {
-		if !c.Env().IsDevelopment() {
-			c.RenderStatus(http.StatusNotFound)
-		}
-
-		text := strings.Join(buildPath(routes, ""), "\n")
-		c.RenderText(text)
-	}
-}
-
+//			text := strings.Join(buildPath(routes, ""), "\n")
+//			c.RenderText(text)
+//		}
+//	}
 func printRoutes(routes *Route) {
 	fmt.Printf("%s\n", strings.Join(buildPath(routes, ""), "\n"))
 }
@@ -514,29 +412,79 @@ func printRoutes(routes *Route) {
 func buildPath(route *Route, prefix string) []string {
 	ret := []string{}
 
-	if route.Token != nil {
-		if route.Token.IsVeradic() {
-			prefix = fmt.Sprintf("%s/{%s:%s}", prefix, route.Token.Value(), route.Token.Pattern())
+	// Handle root path explicitly by ensuring prefix starts at "/"
+	if route.token != nil {
+		if route.token.value == "/" {
+			prefix = "/"
 		} else {
-			prefix = fmt.Sprintf("%s/%s", prefix, route.Token.Value())
-		}
-	}
+			if prefix != "/" {
+				prefix += "/"
+			}
 
-	if route.allowed != 0 {
-		for k, meth := range methods {
-			if route.allowed&meth != 0 {
-				p := prefix
-
-				if p == "" {
-					p = "/"
+			if route.token.isDynamic {
+				pattern := ""
+				if m := route.token.matcher; m != "" {
+					pattern = ":" + m
 				}
-				ret = append(ret, fmt.Sprintf("[%s] %s", k, p))
+
+				prefix += fmt.Sprintf("{%s%s}", route.token.value, pattern)
+
+			} else {
+				prefix += route.token.value
 			}
 		}
 	}
 
-	for _, child := range route.Children {
+	// Collect allowed methods for the current path
+	// if route.allowed != 0 {
+	for k := range methods {
+		if route.IsAllowed(k) {
+			ret = append(ret, fmt.Sprintf("[%s] %s", k, prefix))
+		}
+	}
+	// }
+
+	// Recursively build paths for children
+	for _, child := range route.children {
 		ret = append(ret, buildPath(child, prefix)...)
+	}
+
+	return ret
+}
+
+func debugTree(route *Route, tabDepth int) []string {
+
+	ret := []string{}
+
+	var prefix = ""
+
+	// Handle root path explicitly by ensuring prefix starts at "/"
+	if route.token != nil {
+		if route.token.value == "/" {
+			prefix = "/"
+		} else {
+			if route.token.isDynamic {
+				pattern := ""
+				if m := route.token.matcher; m != "" {
+					pattern = ":" + m
+				}
+
+				prefix =
+					fmt.Sprintf(" {%s%s}\n", route.token.value, pattern)
+
+			} else {
+				prefix = route.token.value
+			}
+		}
+	} else if route.root == nil {
+		prefix = "[root]"
+	}
+
+	ret = append(ret, strings.Repeat("\t", tabDepth)+"d:"+strconv.Itoa(tabDepth)+" "+prefix)
+
+	// Recursively build paths for children
+	for _, child := range route.children {
+		ret = append(ret, debugTree(child, tabDepth+1)...)
 	}
 
 	return ret
@@ -547,4 +495,9 @@ func buildPath(route *Route, prefix string) []string {
    ""   test      1         payments
 */
 
-func NoOpHandler(WebContext) {}
+func noOpHandler(*WebContext)          {}
+func notFoundHandler(wctx *WebContext) { wctx.Response().WriteHeader(http.StatusNotFound) }
+func notAllowedHandler(wctx *WebContext) {
+	wctx.writer.Header().Set("Allow", strings.Join(wctx.route.Allow(), ","))
+	wctx.writer.WriteHeader(http.StatusMethodNotAllowed)
+}

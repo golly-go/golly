@@ -2,21 +2,25 @@ package golly
 
 import (
 	"os"
+	"strings"
 
 	log "github.com/sirupsen/logrus"
 )
 
-// NewLogger returns a new logger intance
-func NewLogger() *log.Entry {
-	var formatter log.Formatter = &log.JSONFormatter{}
-	level := LogLevel()
+var (
+	silenced bool = false
+)
 
+// NewLogger returns a new logger intance
+func NewLogger(name string) *log.Logger {
+	var formatter log.Formatter = &log.JSONFormatter{}
+
+	level := LogLevel()
 	if Env().IsDevelopmentOrTest() {
-		level = log.DebugLevel
 		formatter = &log.TextFormatter{}
 	}
 
-	l := &log.Logger{
+	return &log.Logger{
 		Out:          os.Stderr,
 		Formatter:    formatter,
 		Hooks:        make(log.LevelHooks),
@@ -24,16 +28,12 @@ func NewLogger() *log.Entry {
 		ExitFunc:     os.Exit,
 		ReportCaller: false,
 	}
-
-	return l.WithFields(log.Fields{
-		"service": appName,
-		"version": Version(),
-		"env":     Env(),
-	})
 }
 
 func LogLevel() log.Level {
-	switch os.Getenv("LOG_LEVEL") {
+	switch strings.ToLower(os.Getenv("LOG_LEVEL")) {
+	case "trace":
+		return log.TraceLevel
 	case "debug":
 		return log.DebugLevel
 	case "info":

@@ -5,11 +5,25 @@ import (
 	"strings"
 
 	"github.com/golly-go/golly"
-	"github.com/golly-go/golly/utils"
 )
 
 const (
-	wildcardSym = "*"
+	star = "*"
+
+	// Allow Headers
+	acAllowOriginHeader      = "Access-Control-Allow-Origin"
+	acAllowMethodHeader      = "Access-Control-Allow-Methods"
+	acAllowHeadersHeader     = "Access-Control-Allow-Headers"
+	acAllowCredentialsHeader = "Access-Control-Allow-Credentials"
+
+	acRequestMethodHeader  = "Access-Control-Request-Method"
+	acRequestHeadersHeader = "Access-Control-Request-Headers"
+	acExposeHeadersHeader  = "Access-Control-Expose-Headers"
+
+	Vary    = "Vary"
+	trueStr = "true"
+
+	originHeader = "Origin"
 )
 
 var (
@@ -19,6 +33,9 @@ var (
 
 // CorsOptions defines the cors options
 type CorsOptions struct {
+	AllowAllHeaders bool
+	AllowAllOrigins bool
+
 	AllowedHeaders []string
 	AllowedMethods []string
 	AllowedOrigins []string
@@ -31,8 +48,9 @@ type cors struct {
 	exposeHeaders []string
 	methods       []string
 	headers       []string
-	worigins      utils.Wildcards
-	orgins        []string
+	orgins        map[string]bool
+
+	worigins []string
 
 	allHeaders bool
 	allOrigins bool
@@ -43,48 +61,36 @@ type cors struct {
 // Init creates a cors record
 func (c CorsOptions) init() cors {
 	co := cors{
-		exposeHeaders: utils.Convert(c.ExposeHeaders, http.CanonicalHeaderKey),
+		exposeHeaders: golly.Convert(c.ExposeHeaders, http.CanonicalHeaderKey),
 		credentials:   c.AllowCredentials,
+		orgins:        make(map[string]bool),
 	}
 
-	if len(c.AllowedHeaders) == 0 {
+	if c.AllowAllHeaders {
 		co.headers = defaultHeaders
 	} else {
-		co.headers = utils.Convert(append(c.AllowedHeaders, "Origin"), http.CanonicalHeaderKey)
-		for _, header := range co.headers {
-			if header == wildcardSym {
-				co.allHeaders = true
-				break
-			}
-		}
+		co.headers = golly.Convert(append(c.AllowedHeaders, "Origin"), http.CanonicalHeaderKey)
 	}
 
 	if len(c.AllowedMethods) == 0 {
 		co.methods = defaultMethods
 	} else {
-		co.methods = utils.Convert(c.AllowedMethods, strings.ToUpper)
+		co.methods = golly.Convert(c.AllowedMethods, strings.ToUpper)
 	}
 
-	if len(c.AllowedOrigins) == 0 {
+	if c.AllowAllOrigins {
 		co.allOrigins = true
 	} else {
-		// To slow
-		// orgins := utils.Convert(c.AllowedOrigins, strings.ToLower)
+		co.orgins = make(map[string]bool, len(c.AllowedOrigins)) // Pre-allocate map size
 		for _, origin := range c.AllowedOrigins {
-			if origin == wildcardSym {
-				co.allOrigins = true
-				break
-			}
-
-			origin = strings.ToLower(origin)
-			if w := utils.NewWildcard(origin); w != nil {
-				co.worigins = append(co.worigins, *w)
+			if golly.IsWildcardString(origin) {
+				co.worigins = append(co.worigins, origin)
 			} else {
-				co.orgins = append(co.orgins, origin)
+				co.orgins[strings.ToLower(origin)] = true
 			}
 		}
-
 	}
+
 	return co
 }
 
@@ -93,8 +99,10 @@ func Cors(co CorsOptions) func(next golly.HandlerFunc) golly.HandlerFunc {
 	crs := co.init()
 
 	return func(next golly.HandlerFunc) golly.HandlerFunc {
-		return func(wctx golly.WebContext) {
+		return func(wctx *golly.WebContext) {
 			r := wctx.Request()
+
+			wctx.Logger().Tracef("Starting cors check for %s", r.Method)
 
 			if r.Method == http.MethodOptions && r.Header.Get("Access-Control-Request-Method") != "" {
 				crs.preflight(wctx)
@@ -106,103 +114,96 @@ func Cors(co CorsOptions) func(next golly.HandlerFunc) golly.HandlerFunc {
 	}
 }
 
-func (c cors) preflight(wctx golly.WebContext) {
+func (c cors) preflight(wctx *golly.WebContext) {
 	r := wctx.Request()
 
-	headers := wctx.Response().Header()
-	origin := r.Header.Get("Origin")
-
+	// Check if the request method is OPTIONS
 	if r.Method != http.MethodOptions {
 		return
 	}
 
-	headers.Add("Vary", "Origin")
-	headers.Add("Vary", "Access-Control-Request-Method")
-	headers.Add("Vary", "Access-Control-Request-Headers")
+	headers := wctx.Response().Header()
 
+	headers.Add(Vary, originHeader)
+	headers.Add(Vary, acRequestMethodHeader)
+	headers.Add(Vary, acRequestHeadersHeader)
+
+	origin := r.Header.Get(originHeader)
 	if origin == "" {
-		wctx.Logger().Debug("empty origin in cors check")
+		wctx.Logger().Tracef("empty origin in cors check")
 		return
 	}
 
 	if !c.isOriginAllowed(origin) {
-		wctx.Logger().Debugf("preflight: origin not %s allowed", origin)
+		wctx.Logger().Tracef("preflight: origin %s not allowed", origin)
 		return
 	}
 
-	method := r.Header.Get("Access-Control-Request-Method")
-
+	method := r.Header.Get(acRequestMethodHeader)
 	if !c.isMethodAllowed(method) {
-		wctx.Logger().Debugf("preflight: method %s not allowed for cors", method)
+		wctx.Logger().Tracef("preflight: method %s not allowed for cors", method)
 		return
 	}
 
-	rHeaders := parseHeaders(r.Header.Get("Access-Control-Request-Headers"))
+	rHeaders := parseHeaders(r.Header.Get(acRequestHeadersHeader))
 	if !c.areHeadersAllowed(rHeaders) {
-		wctx.Logger().Debugf("preflight: headers '%v' not allowed", rHeaders)
+		wctx.Logger().Tracef("preflight: headers '%v' not allowed", rHeaders)
 		return
 	}
 
 	if c.allOrigins {
-		origin = wildcardSym
+		origin = star
 	}
-
-	headers.Set("Access-Control-Allow-Origin", origin)
-	headers.Set("Access-Control-Allow-Methods", strings.ToUpper(method))
+	headers.Set(acAllowOriginHeader, origin)
+	headers.Set(acAllowMethodHeader, method)
 
 	if len(rHeaders) > 0 {
-		headers.Set("Access-Control-Allow-Headers", strings.Join(rHeaders, ", "))
+		headers.Set(acAllowHeadersHeader, strings.Join(rHeaders, ","))
 	}
 
-	if len(c.exposeHeaders) != 0 {
-		headers.Set("Access-Control-Expose-Headers", strings.Join(c.exposeHeaders, ", "))
+	if len(c.exposeHeaders) > 0 {
+		headers.Set(acExposeHeadersHeader, strings.Join(c.exposeHeaders, ","))
 	}
 
 	if c.credentials {
-		headers.Set("Access-Control-Allow-Credentials", "true")
+		headers.Set(acAllowCredentialsHeader, "true")
 	}
 
-	wctx.RenderStatus(http.StatusOK)
+	wctx.Response().WriteHeader(http.StatusOK)
 }
 
-// parseHeaders this is probably not the fast impl will refactor later
-func parseHeaders(headerList string) []string {
-	return strings.Split(strings.ToUpper(headerList), ",")
-}
-
-func (c cors) request(wctx golly.WebContext) {
+func (c cors) request(wctx *golly.WebContext) {
 	r := wctx.Request()
-
 	headers := wctx.Response().Header()
-	origin := r.Header.Get("Origin")
 
+	origin := r.Header.Get(originHeader)
 	if origin == "" {
-		wctx.Logger().Debug("request: empty origin in cors check")
+		wctx.Logger().Tracef("request: empty origin in cors check")
 		return
 	}
 
 	if !c.isOriginAllowed(origin) {
-		wctx.Logger().Debugf("request: origin not %s allowed", origin)
+		wctx.Logger().Tracef("request: origin %s not allowed", origin)
 		return
 	}
 
 	if !c.isMethodAllowed(r.Method) {
-		wctx.Logger().Debugf("request: method %s not allowed for cors", r.Method)
+		wctx.Logger().Tracef("request: method %s not allowed for cors", r.Method)
 		return
 	}
 
 	if c.allOrigins {
-		origin = wildcardSym
+		origin = star
 	}
 
-	headers.Set("Access-Control-Allow-Origin", origin)
+	headers.Set(acAllowOriginHeader, origin)
 
-	if len(c.exposeHeaders) != 0 {
-		headers.Set("Access-Control-Expose-Headers", strings.Join(c.exposeHeaders, ", "))
+	if len(c.exposeHeaders) > 0 {
+		headers.Set(acExposeHeadersHeader, strings.Join(c.exposeHeaders, ","))
 	}
 
 	if c.credentials {
-		headers.Set("Access-Control-Allow-Credentials", "true")
+		headers.Set(acAllowCredentialsHeader, trueStr)
 	}
 }
 
@@ -213,12 +214,15 @@ func (c *cors) isOriginAllowed(origin string) bool {
 
 	origin = strings.ToLower(origin)
 
-	if utils.StringSliceContains(c.orgins, origin) {
+	if _, exists := c.orgins[origin]; exists {
 		return true
 	}
 
-	if w := c.worigins.Find(func(w utils.Wildcard) bool { return w.Match(origin) }); w != nil {
-		return true
+	// Check wildcard origins in-place
+	for i := range c.worigins {
+		if golly.WildcardMatch(c.worigins[i], origin) {
+			return true
+		}
 	}
 
 	return false
@@ -230,11 +234,12 @@ func (c *cors) isMethodAllowed(method string) bool {
 	}
 
 	method = strings.ToUpper(method)
+
 	if method == http.MethodOptions {
 		return true
 	}
 
-	return utils.StringSliceContains(c.methods, method)
+	return golly.Contains(c.methods, method)
 }
 
 func (c *cors) areHeadersAllowed(headers []string) bool {
@@ -242,11 +247,68 @@ func (c *cors) areHeadersAllowed(headers []string) bool {
 		return true
 	}
 
-	for _, header := range headers {
-		if utils.StringSliceContains(c.headers, http.CanonicalHeaderKey(header)) {
+	for pos := range headers {
+		if golly.Contains(c.headers, http.CanonicalHeaderKey(headers[pos])) {
 			return true
 		}
 	}
 
 	return false
+}
+
+func parseHeaders(headerList string) []string {
+	if headerList == "" {
+		return nil
+	}
+
+	count := strings.Count(headerList, ",") + 1
+	if count == 0 {
+		return []string{http.CanonicalHeaderKey(headerList)}
+	}
+
+	headers := make([]string, count)
+
+	i := 0
+	start, end := 0, 0
+
+	for i < count {
+		next := strings.Index(headerList, ",")
+		if next == -1 {
+			break
+		}
+
+		start = 0
+		for start < next && (headerList[start] == ' ' || headerList[start] == '\t') {
+			start++
+		}
+
+		end = next - 1
+		for end > start && (headerList[end] == ' ' || headerList[end] == '\t') {
+			end--
+		}
+
+		if start <= end {
+			headers[i] = headerList[start : end+1]
+			i++
+		}
+		headerList = headerList[next+1:]
+	}
+
+	// Process the final segment
+	start, end = 0, len(headerList)-1
+	for start < len(headerList) && (headerList[start] == ' ' || headerList[start] == '\t') {
+		start++
+	}
+
+	for end > start && (headerList[end] == ' ' || headerList[end] == '\t') {
+		end--
+	}
+
+	if start <= end {
+		headers[i] = headerList[start : end+1]
+		i++
+	}
+
+	// wish i could capitlize inplace
+	return golly.Convert(headers[:i], http.CanonicalHeaderKey)
 }

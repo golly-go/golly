@@ -8,27 +8,29 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// Recoverer middleware that adds panic recovering
+// Recoverer is middleware that recovers from panics and logs the stack trace.
 func Recoverer(next golly.HandlerFunc) golly.HandlerFunc {
-	return func(wctx golly.WebContext) {
+	return func(wctx *golly.WebContext) {
 		defer func() {
 			if r := recover(); r != nil {
-				buf := make([]byte, 1>>20)
+				// Capture stack trace
+				buf := make([]byte, 64<<10) // 64 KB buffer for stack trace
+				stackLen := runtime.Stack(buf, false)
+				stackTrace := string(buf[:stackLen]) // Convert only the used part to string
 
-				wctx.Response().WriteHeader(http.StatusInternalServerError)
-
-				runtime.Stack(buf, false)
-
-				stack := []string{}
-				for _, line := range buf {
-					stack = append(stack, string(line))
-				}
-
+				// Log the error and stack trace
 				wctx.Logger().WithFields(logrus.Fields{
-					"stack": stack,
-				}).Errorf("%#v\n", r)
+					"stack": stackTrace,
+					"error": r,
+				}).Error("Recovered from panic")
+
+				// Send an internal server error response
+				wctx.Response().WriteHeader(http.StatusInternalServerError)
+				_, _ = wctx.Response().Write([]byte("Internal Server Error"))
 			}
 		}()
+
+		// Proceed to the next handler in the chain
 		next(wctx)
 	}
 }

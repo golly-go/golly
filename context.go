@@ -2,190 +2,244 @@ package golly
 
 import (
 	"context"
-	"errors"
-	"sync"
 	"sync/atomic"
 	"time"
+	"unsafe"
 
-	log "github.com/sirupsen/logrus"
-	"github.com/spf13/viper"
+	"github.com/sirupsen/logrus"
 )
 
-type ContextKeyT string
+type ContextFuncError func(*Context) error
+type ContextFunc func(*Context)
 
-const (
-	// LoggerKey key to the data map for the logger
-	LoggerKey ContextKeyT = "logger"
-	StoreKey  ContextKeyT = "store"
-)
-
-// Context represents an application-specific context with custom cancellation and data handling.
 type Context struct {
-	loader *DataLoader
-	data   *sync.Map
-	config *viper.Viper
-	env    EnvName
+	application *Application
+	loader      *DataLoader
 
-	// backwards compat for now
-	// changing this broke a ton of things
-	// will update in 0.5 golly
-	internal context.Context
-	cancel   context.CancelFunc
+	logger atomic.Value // Stores *logrus.Entry
 
-	route *Route
-
+	// context.Context implementation
+	parent   context.Context
+	values   map[interface{}]interface{}
+	deadline atomic.Value
 	done     chan struct{}
-	err      atomic.Value // Atomic error storage
-	deadline atomic.Value // Atomic time.Time storag
+	err      atomic.Value
+
+	children unsafe.Pointer
 }
 
-// Env returns the environment name associated with the context.
-func (c Context) Env() EnvName {
-	if c.env == "" {
-		return EnvName("default")
+func (c *Context) Logger() *logrus.Entry {
+	// Fast path: Load existing logger
+	if logger := c.logger.Load(); logger != nil {
+		return logger.(*logrus.Entry)
 	}
-	return c.env
+
+	// Slow path: Initialize and store the logger
+	newLogger := logrus.NewEntry(Logger())
+	c.logger.Store(newLogger)
+
+	return newLogger
 }
 
-// Deadline returns the time when this context will be canceled, if any.
-func (c Context) Deadline() (time.Time, bool) {
-	if d, ok := c.internal.Deadline(); ok {
-		return d, true
-	}
-	v := c.deadline.Load()
-	if v == nil {
-		return time.Time{}, false
-	}
-	return v.(time.Time), true
+func (c *Context) Cache() *DataLoader { return c.loader }
+
+// Application returns a link to the application
+// buyer be wear this can be nil in test mode
+func (c *Context) Application() *Application { return c.application }
+
+// Implementation of context.Context so we can be passed around
+// regardless of library, this allows golly to be more portable
+// while still providing its libaries a consistent Context
+type canceler interface {
+	cancel(err error)
 }
 
-// Done returns a channel that is closed when this context is canceled.
-func (c Context) Done() <-chan struct{} {
-	return c.internal.Done()
+// Deadline returns the deadline, if set, otherwise zero time
+func (c *Context) Deadline() (deadline time.Time, ok bool) {
+	if d := c.deadline.Load(); d != nil {
+		return d.(time.Time), true
+	}
+	if c.parent != nil {
+		return c.parent.Deadline()
+	}
+	return time.Time{}, false
 }
 
-// Err returns the error associated with this context, if any.
-func (c Context) Err() error {
-	if err := c.internal.Err(); err != nil {
-		return err
+// Done returns a channel that is closed when the context is canceled
+func (c *Context) Done() <-chan struct{} {
+	if c.parent != nil {
+		return c.parent.Done()
 	}
-	v := c.err.Load()
-	if v == nil {
-		return nil
-	}
-	return v.(error)
+	return c.done
 }
 
-// Value returns the value associated with this context for the given key.
-func (c Context) Value(key interface{}) interface{} {
-	if val := c.internal.Value(key); val != nil {
-		return val
+// Err returns the error explaining why the context was canceled, if any
+func (c *Context) Err() error {
+	if e := c.err.Load(); e != nil {
+		return e.(error)
 	}
-	if val, ok := c.data.Load(key); ok {
-		return val
+	if c.parent != nil {
+		return c.parent.Err()
 	}
 	return nil
 }
 
-// Cancel cancels the context, closing the done channel and setting the error.
-func (c *Context) Cancel(err error) {
-	if err == nil {
-		err = errors.New("context canceled")
+func (c *Context) Value(key interface{}) interface{} {
+	var inf context.Context = c
+
+	for inf != nil {
+		switch ctx := inf.(type) {
+		case *Context:
+			if val, exists := ctx.values[key]; exists {
+				return val
+			}
+			inf = ctx.parent // Fix is here
+		default:
+			return inf.Value(key)
+		}
+	}
+	return nil
+}
+
+func (c *Context) cancel(err error) {
+	if !c.err.CompareAndSwap(nil, err) {
+		return
 	}
 
-	c.cancel() // Cancel the internal context
-	if c.done != nil {
-		select {
-		case <-c.done:
-			// Already closed
-		default:
-			close(c.done)
-			c.err.Store(err)
+	close(c.done)
+
+	if p, ok := c.parent.(*Context); ok {
+		p.removeChild(c)
+	}
+	c.propagateCancel(err)
+}
+
+func (c *Context) removeChild(child canceler) {
+	for {
+		oldPtr := atomic.LoadPointer(&c.children)
+		if oldPtr == nil {
+			return
+		}
+
+		children := *(*[]canceler)(oldPtr)
+
+		var newChildren []canceler
+		for pos := range children {
+			if children[pos] == child {
+				continue
+			}
+			newChildren = append(newChildren, c)
+		}
+
+		if atomic.CompareAndSwapPointer(&c.children, oldPtr, unsafe.Pointer(&newChildren)) {
+			return
 		}
 	}
 }
 
-// Set set a value on the context
-func (c *Context) Set(key interface{}, value interface{}) Context {
-	c.data.Store(key, value)
-	return *c
-}
-
-// Get get a value from the context
-func (c *Context) Get(key interface{}) (interface{}, bool) {
-	return c.data.Load(key)
-}
-
-// NewContext returns a new application context provided some basic information
-func NewContext(ctx context.Context) Context {
-	return Context{
-		loader: NewDataLoader(),
-		// We probably want to deprecate this
-		// as both it and the dataloader are not necessary
-
-		data: &sync.Map{},
+func (c *Context) propagateCancel(err error) {
+	if childrenPtr := atomic.LoadPointer(&c.children); childrenPtr != nil {
+		children := *(*[]canceler)(childrenPtr)
+		for pos := range children {
+			children[pos].cancel(err)
+		}
 	}
 }
 
-func (c *Context) Config() *viper.Viper {
-	return c.config
-}
+func (c *Context) addChild(child canceler) {
+	for {
+		oldPtr := atomic.LoadPointer(&c.children)
 
-func (c *Context) Loader() *DataLoader {
-	return c.loader
-}
-
-func (c *Context) UpdateLogFields(fields log.Fields) {
-	c.data.Store(LoggerKey, c.Logger().WithFields(fields))
-}
-
-func (c *Context) SetLogger(l *log.Entry) {
-	c.data.Store(LoggerKey, l)
-}
-
-func (c *Context) Dup() Context {
-	return *c // shallow copy
-}
-
-func FromContext(ctx context.Context) Context {
-	if c, ok := ctx.Value(StoreKey).(Context); ok {
-		return c
-	}
-	return NewContext(ctx)
-}
-
-func (c Context) Logger() *log.Entry {
-	if c.data != nil {
-		if lgr, found := c.data.Load(LoggerKey); found {
-			if l, ok := lgr.(*log.Entry); ok {
-				return l
+		var children []canceler
+		if oldPtr != nil {
+			children = *(*[]canceler)(oldPtr)
+			for pos := range children {
+				if children[pos] == child {
+					return
+				}
 			}
 		}
+
+		newChildren := append(children, child)
+		if atomic.CompareAndSwapPointer(&c.children, oldPtr, unsafe.Pointer(&newChildren)) {
+			return
+		}
+	}
+}
+
+func NewContext(parent context.Context) *Context {
+	return &Context{
+		parent:      parent,
+		application: app,
+		loader:      NewDataLoader(),
+		values:      make(map[interface{}]interface{}),
+		done:        make(chan struct{}),
+	}
+}
+
+func WithValue(parent context.Context, key, val interface{}) *Context {
+	ctx := NewContext(parent)
+	ctx.values[key] = val
+
+	return ctx
+}
+
+// WithCancel returns a copy of the parent context with a new cancel function
+func WithCancel(parent context.Context) (*Context, context.CancelFunc) {
+	ctx := NewContext(parent)
+
+	if p, ok := parent.(*Context); ok {
+		p.addChild(ctx)
 	}
 
-	// Always make sure we return a log
-	// this may be required for some applications
-	return NewLogger()
+	cancel := func() {
+		ctx.cancel(context.Canceled)
+	}
+
+	return ctx, cancel
 }
 
-func (c Context) Context() context.Context {
-	return c
+// WithDeadline returns a context with a deadline
+func WithDeadline(parent context.Context, d time.Time) (*Context, context.CancelFunc) {
+	ctx := NewContext(parent)
+
+	ctx.deadline.Store(d)
+
+	if p, ok := parent.(*Context); ok {
+		p.addChild(ctx)
+	}
+
+	cancel := func() {
+		ctx.cancel(context.DeadlineExceeded)
+	}
+
+	go func() {
+		select {
+		case <-parent.Done():
+			ctx.cancel(parent.Err())
+		case <-time.After(time.Until(d)):
+			cancel()
+		case <-ctx.done:
+		}
+	}()
+	return ctx, cancel
 }
 
-func (a Application) NewContext(parent context.Context) Context {
-	ctx, cancel := context.WithCancel(context.Background())
-
+func WithApplication(parent context.Context, app *Application) *Context {
 	gctx := NewContext(parent)
+	gctx.application = app
+	return gctx
+}
 
-	gctx.cancel = cancel
-	gctx.internal = ctx
-	gctx.env = a.Env
-	gctx.route = a.routes
-	gctx.config = a.Config
+func WithLoggerFields(parent context.Context, fields map[string]interface{}) *Context {
+	gctx := NewContext(parent)
+	gctx.logger.Store(Logger().WithFields(fields))
 
-	gctx.SetLogger(a.Logger)
+	if c, ok := parent.(*Context); ok {
+		gctx.loader = c.loader
+	}
 
 	return gctx
 }
 
-var _ context.Context = Context{}
+var _ context.Context = (*Context)(nil)

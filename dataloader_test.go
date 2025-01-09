@@ -1,44 +1,131 @@
 package golly
 
 import (
-	"context"
 	"errors"
 	"testing"
-
-	"github.com/stretchr/testify/assert"
 )
 
-func TestNewDataLoader(t *testing.T) {
-	dl := NewDataLoader()
-	assert.NotNil(t, dl)
-}
+// Test for FetchData using table-driven tests.
+func TestFetchData(t *testing.T) {
+	loader := NewDataLoader()
 
-func TestFetch_SimpleKey(t *testing.T) {
-	gctx := NewContext(context.TODO())
-
-	fetchFn := func(gctx Context) (string, error) {
-		return "data", nil
+	tests := []struct {
+		name      string
+		key       any
+		fetchFn   FetchFunc[any]
+		expected  any
+		expectErr bool
+	}{
+		{
+			name: "fetch string",
+			key:  "key1",
+			fetchFn: func() (any, error) {
+				return "Hello", nil
+			},
+			expected:  "Hello",
+			expectErr: false,
+		},
+		{
+			name: "fetch int",
+			key:  "key2",
+			fetchFn: func() (any, error) {
+				return 42, nil
+			},
+			expected:  42,
+			expectErr: false,
+		},
+		{
+			name: "fetch with error",
+			key:  "key3",
+			fetchFn: func() (any, error) {
+				return nil, errors.New("fetch failed")
+			},
+			expected:  nil,
+			expectErr: true,
+		},
 	}
 
-	result, err := LoadData(gctx, "simpleKey", fetchFn)
-	assert.NoError(t, err)
-	assert.Equal(t, "data", result)
-
-	// Test cache hit
-	cachedResult, err := LoadData(gctx, "simpleKey", fetchFn)
-	assert.NoError(t, err)
-	assert.Equal(t, "data", cachedResult)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := FetchData(loader, tt.key, tt.fetchFn)
+			if (err != nil) != tt.expectErr {
+				t.Fatalf("expected error: %v, got: %v", tt.expectErr, err)
+			}
+			if result != tt.expected {
+				t.Errorf("expected: %v, got: %v", tt.expected, result)
+			}
+		})
+	}
 }
 
-func TestFetch_Error(t *testing.T) {
-	gctx := NewContext(context.TODO())
+// ***************************************************************************
+// *  Benches
+// ***************************************************************************
 
-	fetchFn := func(gctx Context) (string, error) {
-		return "", errors.New("fetch error")
+// Benchmark for DataLoader Fetch method (cache hit and miss scenarios).
+func BenchmarkDataLoaderFetch_CacheHit(b *testing.B) {
+	loader := NewDataLoader()
+	fetchFunc := func() (any, error) {
+		return "benchmarkValue", nil
 	}
 
-	_, err := LoadData(gctx, "errorKey", fetchFn)
+	// Pre-load cache to simulate cache hit
+	for i := 0; i < 100; i++ {
+		_, _ = loader.Fetch(i, fetchFunc)
+	}
 
-	assert.Error(t, err)
-	assert.Equal(t, "fetch error", err.Error())
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		key := i % 100
+		_, _ = loader.Fetch(key, fetchFunc)
+	}
+}
+
+func BenchmarkDataLoaderFetch_CacheMiss(b *testing.B) {
+	loader := NewDataLoader()
+	fetchFunc := func() (any, error) {
+		return "benchmarkValue", nil
+	}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		key := i + 100 // Ensure cache miss
+		_, _ = loader.Fetch(key, fetchFunc)
+	}
+}
+
+// Benchmark for FetchData generic function (cache hit and miss scenarios).
+func BenchmarkFetchData_CacheHit(b *testing.B) {
+	loader := NewDataLoader()
+	fetchFunc := func() (int, error) {
+		return 100, nil
+	}
+
+	// Pre-load cache to simulate cache hit
+	for i := 0; i < 100; i++ {
+		_, _ = FetchData(loader, i, fetchFunc)
+	}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		key := i % 100
+		_, _ = FetchData(loader, key, fetchFunc)
+	}
+}
+
+func BenchmarkFetchData_CacheMiss(b *testing.B) {
+	loader := NewDataLoader()
+	fetchFunc := func() (int, error) {
+		return 100, nil
+	}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		key := i + 100 // Ensure cache miss
+		_, _ = FetchData(loader, key, fetchFunc)
+	}
 }

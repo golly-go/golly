@@ -11,7 +11,8 @@ import (
 
 // RequestLogger middleware that adds request logging
 func RequestLogger(next golly.HandlerFunc) golly.HandlerFunc {
-	return func(wctx golly.WebContext) {
+	return func(wctx *golly.WebContext) {
+
 		// TODO move this into a middleware
 		defer func(t time.Time, method string, w http.ResponseWriter) {
 			writer, ok := w.(golly.WrapResponseWriter)

@@ -1,43 +1,24 @@
-package utils
+package golly
 
 import (
-	"crypto/sha512"
 	"errors"
-	"fmt"
 	"regexp"
 	"strings"
-
-	"github.com/google/uuid"
 )
 
-// RandomHex returns a random generated hex from rand package
-func RandomHex(n int) (string, error) {
-	uid, _ := uuid.NewRandom()
+var (
+	ErrUnsupportedDataType = errors.New("unsupported data type")
 
-	hasher := sha512.New()
-	hasher.Write([]byte(uid.String()))
-
-	x := fmt.Sprintf("%x", hasher.Sum(nil))
-
-	return x[0:n], nil
-}
-
-// StringSliceContains - keep it dry look for a string in a slice of strings
-func StringSliceContains(slice []string, s string) bool {
-	for _, str := range slice {
-		if str == s {
-			return true
-		}
-	}
-	return false
-}
+	matchFirstCap = regexp.MustCompile("([A-Z]+)([A-Z][a-z])")
+	matchAllCap   = regexp.MustCompile("([a-z0-9])([A-Z])")
+)
 
 type Converter func(string) string
 
 func Convert(s []string, c Converter) []string {
 	out := []string{}
-	for _, i := range s {
-		out = append(out, c(i))
+	for pos := range s {
+		out = append(out, c(s[pos]))
 	}
 	return out
 }
@@ -66,7 +47,9 @@ func Tokenize(s string, delim byte) []string {
 	return ret
 }
 
-func Compair(str1, str2 string) bool {
+// ASCIICompair extremely fast string comparison for simple insenstive
+// checks
+func ASCIICompair(str1, str2 string) bool {
 	if len(str1) != len(str2) {
 		return false
 	}
@@ -91,13 +74,7 @@ func Compair(str1, str2 string) bool {
 	return true
 }
 
-var (
-	ErrUnsupportedDataType = errors.New("unsupported data type")
-
-	matchFirstCap = regexp.MustCompile("(.)([A-Z][a-z]+)")
-	matchAllCap   = regexp.MustCompile("([a-z0-9])([A-Z])")
-)
-
+// SnakeCase converts a camelCase or PascalCase string to snake_case.
 func SnakeCase(str string) string {
 	snake := matchFirstCap.ReplaceAllString(str, "${1}_${2}")
 	snake = matchAllCap.ReplaceAllString(snake, "${1}_${2}")
