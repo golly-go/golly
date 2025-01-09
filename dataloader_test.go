@@ -58,6 +58,10 @@ func TestFetchData(t *testing.T) {
 	}
 }
 
+// ***************************************************************************
+// *  Benches
+// ***************************************************************************
+
 // Benchmark for DataLoader Fetch method (cache hit and miss scenarios).
 func BenchmarkDataLoaderFetch_CacheHit(b *testing.B) {
 	loader := NewDataLoader()

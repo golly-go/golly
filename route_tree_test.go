@@ -1,33 +1,437 @@
 package golly
 
 import (
-	"fmt"
+	"io"
 	"net/http"
+	"net/http/httptest"
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
 
-func BenchmarkTokenizePath(b *testing.B) {
-	benchmarks := []struct {
-		name string
-		path string
+func TestRouteVariables(t *testing.T) {
+	// Setup Route Tree with route variables
+
+	root := NewRouteRoot()
+
+	root.Get("/orders", noOpHandler).
+		Get("/orders/{orderID}", noOpHandler).
+		Get("/orders/{orderID}/items", noOpHandler).
+		Get("/orders/{orderID}/items/{itemID}", noOpHandler).
+		Get("/named/{named:\\d+}", noOpHandler)
+
+	tests := []struct {
+		name           string
+		route          *Route
+		path           string
+		expectedValues map[string]string
 	}{
-		{"simple path", "/test/1/2/3/test"},
-		{"path with variable", "/test/1/2/3/{test}"},
-		{"path with variable and matcher", "/test/1/2/3/{test:[1234]}"},
-		{"complex path with long string", "/test/1/2/1234123412341234/test"},
-		{"path with special characters", "/test/1/2/3/testasdfasdf!@$!@#$123"},
-		{"repeated path", "/test/1/2/3/test"},
+		{
+			name: "Multiple Variables in Path",
+			path: "/orders/456/items/123",
+			expectedValues: map[string]string{
+				"orderID": "456",
+				"itemID":  "123",
+			},
+		},
+		{
+			name: "Multiple Variables in Path",
+			path: "/orders/456/items/123",
+			expectedValues: map[string]string{
+				"orderID": "456",
+				"itemID":  "123",
+			},
+		},
+		{
+			name: "Single level",
+			path: "/orders/789",
+			expectedValues: map[string]string{
+				"orderID": "789",
+			},
+		},
+		{
+			name: "Single level - named",
+			path: "/named/789",
+			expectedValues: map[string]string{
+				"named": "789",
+			},
+		},
 	}
 
-	for _, bm := range benchmarks {
-		b.Run(bm.name, func(b *testing.B) {
-			b.ReportAllocs()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			route := FindRoute(root, tt.path)
+
+			vars := routeVariables(route, pathSegments(tt.path))
+
+			assert.Len(t, vars, len(tt.expectedValues))
+			for key, expected := range tt.expectedValues {
+				actual := vars.Get(key)
+
+				assert.Equal(t, expected, actual)
+			}
+		})
+	}
+}
+
+func TestUse(t *testing.T) {
+	root := NewRouteRoot()
+	root.Add("/test", noOpHandler, GET)
+
+	t.Run("it should add to the children routes", func(t *testing.T) {
+		root.Use(
+			func(next HandlerFunc) HandlerFunc {
+				return func(wctx *WebContext) {
+					next(wctx)
+				}
+			})
+
+		assert.Len(t, root.middleware, 1)
+		assert.Len(t, root.children, 1)
+		assert.Len(t, root.children[0].middleware, 1)
+	})
+}
+
+func TestAddHelpers(t *testing.T) {
+	root := NewRouteRoot()
+
+	t.Run("it should add using the helper methods", func(t *testing.T) {
+
+		root.Put("/test", noOpHandler).
+			Post("/test", noOpHandler).
+			Options("/test", noOpHandler).
+			Delete("/test", noOpHandler).
+			Connect("/test", noOpHandler).
+			Get("/test", noOpHandler).
+			Patch("/test", noOpHandler).
+			Head("/test", noOpHandler)
+
+		assert.Len(t, root.children, 1)
+
+		re := root.children[0]
+
+		assert.NotZero(t, re.allowed&PUT)
+		assert.NotZero(t, re.allowed&POST)
+		assert.NotZero(t, re.allowed&OPTIONS)
+		assert.NotZero(t, re.allowed&DELETE)
+		assert.NotZero(t, re.allowed&CONNECT)
+		assert.NotZero(t, re.allowed&GET)
+		assert.NotZero(t, re.allowed&PATCH)
+		assert.NotZero(t, re.allowed&HEAD)
+
+	})
+}
+
+func TestRouteTree(t *testing.T) {
+	root := NewRouteRoot()
+
+	t.Run("it should add a route 5 deep", func(t *testing.T) {
+		root.Add("/1/2/3/4/5", noOpHandler, GET)
+
+		assert.Equal(t, 5, root.Length())
+
+		t.Run("it should only update 1 route", func(t *testing.T) {
+			root.Add("/1/2/3/4/6", noOpHandler, GET)
+
+			assert.Equal(t, 6, root.Length())
+
+			root.Add("/1/2/3/4/6", noOpHandler, POST)
+
+			assert.Equal(t, 6, root.Length())
+		})
+	})
+}
+
+func TestAddRouteHelpers(t *testing.T) {
+	root := NewRouteRoot()
+
+	examples := []string{
+		"/",
+		"/test/1/2/3/test1234",
+		"/test/1/2/3/test",
+		"/test/1/2/3/test/1/2/3/4/5/6/7/8/9/test",
+		"/test/1/2/3/testING",
+		"/test/1/2/3/test1234567",
+		"/test/1/2/3/test/1234123/1234/asdf/1234",
+	}
+
+	t.Run("it should add GET routes", func(t *testing.T) {
+		for _, example := range examples {
+			root.Get(example, noOpHandler)
+		}
+
+		for _, example := range examples {
+			r := FindRoute(root, example)
+
+			assert.NotNil(t, r, "No route found for: %s", example)
+
+			if r.root != nil {
+				assert.Equal(t, root, r.root)
+			}
+
+			if _, ok := r.handlers[GET]; ok {
+				assert.True(t, ok)
+			}
+		}
+	})
+
+	t.Run("it should add a path variable and match by that", func(t *testing.T) {
+		root.Post("/path/{var}/rando@/{test:[0-2]+}", noOpHandler)
+
+		r := FindRoute(root, "/path/123/rando@/01012")
+		assert.NotNil(t, r)
+		r = FindRoute(root, "/path/123/rando@/abcd")
+		assert.Nil(t, r)
+	})
+
+	t.Run("it should create a namespace", func(t *testing.T) {
+		var r *Route
+		root.Namespace("/test", func(route *Route) {
+			r = route
+		})
+
+		assert.Equal(t, r.token.value, "test")
+
+		assert.Empty(t, r.Allow())
+	})
+
+}
+
+// Test function for buildPath
+func TestBuildPath(t *testing.T) {
+	handler := noOpHandler
+
+	tests := []struct {
+		name     string
+		route    *Route
+		prefix   string
+		expected []string
+	}{
+		{
+			name:     "Static path with GET method",
+			route:    NewRouteRoot().Get("/users", handler),
+			expected: []string{"[GET] /users"},
+		},
+		{
+			name:     "Veradic path with POST method",
+			route:    NewRouteRoot().Add("/{id:[0-9]+}", handler, POST),
+			expected: []string{"[POST] /{id:[0-9]+}"},
+		},
+		{
+			name: "Nested routes with mixed methods",
+			route: NewRouteRoot().
+				Add("/api", handler, GET).
+				Add("/api/v1", handler, POST).
+				Add("/api/v1/{userID:[0-9]+}", handler, GET|PUT),
+			expected: []string{
+				"[GET] /api",
+				"[POST] /api/v1",
+				"[GET] /api/v1/{userID:[0-9]+}",
+				"[PUT] /api/v1/{userID:[0-9]+}",
+			},
+		},
+		{
+			name: "No allowed methods",
+			route: &Route{
+				token:   &RouteToken{value: "empty"},
+				allowed: 0,
+			},
+			expected: []string{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := buildPath(tt.route, "")
+
+			sort.Strings(got)         // Sort the actual result
+			sort.Strings(tt.expected) // Sort the expected result
+
+			assert.Equal(t, tt.expected, got)
+		})
+	}
+}
+
+func TestRouteRequest(t *testing.T) {
+	tests := []struct {
+		name       string
+		routes     func(*Route)
+		request    *http.Request
+		expectCode int
+		expectBody string
+	}{
+		{
+			name: "Route found with GET method",
+			routes: func(root *Route) {
+				root.Get("/test", func(ctx *WebContext) {
+					ctx.writer.WriteHeader(http.StatusOK)
+					_, _ = ctx.writer.Write([]byte("GET /test"))
+				})
+			},
+			request:    httptest.NewRequest(http.MethodGet, "/test", nil),
+			expectCode: http.StatusOK,
+			expectBody: "GET /test",
+		},
+		{
+			name: "Route not found",
+			routes: func(root *Route) {
+				// No routes are added
+			},
+			request:    httptest.NewRequest(http.MethodGet, "/not-found", nil),
+			expectCode: http.StatusNotFound,
+			expectBody: "",
+		},
+		{
+			name: "Method not allowed",
+			routes: func(root *Route) {
+				root.Get("/test", func(ctx *WebContext) {
+					ctx.writer.WriteHeader(http.StatusOK)
+					_, _ = ctx.writer.Write([]byte("GET /test"))
+				})
+			},
+			request:    httptest.NewRequest(http.MethodPost, "/test", nil),
+			expectCode: http.StatusMethodNotAllowed,
+			expectBody: "",
+		},
+		{
+			name: "Route with middleware",
+			routes: func(root *Route) {
+				root.Use(func(next HandlerFunc) HandlerFunc {
+					return func(ctx *WebContext) {
+						ctx.writer.Header().Set("X-Middleware", "Executed")
+						next(ctx)
+					}
+				})
+				root.Get("/test", func(ctx *WebContext) {
+					ctx.writer.WriteHeader(http.StatusOK)
+					_, _ = ctx.writer.Write([]byte("GET /test"))
+				})
+			},
+			request:    httptest.NewRequest(http.MethodGet, "/test", nil),
+			expectCode: http.StatusOK,
+			expectBody: "GET /test",
+		},
+		{
+			name: "CORS preflight request",
+			routes: func(root *Route) {
+				root.Get("/test", func(ctx *WebContext) {
+					ctx.writer.WriteHeader(http.StatusOK)
+					_, _ = ctx.writer.Write([]byte("GET /test"))
+				})
+			},
+			request: func() *http.Request {
+				req := httptest.NewRequest(http.MethodOptions, "/test", nil)
+				req.Header.Set("Access-Control-Request-Method", http.MethodGet)
+				return req
+			}(),
+			expectCode: http.StatusOK,
+			expectBody: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			app := NewApplication(Options{})
+
+			tt.routes(app.routes)
+
+			w := httptest.NewRecorder()
+			RouteRequest(app, tt.request, w)
+
+			resp := w.Result()
+			body, _ := io.ReadAll(resp.Body)
+
+			assert.Equal(t, tt.expectCode, resp.StatusCode)
+			assert.Equal(t, tt.expectBody, string(body))
+		})
+	}
+}
+
+// ***************************************************************************
+// *  Benches
+// ***************************************************************************
+
+func BenchmarkRouteRequest(b *testing.B) {
+	tests := []struct {
+		name    string
+		setup   func(*Route)
+		request *http.Request
+	}{
+		// {
+		// 	name: "Route found with GET method",
+		// 	setup: func(root *Route) {
+		// 		root.Get("/test", func(ctx *WebContext) {
+		// 			ctx.writer.WriteHeader(http.StatusOK)
+		// 			_, _ = ctx.writer.Write([]byte("GET /test"))
+		// 		})
+		// 	},
+		// 	request: httptest.NewRequest(http.MethodGet, "/test", nil),
+		// },
+		// {
+		// 	name: "Route not found",
+		// 	setup: func(root *Route) {
+		// 		// No routes are added
+		// 	},
+		// 	request: httptest.NewRequest(http.MethodGet, "/not-found", nil),
+		// },
+		{
+			name: "Method not allowed",
+			setup: func(root *Route) {
+				root.Get("/test", func(ctx *WebContext) {
+					ctx.writer.WriteHeader(http.StatusOK)
+					_, _ = ctx.writer.Write([]byte("GET /test"))
+				})
+			},
+			request: httptest.NewRequest(http.MethodPost, "/test", nil),
+		},
+		// {
+		// 	name: "Route with middleware",
+		// 	setup: func(root *Route) {
+		// 		root.Use(func(next HandlerFunc) HandlerFunc {
+		// 			return func(ctx *WebContext) {
+		// 				next(ctx)
+		// 			}
+		// 		})
+		// 		root.Get("/test", func(ctx *WebContext) {
+		// 			ctx.writer.WriteHeader(http.StatusOK)
+		// 			_, _ = ctx.writer.Write([]byte("GET /test"))
+		// 		})
+		// 	},
+		// 	request: httptest.NewRequest(http.MethodGet, "/test", nil),
+		// },
+		// {
+		// 	name: "CORS preflight request",
+		// 	setup: func(root *Route) {
+		// 		root.Get("/test", func(ctx *WebContext) {
+		// 			ctx.writer.WriteHeader(http.StatusOK)
+		// 			_, _ = ctx.writer.Write([]byte("GET /test"))
+		// 		})
+		// 	},
+		// 	request: func() *http.Request {
+		// 		req := httptest.NewRequest(http.MethodOptions, "/test", nil)
+		// 		req.Header.Set("Access-Control-Request-Method", http.MethodGet)
+		// 		return req
+		// 	}(),
+		// },
+	}
+
+	for _, tt := range tests {
+		app := NewApplication(Options{})
+
+		tt.setup(app.routes)
+
+		b.Run(tt.name, func(b *testing.B) {
+			var w *httptest.ResponseRecorder
+
 			b.ResetTimer()
+			b.ReportAllocs()
+
 			for i := 0; i < b.N; i++ {
-				tokenize(bm.path)
+				w = httptest.NewRecorder()
+
+				RouteRequest(app, tt.request, w)
 			}
 		})
 	}
@@ -49,11 +453,11 @@ func BenchmarkAddPath(b *testing.B) {
 	for _, bm := range benchmarks {
 		b.Run(bm.name, func(b *testing.B) {
 			b.ReportAllocs()
-			re := NewRoute()
+			re := NewRouteRoot()
 
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				re.Add(bm.path, func() {}, POST|GET|PUT|DELETE)
+				re.Add(bm.path, noOpHandler, POST|GET|PUT|DELETE)
 			}
 		})
 	}
@@ -61,9 +465,9 @@ func BenchmarkAddPath(b *testing.B) {
 
 // Benchmark for finding routes
 func BenchmarkFindRoute(b *testing.B) {
-	r := NewRoute()
-	r.Get("/test/1/2/3/test/1/2/3/4/5/6/7/8/9/test", func() {})
-	r.Get("/test/1/2/3/test/1/2/3/4/5/6/7/8/9/X/1/2/34/123/2134/1234/123412/123412/3412/4123412/34", func() {})
+	r := NewRouteRoot()
+	r.Get("/test/1/2/3/test/1/2/3/4/5/6/7/8/9/test", noOpHandler)
+	r.Get("/test/1/2/3/test/1/2/3/4/5/6/7/8/9/X/1/2/34/123/2134/1234/123412/123412/3412/4123412/34", noOpHandler)
 
 	benchmarks := []struct {
 		name string
@@ -78,330 +482,45 @@ func BenchmarkFindRoute(b *testing.B) {
 	for _, bm := range benchmarks {
 		b.Run(bm.name, func(b *testing.B) {
 			b.ResetTimer()
+			b.ReportAllocs()
 			for i := 0; i < b.N; i++ {
 				FindRoute(r, bm.path)
 			}
 		})
 	}
 }
-func TestUse(t *testing.T) {
-	root := NewRoute()
-	root.Add("/test", func() {}, GET)
 
-	t.Run("it should add to the children routes", func(t *testing.T) {
-		root.Use(
-			func(next HandlerFunc) HandlerFunc {
-				return func() {
-					next()
-				}
-			})
+func BenchmarkRouteVariables(b *testing.B) {
+	handler := noOpHandler
 
-		assert.Len(t, root.middleware, 1)
-		assert.Len(t, root.children, 1)
-		assert.Len(t, root.children[0].middleware, 1)
-	})
-}
+	root := NewRouteRoot()
+	root.Get("/orders", handler).
+		Get("/orders/{orderID}", handler).
+		Get("/orders/{orderID}/items", handler).
+		Get("/orders/{orderID}/items/{itemID}", handler).
+		Get("/named/{named:\\d+}", handler)
 
-func TestAddHelpers(t *testing.T) {
-	root := NewRoute()
-
-	t.Run("it should add using the helper methods", func(t *testing.T) {
-
-		re := root.Put("/test", func() {})
-		assert.NotZero(t, re.allowed&PUT)
-
-		root.Post("/test", func() {})
-		assert.NotZero(t, re.allowed&POST)
-
-		root.Options("/test", func() {})
-		assert.NotZero(t, re.allowed&OPTIONS)
-
-		root.Delete("/test", func() {})
-		assert.NotZero(t, re.allowed&DELETE)
-
-		root.Connect("/test", func() {})
-		assert.NotZero(t, re.allowed&CONNECT)
-
-		root.Get("/test", func() {})
-		assert.NotZero(t, re.allowed&GET)
-
-		root.Patch("/test", func() {})
-		assert.NotZero(t, re.allowed&PATCH)
-
-		root.Head("/test", func() {})
-		assert.NotZero(t, re.allowed&HEAD)
-
-	})
-}
-
-func TestTokenizePathSimple(t *testing.T) {
-	t.Run("it should catch the patterns", func(t *testing.T) {
-		examples := []string{
-			"/test/1/2/3/{test:[1234]}",
-			"/test/1/2/3/{test:[//]}",
-			"/test/1/2/3/{test}",
-			"/test/1/2/3/{test}",
-			"/test/1/2/3/test",
-			"/test/1/2/3/test/",
-		}
-
-		for _, url := range examples {
-			tokens := tokenize(url)
-			assert.Equal(t, 5, len(tokens))
-		}
-	})
-}
-
-func TestTokenizePath(t *testing.T) {
-	t.Run("it should tokenize paths correctly", func(t *testing.T) {
-		tests := []struct {
-			url      string
-			expected []RouteToken
-		}{
-			{
-				url: "/test/1/2/3/{test:[1234]}",
-				expected: []RouteToken{
-					RoutePath{Path: "test"},
-					RoutePath{Path: "1"},
-					RoutePath{Path: "2"},
-					RoutePath{Path: "3"},
-					RouteVariable{Name: "test", Matcher: "[1234]"},
-				},
-			},
-			{
-				url: "/test/1/2/3/{test:[//]}",
-				expected: []RouteToken{
-					RoutePath{Path: "test"},
-					RoutePath{Path: "1"},
-					RoutePath{Path: "2"},
-					RoutePath{Path: "3"},
-					RouteVariable{Name: "test", Matcher: "[//]"},
-				},
-			},
-			{
-				url: "/test/1/2/3/{test}",
-				expected: []RouteToken{
-					RoutePath{Path: "test"},
-					RoutePath{Path: "1"},
-					RoutePath{Path: "2"},
-					RoutePath{Path: "3"},
-					RouteVariable{Name: "test"},
-				},
-			},
-			{
-				url: "/test/1/2/3/test",
-				expected: []RouteToken{
-					RoutePath{Path: "test"},
-					RoutePath{Path: "1"},
-					RoutePath{Path: "2"},
-					RoutePath{Path: "3"},
-					RoutePath{Path: "test"},
-				},
-			},
-			{
-				url: "/simple/path",
-				expected: []RouteToken{
-					RoutePath{Path: "simple"},
-					RoutePath{Path: "path"},
-				},
-			},
-			{
-				url:      "/",
-				expected: []RouteToken{},
-			},
-		}
-
-		for _, tt := range tests {
-			t.Run(tt.url, func(t *testing.T) {
-				tokens := tokenize(tt.url)
-
-				if len(tokens) != len(tt.expected) {
-					t.Errorf("Expected %d tokens, got %d for path %s", len(tt.expected), len(tokens), tt.url)
-					return
-				}
-
-				for i, token := range tokens {
-					expectedToken := tt.expected[i]
-
-					// Check if both tokens are of the same type
-					if fmt.Sprintf("%T", token) != fmt.Sprintf("%T", expectedToken) {
-						t.Errorf("Token type mismatch at index %d: expected %T, got %T", i, expectedToken, token)
-					}
-
-					// Verify token value
-					if token.Value() != expectedToken.Value() {
-						t.Errorf("Value mismatch at index %d: expected %s, got %s", i, expectedToken.Value(), token.Value())
-					}
-
-					// Verify matcher for RouteVariable
-					if v, ok := token.(RouteVariable); ok {
-						expVar := expectedToken.(RouteVariable)
-						if v.Matcher != expVar.Matcher {
-							t.Errorf("Matcher mismatch at index %d: expected %s, got %s", i, expVar.Matcher, v.Matcher)
-						}
-					}
-				}
-			})
-		}
-	})
-}
-
-func TestRouteTree(t *testing.T) {
-	root := NewRoute()
-
-	t.Run("it should add a route 5 deep", func(t *testing.T) {
-		root.Add("/1/2/3/4/5", func() {}, GET)
-
-		assert.Equal(t, 5, root.Length())
-
-		t.Run("it should only update 1 route", func(t *testing.T) {
-			root.Add("/1/2/3/4/6", func() {}, GET)
-
-			assert.Equal(t, 6, root.Length())
-
-			root.Add("/1/2/3/4/6", func() {}, POST)
-
-			assert.Equal(t, 6, root.Length())
-		})
-	})
-}
-
-func TestAddRouteHelpers(t *testing.T) {
-	root := NewRoute()
-
-	examples := []string{
-		"/test/1/2/3/test1234",
-		"/test/1/2/3/test",
-		"/test/1/2/3/test/1/2/3/4/5/6/7/8/9/test",
-		"/test/1/2/3/testING",
-		"/test/1/2/3/test1234567",
-		"/test/1/2/3/test/1234123/1234/asdf/1234",
-	}
-
-	t.Run("it should add GET routes", func(t *testing.T) {
-		for _, example := range examples {
-			root.Get(example, func() {})
-		}
-
-		for _, example := range examples {
-
-			r := FindRoute(root, example)
-			fmt.Printf("%s %#v\n", example, r)
-
-			assert.NotNil(t, r)
-
-			if _, ok := r.handlers[GET]; ok {
-				assert.True(t, ok)
-			}
-		}
-	})
-
-	t.Run("it should add Match routes", func(t *testing.T) {
-		for _, example := range examples {
-			root.Match(example, func() {}, http.MethodGet, http.MethodOptions)
-		}
-
-		for _, example := range examples {
-
-			r := FindRoute(root, example)
-
-			allowed := r.Allow()
-
-			assert.Len(t, allowed, 2)
-			assert.Contains(t, allowed, "GET")
-			assert.Contains(t, allowed, "OPTIONS")
-
-			assert.NotNil(t, r)
-
-		}
-	})
-
-	t.Run("it should add a path variable and match by that", func(t *testing.T) {
-		root.Post("/path/{var}/rando@/{test:[0-2]+}", func() {})
-
-		r := FindRoute(root, "/path/123/rando@/01012")
-		assert.NotNil(t, r)
-		r = FindRoute(root, "/path/123/rando@/abcd")
-		assert.Nil(t, r)
-	})
-
-	t.Run("it should create a namespace", func(t *testing.T) {
-		r := root.Namespace("/test", func(r *Route) {
-			assert.Equal(t, r.Token.Value(), "test")
-		})
-		assert.Empty(t, r.Allow())
-	})
-
-}
-
-// Test function for buildPath
-// Test function for buildPath
-func TestBuildPath(t *testing.T) {
 	tests := []struct {
-		name     string
-		route    *Route
-		prefix   string
-		expected []string
+		name string
+		path string
 	}{
-		{
-			name: "Static path with GET method",
-			route: &Route{
-				Token:   RoutePath{Path: "users"},
-				allowed: GET,
-			},
-			expected: []string{"[GET] /users"},
-		},
-		{
-			name: "Veradic path with POST method",
-			route: &Route{
-				Token:   RouteVariable{Name: "id", Matcher: "[0-9]+"},
-				allowed: POST,
-			},
-			expected: []string{"[POST] /{id:[0-9]+}"},
-		},
-		{
-			name: "Nested routes with mixed methods",
-			route: &Route{
-				Token:   RoutePath{Path: "api"},
-				allowed: GET,
-				children: []*Route{
-					{
-						Token:   RoutePath{Path: "v1"},
-						allowed: POST,
-						children: []*Route{
-							{
-								Token:   RouteVariable{Name: "userID", Matcher: "[0-9]+"},
-								allowed: GET | PUT,
-							},
-						},
-					},
-				},
-			},
-			expected: []string{
-				"[GET] /api",
-				"[POST] /api/v1",
-				"[GET] /api/v1/{userID:[0-9]+}",
-				"[PUT] /api/v1/{userID:[0-9]+}",
-			},
-		},
-		{
-			name: "No allowed methods",
-			route: &Route{
-				Token:   RoutePath{Path: "empty"},
-				allowed: 0,
-			},
-			expected: []string{},
-		},
+		{"Simple path", "/orders/123"},
+		{"Nested path", "/orders/123/items/456"},
+		{"Long path", "/orders/123/items/456/details/789"},
+		{"Single segment", "/orders"},
+		{"No match", "/invalid/path"},
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := buildPath(tt.route, "")
+		route := FindRoute(root, tt.path)
+		path := strings.Split(tt.path, "/")
 
-			sort.Strings(got)         // Sort the actual result
-			sort.Strings(tt.expected) // Sort the expected result
-
-			assert.Equal(t, tt.expected, got)
+		b.Run(tt.name, func(b *testing.B) {
+			b.ResetTimer()
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				_ = routeVariables(route, path)
+			}
 		})
 	}
 }

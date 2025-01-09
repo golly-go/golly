@@ -8,52 +8,75 @@ import (
 )
 
 func boot(f AppFunc) error {
-	a := &Application{}
+	app = NewApplication(options)
 
-	// a := NewApp()
-	signals(a)
+	signals(app)
 
-	{
-		v, err := initConfig(a)
-		if err != nil {
-			return err
-		}
-		a.config = v
-	}
+	if err := app.preboot(); err != nil {
+		app.changeState(StateErrored)
 
-	if err := a.initialize(); err != nil {
 		return err
 	}
 
-	// defer a.Shutdown(NewContext(a.context))
+	app.changeState(StateStarting)
 
-	// a.Logger.Infof("Good golly were booting %s (%s)", a.Name, a.Version)
+	{
+		v, err := initConfig(app)
+		if err != nil {
+			return err
+		}
+		app.config = v
+	}
 
-	if err := f(a); err != nil {
+	if err := app.initialize(); err != nil {
+		app.changeState(StateErrored)
+
+		return err
+	}
+
+	app.changeState(StateInitialized)
+
+	defer app.Shutdown()
+
+	app.changeState(StateRunning)
+
+	if err := f(app); err != nil {
+		app.changeState(StateErrored)
 		return err
 	}
 
 	return nil
 }
 
-func signals(*Application) {
+func signals(app *Application) {
 	sig := make(chan os.Signal, 1)
 
 	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
 
 	go func(c <-chan os.Signal) {
-		<-c
-		// app.Logger.Infof("issuing shutdown due to signal (%s)", signal.String())
-		// app.Shutdown(NewContext(app.context))
+		s := <-c
+
+		app.logger.Infof("issuing shutdown due to signal (%s)", s.String())
+		app.Shutdown()
 	}(sig)
 }
 
-// Run application lifecycle
-func Run(fn AppFunc) {
+// Run a standalone function against the application lifecycle
+func run(fn AppFunc) {
 	if err := boot(fn); err != nil {
 		fmt.Printf("Application Error: %s\n", err)
 		os.Exit(1)
 	}
 
 	os.Exit(0)
+}
+
+func Run(opts Options) {
+	options = opts
+
+	cmd := bindCommands(opts)
+
+	if err := cmd.Execute(); err != nil {
+		panic(err)
+	}
 }

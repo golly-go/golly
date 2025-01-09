@@ -239,7 +239,9 @@ func TestPropagateCancel(t *testing.T) {
 	assert.Equal(t, context.Canceled, child.Err())
 }
 
-// benchmarks
+// ***************************************************************************
+// *  Benches
+// ***************************************************************************
 
 // Benchmark for context value retrieval.
 func BenchmarkContextValue(b *testing.B) {

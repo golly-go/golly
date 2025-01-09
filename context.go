@@ -5,10 +5,17 @@ import (
 	"sync/atomic"
 	"time"
 	"unsafe"
+
+	log "github.com/sirupsen/logrus"
 )
 
+type ContextFuncError func(*Context) error
+type ContextFunc func(*Context)
+
 type Context struct {
-	loader *DataLoader
+	application *Application
+	loader      *DataLoader
+	logger      *log.Entry
 
 	// context.Context implementation
 	parent   context.Context
@@ -19,6 +26,13 @@ type Context struct {
 
 	children unsafe.Pointer
 }
+
+func (c *Context) Logger() *log.Entry { return c.logger }
+func (c *Context) Cache() *DataLoader { return c.loader }
+
+// Application returns a link to the application
+// buyer be wear this can be nil in test mode
+func (c *Context) Application() *Application { return c.application }
 
 // Implementation of context.Context so we can be passed around
 // regardless of library, this allows golly to be more portable
@@ -143,9 +157,12 @@ func (c *Context) addChild(child canceler) {
 
 func NewContext(parent context.Context) *Context {
 	return &Context{
-		parent: parent,
-		values: make(map[interface{}]interface{}),
-		done:   make(chan struct{}),
+		parent:      parent,
+		application: app,
+		logger:      app.logger.WithFields(log.Fields{}),
+		loader:      NewDataLoader(),
+		values:      make(map[interface{}]interface{}),
+		done:        make(chan struct{}),
 	}
 }
 
@@ -195,6 +212,26 @@ func WithDeadline(parent context.Context, d time.Time) (*Context, context.Cancel
 		}
 	}()
 	return ctx, cancel
+}
+
+func WithApplication(parent context.Context, app *Application) *Context {
+	gctx := NewContext(parent)
+	gctx.application = app
+	gctx.logger = app.logger.WithFields(log.Fields{})
+
+	return gctx
+}
+
+func WithLoggerFields(parent context.Context, fields map[string]interface{}) *Context {
+	gctx := NewContext(parent)
+
+	if c, ok := parent.(*Context); ok {
+		gctx.application = c.application
+		gctx.loader = c.loader
+		gctx.logger = c.logger.WithFields(fields)
+	}
+
+	return gctx
 }
 
 var _ context.Context = (*Context)(nil)
