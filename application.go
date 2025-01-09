@@ -152,19 +152,11 @@ func NewApplication(options Options) *Application {
 		initializers: initializers,
 		preboots:     preboots,
 		events:       &EventManager{},
-		logger:       NewLogger(options.Name),
+		logger:       NewLogger(),
 		routes: NewRouteRoot().
 			mount("/", func(r *Route) {
 				// Default route mount point (can be extended with specific handlers).
 				// r.Get("/routes", RenderRoutes(r))
 			}),
 	}
-}
-
-func Logger() *log.Logger {
-	if app != nil {
-		return app.logger
-	}
-	// this happens in test
-	return NewLogger("")
 }

@@ -12,7 +12,7 @@ var (
 )
 
 // NewLogger returns a new logger intance
-func NewLogger(name string) *log.Logger {
+func NewLogger() *log.Logger {
 	var formatter log.Formatter = &log.JSONFormatter{}
 
 	level := LogLevel()
@@ -47,4 +47,12 @@ func LogLevel() log.Level {
 	}
 
 	return log.InfoLevel
+}
+
+func Logger() *log.Logger {
+	if app != nil {
+		return app.logger
+	}
+	// this happens in test
+	return NewLogger()
 }
