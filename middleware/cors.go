@@ -256,14 +256,14 @@ func (c *cors) areHeadersAllowed(headers []string) bool {
 	return false
 }
 
-func parseHeaders(headerList string) []string {
-	if headerList == "" {
+func parseHeaders(list string) []string {
+	if list == "" {
 		return nil
 	}
 
-	count := strings.Count(headerList, ",") + 1
+	count := strings.Count(list, ",") + 1
 	if count == 0 {
-		return []string{http.CanonicalHeaderKey(headerList)}
+		return []string{http.CanonicalHeaderKey(list)}
 	}
 
 	headers := make([]string, count)
@@ -272,40 +272,40 @@ func parseHeaders(headerList string) []string {
 	start, end := 0, 0
 
 	for i < count {
-		next := strings.Index(headerList, ",")
+		next := strings.Index(list, ",")
 		if next == -1 {
 			break
 		}
 
 		start = 0
-		for start < next && (headerList[start] == ' ' || headerList[start] == '\t') {
+		for start < next && (list[start] == ' ' || list[start] == '\t') {
 			start++
 		}
 
 		end = next - 1
-		for end > start && (headerList[end] == ' ' || headerList[end] == '\t') {
+		for end > start && (list[end] == ' ' || list[end] == '\t') {
 			end--
 		}
 
 		if start <= end {
-			headers[i] = headerList[start : end+1]
+			headers[i] = list[start : end+1]
 			i++
 		}
-		headerList = headerList[next+1:]
+		list = list[next+1:]
 	}
 
 	// Process the final segment
-	start, end = 0, len(headerList)-1
-	for start < len(headerList) && (headerList[start] == ' ' || headerList[start] == '\t') {
+	start, end = 0, len(list)-1
+	for start < len(list) && (list[start] == ' ' || list[start] == '\t') {
 		start++
 	}
 
-	for end > start && (headerList[end] == ' ' || headerList[end] == '\t') {
+	for end > start && (list[end] == ' ' || list[end] == '\t') {
 		end--
 	}
 
 	if start <= end {
-		headers[i] = headerList[start : end+1]
+		headers[i] = list[start : end+1]
 		i++
 	}
 

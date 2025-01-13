@@ -116,25 +116,17 @@ func pathSegments(path string) []string {
 		return []string{path}
 	}
 
-	// if path == "" || path == "/" {
-	// 	return []string{"/"}
-	// }
-
 	tokenCount := strings.Count(path, "/")
 	segments := make([]string, tokenCount+1) // add + 1 to handle /
 
-	cnt := 0
-
-	start := 0
-
-	if path[0] == '/' {
+	start, cnt := 0, 0
+	if path[cnt] == '/' {
 		segments[cnt] = "/"
 		start = 1
 		cnt++
 	}
 
 	tokenStart := start
-
 	for i := start; i < len(path); i++ {
 		if path[i] == '/' {
 			if tokenStart != i {

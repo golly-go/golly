@@ -23,30 +23,6 @@ func Convert(s []string, c Converter) []string {
 	return out
 }
 
-func Tokenize(s string, delim byte) []string {
-	var ret []string
-	var ln = len(s)
-	var start = 0
-
-	for i := 0; i < ln; i++ {
-		switch s[i] {
-		case delim:
-			ret = append(ret, s[start:i])
-
-			for s[i] == delim || s[i] == ' ' || s[i]+1 == ' ' {
-				i++
-			}
-
-			start = i
-		default:
-			if i+1 >= ln {
-				ret = append(ret, s[start:])
-			}
-		}
-	}
-	return ret
-}
-
 // ASCIICompair extremely fast string comparison for simple insenstive
 // checks
 func ASCIICompair(str1, str2 string) bool {
@@ -55,21 +31,9 @@ func ASCIICompair(str1, str2 string) bool {
 	}
 
 	for i := 0; i < len(str1); i++ {
-		a := str1[i]
-		b := str2[i]
-
-		if 'A' <= a && a <= 'Z' {
-			a += 'a' - 'A'
-		}
-
-		if 'A' <= b && b <= 'Z' {
-			b += 'a' - 'A'
-		}
-
-		if b != a {
+		if (str1[i]|0x20 != str2[i]|0x20) && (str1[i]|0x20 >= 'a' && str1[i]|0x20 <= 'z') {
 			return false
 		}
-
 	}
 	return true
 }

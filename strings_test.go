@@ -6,22 +6,6 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestTokenize(t *testing.T) {
-	var examples = []struct {
-		example string
-		result  []string
-	}{
-		{"1234", []string{"1234"}},
-		{"1234,5678", []string{"1234", "5678"}},
-		{"1234, 5678", []string{"1234", "5678"}},
-		{"1234,5678, 9123", []string{"1234", "5678", "9123"}},
-	}
-
-	for _, example := range examples {
-		assert.Equal(t, Tokenize(example.example, ','), example.result)
-	}
-}
-
 // Test for ASCIICompair function
 func TestASCIICompair(t *testing.T) {
 	tests := []struct {
@@ -49,27 +33,6 @@ func TestASCIICompair(t *testing.T) {
 	}
 }
 
-// Benchmark for ASCIICompair function
-func BenchmarkASCIICompair(b *testing.B) {
-	tests := []struct {
-		name string
-		str1 string
-		str2 string
-	}{
-		{"Short strings", "hello", "HELLO"},
-		{"Long strings", "LongerTestStringForBenchmark", "longerteststringforbenchmark"},
-		{"Mismatch", "MismatchTest", "MistakeTest"},
-	}
-
-	for _, tt := range tests {
-		b.Run(tt.name, func(b *testing.B) {
-			for i := 0; i < b.N; i++ {
-				_ = ASCIICompair(tt.str1, tt.str2)
-			}
-		})
-	}
-}
-
 func TestSnakeCase(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -92,6 +55,32 @@ func TestSnakeCase(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			result := SnakeCase(tt.input)
 			assert.Equal(t, tt.expected, result, "Failed test case: %s", tt.name)
+		})
+	}
+}
+
+func BenchmarkASCIICompair(b *testing.B) {
+	tests := []struct {
+		name string
+		str1 string
+		str2 string
+	}{
+		{"Exact match", "hello", "hello"},
+		{"Case-insensitive match", "Hello", "hello"},
+		{"Different lengths", "hello", "hell"},
+		{"Completely different strings", "hello", "world"},
+		{"Special characters", "!@#$%", "!@#$%"},
+		{"Case-insensitive with special characters", "HeLLo!", "hElLo!"},
+		{"Numeric characters", "12345", "12345"},
+		{"Large strings match", "a very long string that matches exactly", "a very long string that matches exactly"},
+		{"Large strings mismatch", "a very long string that matches exactly", "a very long string that differs slightly"},
+	}
+
+	for _, tt := range tests {
+		b.Run(tt.name, func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				_ = ASCIICompair(tt.str1, tt.str2)
+			}
 		})
 	}
 }
