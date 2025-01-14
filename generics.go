@@ -12,7 +12,6 @@ func Find[T any](slice []T, predicate func(T) bool) (T, bool) {
 }
 
 // Contains checks if a slice contains the specified element.
-// Contains checks if a slice contains the specified element.
 func Contains[T comparable](slice []T, element T) bool {
 	for i := 0; i < len(slice); i++ {
 		if slice[i] == element {
@@ -22,11 +21,81 @@ func Contains[T comparable](slice []T, element T) bool {
 	return false
 }
 
-func Has[T any](slice []T, predicate func(T) bool) bool {
+// Any checks if any element in the slice satisfies the given predicate function.
+//
+// Parameters:
+//   - slice: A slice of type `T` to evaluate.
+//   - predicate: A function that takes an element of type `T` and returns a boolean.
+//
+// Returns:
+//   - true if at least one element satisfies the predicate, false otherwise.
+//
+// Example:
+//
+//	numbers := []int{1, 2, 3, 4}
+//	hasEven := Any(numbers, func(n int) bool { return n%2 == 0 }) // true
+func Any[T any](slice []T, predicate func(T) bool) bool {
 	for i := 0; i < len(slice); i++ {
 		if predicate(slice[i]) {
 			return true
 		}
 	}
 	return false
+}
+
+func Map[T any, R any](list []T, fn func(T) R) []R {
+	return MapWithIndex(list, func(x T, _ int) R {
+		return fn(x)
+	})
+}
+
+// Filter filters elements of the input slice based on a predicate function.
+//
+// Parameters:
+//   - list: A slice of type `T` to filter.
+//   - fn: A function that takes an element of type `T` and returns a boolean.
+//
+// Returns:
+//   - A slice of type `T` containing only the elements that satisfy the predicate.
+//
+// Example:
+//   numbers := []int{1, 2, 3, 4}
+//   evens := Filter(numbers, func(n int) bool { return n%2 == 0 }) // []int{2, 4}
+
+func Filter[T any](list []T, fn func(T) bool) []T {
+	ret := []T{}
+
+	for i := range list {
+		if result := fn(list[i]); result {
+			ret = append(ret, list[i])
+		}
+	}
+
+	return ret
+}
+
+// MapWithIndex applies a transformation function to each element of the slice, passing its index.
+//
+// Parameters:
+//   - list: A slice of type `T` to transform.
+//   - fn: A function that takes an element of type `T` and its index, and returns a value of type `R`.
+//
+// Returns:
+//   - A slice of type `R` containing the transformed elements.
+//
+// Example:
+//   numbers := []int{10, 20, 30}
+//   result := MapWithIndex(numbers, func(value int, index int) string {
+//     return fmt.Sprintf("%d: %d", index, value)
+//   })
+//   // result: []string{"0: 10", "1: 20", "2: 30"}
+
+func MapWithIndex[T any, R any](list []T, fn func(T, int) R) []R {
+	ret := make([]R, len(list))
+
+	for pos := range list {
+		ret[pos] = fn(list[pos], pos)
+	}
+
+	return ret
 }

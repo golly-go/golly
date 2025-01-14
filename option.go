@@ -14,6 +14,11 @@ type Options struct {
 	// Commands Supported commands
 	Commands []*cobra.Command
 
+	// Loaded before code initializers
+	// reserved for plugins, database connection and required things
+	// business logic should be in Initializers
+	// Dependecies []AppFunc
+
 	// After config is loaded this is the last thing initialized
 	// prior to starting the service and entering normal run mode
 	Initializers []AppFunc
@@ -21,7 +26,8 @@ type Options struct {
 	// Preboots are executed place before config is initialized
 	// and any initializers are ran, this is right after signals
 	// are bound
-	Preboots []AppFunc
+	// Preboots []AppFunc
+	Plugins []Plugin
 
 	// Services defines the services we are loading into the system
 	// By default Web service will be loaded (This is required for any K8s health checks)

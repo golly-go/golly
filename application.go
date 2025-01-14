@@ -28,6 +28,8 @@ const (
 // These functions allow pre-execution logic before the application starts serving traffic.
 type AppFunc func(*Application) error
 
+type PluginFunc func() AppFunc
+
 var (
 	lock sync.RWMutex // lock ensures thread-safe access to application initializers.
 
@@ -51,13 +53,25 @@ type Application struct {
 
 	logger *log.Logger // Right now we are leveraging Logrus (Why reinvent the wheel - hold a pointer to it)
 
-	events       *EventManager
-	config       *viper.Viper
-	routes       *Route     // Root route configuration for the application.
-	initializers []AppFunc  // Collection of initialization functions.
-	preboots     []AppFunc  // collection of preboots
-	mu           sync.Mutex // Ensures safe concurrent access during initialization.
-	state        ApplicationState
+	events *EventManager
+	config *viper.Viper
+	routes *Route // Root route configuration for the application.
+
+	// Collection of initialization functions (This is the general thing that you should be using dependencies)
+	initializers []AppFunc
+
+	// Collection of dependencies that need to be guaranteed to run before initializers (TBD if this is needed)
+	// but sure do i hate having to guarantee order of plugins
+	plugins *PluginManager
+
+	// preboots should not be needed however they run before
+	// anything is loaded into the system, the config is not guaranteed to be
+	// bootstrapped nothing is there - really only use this if you MUST guarantee
+	// something loads ahead of this
+	// preboots []AppFunc
+
+	mu    sync.Mutex // Ensures safe concurrent access during initialization.
+	state ApplicationState
 
 	services map[string]Service
 }
@@ -82,11 +96,11 @@ func (a *Application) changeState(state ApplicationState) {
 // initialize runs all registered initializer functions in sequence.
 // If any initializer returns an error, the initialization halts.
 func (a *Application) initialize() error {
-	return runAppFuncs(a, a.initializers)
-}
+	if err := a.plugins.Initialize(app); err != nil {
+		return err
+	}
 
-func (a *Application) preboot() error {
-	return runAppFuncs(a, a.preboots)
+	return runAppFuncs(a, a.initializers)
 }
 
 // Shutdown starts the shutdown process
@@ -139,18 +153,13 @@ func NewApplication(options Options) *Application {
 		initializers = []AppFunc{}
 	}
 
-	preboots := options.Preboots
-	if preboots == nil {
-		preboots = []AppFunc{}
-	}
-
 	return &Application{
 		Name:         options.Name,
 		Env:          Env(),      // Fetches the current environment.
 		StartedAt:    time.Now(), // Marks the startup time of the application.
 		services:     serviceMap(options.Services),
 		initializers: initializers,
-		preboots:     preboots,
+		plugins:      NewPluginManager(options.Plugins...),
 		events:       &EventManager{},
 		logger:       NewLogger(),
 		routes: NewRouteRoot().

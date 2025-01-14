@@ -92,6 +92,12 @@ func bindCommands(options Options) *cobra.Command {
 
 	// Add other commands and options
 	rootCMD.AddCommand(commands...)
+
+	// put this here for now
+	for _, plugin := range options.Plugins {
+		rootCMD.AddCommand(plugin.Commands()...)
+	}
+
 	rootCMD.AddCommand(options.Commands...)
 
 	return rootCMD

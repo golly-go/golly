@@ -132,16 +132,6 @@ func TestNewApplication(t *testing.T) {
 			expectedServiceLength: 1,
 		},
 		{
-			name: "With preboots",
-			options: Options{
-				Name:     "PrebootApp",
-				Preboots: []AppFunc{mockAppFunc(true), mockAppFunc(false)},
-			},
-			expectedName:          "PrebootApp",
-			expectedLength:        2,
-			expectedServiceLength: 1,
-		},
-		{
 			name: "With services",
 			options: Options{
 				Name:     "ServiceApp",
@@ -159,7 +149,6 @@ func TestNewApplication(t *testing.T) {
 
 			assert.Equal(t, tt.expectedName, app.Name, "Application name mismatch")
 			assert.Len(t, app.initializers, len(tt.options.Initializers), "Unexpected number of initializers")
-			assert.Len(t, app.preboots, len(tt.options.Preboots), "Unexpected number of preboots")
 			assert.Len(t, app.services, tt.expectedServiceLength, "Unexpected number of services")
 		})
 	}

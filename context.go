@@ -9,6 +9,10 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+// Use this dont use it, upto you - this gives you a complex type
+// for a context
+type ContextKey string
+
 type ContextFuncError func(*Context) error
 type ContextFunc func(*Context)
 

@@ -12,12 +12,6 @@ func boot(f AppFunc) error {
 
 	signals(app)
 
-	if err := app.preboot(); err != nil {
-		app.changeState(StateErrored)
-
-		return err
-	}
-
 	app.changeState(StateStarting)
 
 	{

@@ -1,6 +1,7 @@
 package golly
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -44,16 +45,156 @@ func TestContains(t *testing.T) {
 	})
 }
 
+func TestAny(t *testing.T) {
+	tests := []struct {
+		name      string
+		input     []int
+		predicate func(int) bool
+		expected  bool
+	}{
+		{"Has even number", []int{1, 2, 3}, func(x int) bool { return x%2 == 0 }, true},
+		{"No even numbers", []int{1, 3, 5}, func(x int) bool { return x%2 == 0 }, false},
+		{"Empty slice", []int{}, func(x int) bool { return x%2 == 0 }, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, Any(tt.input, tt.predicate))
+		})
+	}
+}
+
+func TestMap(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    []int
+		fn       func(int) int
+		expected []int
+	}{
+		{"Double values", []int{1, 2, 3}, func(x int) int { return x * 2 }, []int{2, 4, 6}},
+		{"Square values", []int{1, 2, 3}, func(x int) int { return x * x }, []int{1, 4, 9}},
+		{"Empty slice", []int{}, func(x int) int { return x * 2 }, []int{}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, Map(tt.input, tt.fn))
+		})
+	}
+}
+
+func TestFilter(t *testing.T) {
+	tests := []struct {
+		name      string
+		input     []int
+		predicate func(int) bool
+		expected  []int
+	}{
+		{"Filter evens", []int{1, 2, 3, 4}, func(x int) bool { return x%2 == 0 }, []int{2, 4}},
+		{"No matches", []int{1, 3, 5}, func(x int) bool { return x%2 == 0 }, []int{}},
+		{"Empty slice", []int{}, func(x int) bool { return x%2 == 0 }, []int{}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, Filter(tt.input, tt.predicate))
+		})
+	}
+}
+
+func TestMapWithIndex(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    []int
+		fn       func(int, int) string
+		expected []string
+	}{
+		{"Index with values", []int{10, 20}, func(x, i int) string { return fmt.Sprintf("%d:%d", i, x) }, []string{"0:10", "1:20"}},
+		{"Empty slice", []int{}, func(x, i int) string { return fmt.Sprintf("%d:%d", i, x) }, []string{}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, MapWithIndex(tt.input, tt.fn))
+		})
+	}
+}
+
+// ***************************************************************************
+// *  Benches
+// ***************************************************************************
+
+func BenchmarkAny(b *testing.B) {
+	data := make([]int, 1000)
+	for i := 0; i < len(data); i++ {
+		data[i] = i
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = Any(data, func(x int) bool { return x%999 == 0 })
+	}
+}
+
+func BenchmarkMap(b *testing.B) {
+	data := make([]int, 1000)
+	for i := 0; i < len(data); i++ {
+		data[i] = i
+	}
+
+	b.Run("1000 deep slice", func(b *testing.B) {
+		b.ReportAllocs()
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			_ = Map(data, func(x int) int { return x * 2 })
+		}
+	})
+}
+
+func BenchmarkFilter(b *testing.B) {
+	data := make([]int, 1000)
+	for i := 0; i < len(data); i++ {
+		data[i] = i
+	}
+
+	b.Run("1000 deep slice", func(b *testing.B) {
+		b.ReportAllocs()
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			_ = Filter(data, func(x int) bool { return x%2 == 0 })
+		}
+	})
+}
+
+func BenchmarkMapWithIndex(b *testing.B) {
+	data := make([]int, 1000)
+
+	b.Run("1000 deep slice", func(b *testing.B) {
+		b.ReportAllocs()
+		b.ResetTimer()
+
+		for i := 0; i < b.N; i++ {
+			_ = MapWithIndex(data, func(x, i int) int { return x })
+		}
+	})
+
+}
+
 func BenchmarkFind(b *testing.B) {
 	numbers := make([]int, 1000)
 	for i := range numbers {
 		numbers[i] = i
 	}
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		_, _ = Find(numbers, func(n int) bool { return n == 999 })
-	}
+	b.Run("1000 deep slice", func(b *testing.B) {
+		b.ReportAllocs()
+		b.ResetTimer()
+
+		for i := 0; i < b.N; i++ {
+			_, _ = Find(numbers, func(n int) bool { return n == i%1000 })
+		}
+	})
+
 }
 
 func BenchmarkContains(b *testing.B) {

@@ -25,6 +25,8 @@ func Env() EnvName {
 		return currentENV
 	}
 
+	// Not threadsafe, we will make it that way if currentEnv isnt set
+	// tho the only time this should be called is on startup
 	lock.Lock()
 	defer lock.Unlock()
 
