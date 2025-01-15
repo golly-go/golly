@@ -63,7 +63,7 @@ func initializer(app *golly.Application) error {
 			AllowedOrigins: []string{"http://localhost:9000"},
 		})).
 		Get("/hello", func(wctx *golly.WebContext) {
-			golly.Render(wctx, golly.FormatTypeText, "Hello, World!")
+			wctx.RenderText("Hello, World!")
 		})
 
 	return nil
