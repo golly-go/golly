@@ -18,8 +18,8 @@ type ContextFunc func(*Context)
 
 type Context struct {
 	application *Application
-	loader      *DataLoader
 
+	loader atomic.Value
 	logger atomic.Value // Stores *logrus.Entry
 
 	// context.Context implementation
@@ -51,24 +51,41 @@ func (c *Context) Logger() *logrus.Entry {
 	return logger
 }
 
-// func (c *Context) Logger() *logrus.Entry {
-// 	// Fast path: Load existing logger
-// 	if logger := c.logger.Load(); logger != nil {
-// 		return logger.(*logrus.Entry)
-// 	}
+func (c *Context) Cache() *DataLoader {
+	if loader := c.loader.Load(); loader != nil {
+		return loader.(*DataLoader)
+	}
 
-// 	// Slow path: Initialize and store the logger
-// 	newLogger := logrus.NewEntry(Logger())
-// 	c.logger.Store(newLogger)
+	var loader *DataLoader
+	if parentCtx, ok := c.parent.(*Context); ok {
+		loader = parentCtx.Cache()
+	}
 
-// 	return newLogger
-// }
+	if loader == nil {
+		loader = NewDataLoader()
+	}
 
-func (c *Context) Cache() *DataLoader { return c.loader }
+	c.loader.Store(loader)
+	return loader
+}
 
 // Application returns a link to the application
 // buyer be wear this can be nil in test mode
-func (c *Context) Application() *Application { return c.application }
+func (c *Context) Application() *Application {
+	if c.application != nil {
+		return c.application
+	}
+
+	if parent, ok := c.parent.(*Context); ok {
+		if parent.application != nil {
+			c.application = parent.application
+		}
+	} else {
+		c.application = app
+	}
+
+	return c.application
+}
 
 // Implementation of context.Context so we can be passed around
 // regardless of library, this allows golly to be more portable
@@ -194,7 +211,6 @@ func NewContext(parent context.Context) *Context {
 	return &Context{
 		parent:      parent,
 		application: app,
-		loader:      NewDataLoader(),
 		values:      make(map[interface{}]interface{}),
 		done:        make(chan struct{}),
 	}

@@ -412,3 +412,30 @@ func BenchmarkContextLogger(b *testing.B) {
 		}
 	})
 }
+
+func BenchmarkContextCache(b *testing.B) {
+	rootCtx := &Context{}
+	childCtx := &Context{parent: rootCtx}
+
+	// Benchmark for cache creation
+	b.Run("CacheCreation", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			_ = rootCtx.Cache()
+		}
+	})
+
+	// Benchmark for retrieving existing cache
+	b.Run("CacheRetrievalRoot", func(b *testing.B) {
+		rootCtx.Cache() // Ensure cache is initialized
+		for i := 0; i < b.N; i++ {
+			_ = rootCtx.Cache()
+		}
+	})
+
+	// Benchmark for cascading cache retrieval from parent
+	b.Run("CacheCascadingFromParent", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			_ = childCtx.Cache()
+		}
+	})
+}

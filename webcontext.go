@@ -134,25 +134,22 @@ func WebContextWithRequestID(gctx *Context, reqID string, r *http.Request, w htt
 }
 
 func requestLogfields(requestID string, r *http.Request) map[string]interface{} {
-	logFields := make(map[string]interface{}, 11)
-
-	logFields["ts"] = time.Now().UTC().Format(time.RFC1123)
+	logFields := map[string]interface{}{
+		"ts":                           time.Now().UTC().Format(time.RFC1123),
+		"http.proto":                   r.Proto,
+		"http.request_id":              requestID,
+		"http.method":                  r.Method,
+		"http.useragent":               r.UserAgent(),
+		"http.url":                     r.URL.String(),
+		"http.url_details.path":        r.URL.Path,
+		"http.url_details.host":        r.Host,
+		"http.url_details.queryString": r.URL.RawQuery,
+	}
 
 	logFields["http.url_details.schema"] = SchemeHTTP
 	if r.TLS != nil {
 		logFields["http.url_details.schema"] = SchemeHTTPS
 	}
-
-	logFields["http.proto"] = r.Proto
-	logFields["http.request_id"] = requestID
-
-	logFields["http.method"] = r.Method
-	logFields["http.useragent"] = r.UserAgent()
-	logFields["http.url"] = r.URL.String()
-
-	logFields["http.url_details.path"] = r.URL.Path
-	logFields["http.url_details.host"] = r.Host
-	logFields["http.url_details.queryString"] = r.URL.RawQuery
 
 	return logFields
 }
