@@ -79,25 +79,27 @@ func bindCommands(options Options) *cobra.Command {
 	serviceCommand.AddCommand(listServiceCommand)
 
 	// Add individual service commands
-	for _, service := range services {
-		name := getServiceName(service)
-		description := getServiceDescription(service)
+	for pos := range services {
+		name := getServiceName(services[pos])
 
 		serviceCommand.AddCommand(&cobra.Command{
 			Use:   name,
-			Short: description,
+			Short: getServiceDescription(services[pos]),
 			Run:   Command(serviceRun(name)),
 		})
 	}
 
-	// Add other commands and options
+	// Add other non dynamic application commands and options
 	rootCMD.AddCommand(commands...)
 
-	// put this here for now
+	// loop through our plugins incase they are defining
+	// cli commands - i am putting this here for now cause it needs
+	// to happen prior to rootCMD.execute
 	for _, plugin := range options.Plugins {
 		rootCMD.AddCommand(plugin.Commands()...)
 	}
 
+	// Any misc commands defined by the end user
 	rootCMD.AddCommand(options.Commands...)
 
 	return rootCMD
