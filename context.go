@@ -33,17 +33,36 @@ type Context struct {
 }
 
 func (c *Context) Logger() *logrus.Entry {
-	// Fast path: Load existing logger
+	// Fast path: Check for an existing logger in the current context
 	if logger := c.logger.Load(); logger != nil {
 		return logger.(*logrus.Entry)
 	}
 
-	// Slow path: Initialize and store the logger
-	newLogger := logrus.NewEntry(Logger())
-	c.logger.Store(newLogger)
+	var logger *logrus.Entry
+	if parentCtx, ok := c.parent.(*Context); ok {
+		logger = parentCtx.Logger()
+	}
 
-	return newLogger
+	if logger == nil {
+		logger = logrus.NewEntry(Logger())
+	}
+
+	c.logger.Store(logger)
+	return logger
 }
+
+// func (c *Context) Logger() *logrus.Entry {
+// 	// Fast path: Load existing logger
+// 	if logger := c.logger.Load(); logger != nil {
+// 		return logger.(*logrus.Entry)
+// 	}
+
+// 	// Slow path: Initialize and store the logger
+// 	newLogger := logrus.NewEntry(Logger())
+// 	c.logger.Store(newLogger)
+
+// 	return newLogger
+// }
 
 func (c *Context) Cache() *DataLoader { return c.loader }
 
@@ -181,6 +200,10 @@ func NewContext(parent context.Context) *Context {
 	}
 }
 
+func NewTestContext() *Context {
+	return NewContext(context.TODO())
+}
+
 func WithValue(parent context.Context, key, val interface{}) *Context {
 	ctx := NewContext(parent)
 	ctx.values[key] = val
@@ -237,7 +260,8 @@ func WithApplication(parent context.Context, app *Application) *Context {
 
 func WithLoggerFields(parent context.Context, fields map[string]interface{}) *Context {
 	gctx := NewContext(parent)
-	gctx.logger.Store(Logger().WithFields(fields))
+
+	gctx.logger.Store(gctx.Logger().WithFields(fields))
 
 	if c, ok := parent.(*Context); ok {
 		gctx.loader = c.loader

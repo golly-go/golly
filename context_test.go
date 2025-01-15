@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -239,6 +240,80 @@ func TestPropagateCancel(t *testing.T) {
 	assert.Equal(t, context.Canceled, child.Err())
 }
 
+func TestContextLogger(t *testing.T) {
+	t.Run("FastPathCachedLogger", func(t *testing.T) {
+		// Create a context and preload a logger
+		ctx := NewContext(nil)
+		preloadedLogger := logrus.NewEntry(logrus.New())
+		ctx.logger.Store(preloadedLogger)
+
+		// Retrieve the logger
+		logger := ctx.Logger()
+
+		// Assert that the cached logger is returned
+		assert.Equal(t, preloadedLogger, logger, "Expected cached logger to be returned")
+	})
+
+	t.Run("SlowPathInheritParentLogger", func(t *testing.T) {
+		// Create a parent context and set its logger
+		parentCtx := NewContext(nil)
+		parentLogger := logrus.NewEntry(logrus.New())
+		parentCtx.logger.Store(parentLogger)
+
+		// Create a child context inheriting from the parent
+		childCtx := NewContext(parentCtx)
+
+		// Retrieve the logger from the child context
+		logger := childCtx.Logger()
+
+		// Assert that the parent's logger is returned
+		assert.Equal(t, parentLogger, logger, "Expected logger to be inherited from parent")
+	})
+
+	t.Run("SlowPathNewLogger", func(t *testing.T) {
+		// Create a standalone context with no parent
+		standaloneCtx := NewContext(nil)
+
+		// Retrieve the logger from the context
+		logger := standaloneCtx.Logger()
+
+		// Assert that a new logger is created
+		assert.NotNil(t, logger, "Expected a new logger to be created")
+		assert.Equal(t, logger, standaloneCtx.Logger(), "Expected logger to be cached after first retrieval")
+	})
+
+	t.Run("CascadingLoggerUpwards", func(t *testing.T) {
+		// Create a parent context and set its logger
+		rootCtx := NewContext(nil)
+		rootLogger := logrus.NewEntry(logrus.New())
+		rootCtx.logger.Store(rootLogger)
+
+		// Create a chain of child contexts
+		midCtx := NewContext(rootCtx)
+		leafCtx := NewContext(midCtx)
+
+		// Retrieve the logger from the deepest context
+		logger := leafCtx.Logger()
+
+		// Assert that the logger cascades upwards to the root
+		assert.Equal(t, rootLogger, logger, "Expected logger to cascade upwards to root")
+	})
+
+	t.Run("HandleParentAsContextInterface", func(t *testing.T) {
+		// Create a parent context of type context.Context
+		rootCtx := NewContext(nil)
+
+		// Create a child context with a parent that is not a *Context
+		childCtx := NewContext(rootCtx)
+
+		// Retrieve the logger from the child context
+		logger := childCtx.Logger()
+
+		// Assert that a new logger is created when parent is context.Context
+		assert.NotNil(t, logger, "Expected a new logger to be created when parent is context.Context")
+	})
+}
+
 // ***************************************************************************
 // *  Benches
 // ***************************************************************************
@@ -296,6 +371,44 @@ func BenchmarkContextWithValuePropagation(b *testing.B) {
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			_ = WithValue(parent, "key", i)
+		}
+	})
+}
+
+func BenchmarkContextLogger(b *testing.B) {
+	// Setup: Create a parent context with a pre-set logger
+	parentCtx := NewContext(nil)
+	parentLogger := logrus.NewEntry(logrus.New())
+	parentCtx.logger.Store(parentLogger)
+
+	childCtx := NewContext(parentCtx)
+	standaloneCtx := NewContext(nil)
+
+	// Benchmark: Fast path (logger is cached)
+	b.Run("FastPath", func(b *testing.B) {
+
+		// Preload the logger in the child context
+		childCtx.logger.Store(parentLogger)
+
+		for i := 0; i < b.N; i++ {
+			_ = childCtx.Logger()
+		}
+	})
+
+	// Benchmark: Slow path (resolve from parent)
+	b.Run("SlowPathResolveParent", func(b *testing.B) {
+		childCtx.logger = atomic.Value{}
+
+		for i := 0; i < b.N; i++ {
+			_ = childCtx.Logger()
+		}
+	})
+
+	// Benchmark: Slow path (create a new logger)
+	b.Run("SlowPathNewLogger", func(b *testing.B) {
+
+		for i := 0; i < b.N; i++ {
+			_ = standaloneCtx.Logger()
 		}
 	})
 }
