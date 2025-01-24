@@ -120,6 +120,43 @@ func TestMapWithIndex(t *testing.T) {
 	}
 }
 
+func TestUnique(t *testing.T) {
+	tests := []struct {
+		name   string
+		input  []int
+		expect []int
+	}{
+		{
+			name:   "empty slice",
+			input:  []int{},
+			expect: []int(nil),
+		},
+		{
+			name:   "single element",
+			input:  []int{1},
+			expect: []int{1},
+		},
+		{
+			name:   "multiple duplicates",
+			input:  []int{1, 2, 2, 3, 1, 3},
+			expect: []int{1, 2, 3},
+		},
+		{
+			name:   "already unique",
+			input:  []int{1, 2, 3, 4, 5},
+			expect: []int{1, 2, 3, 4, 5},
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt // capture range variable
+		t.Run(tt.name, func(t *testing.T) {
+			result := Unique(tt.input)
+			assert.Equal(t, tt.expect, result)
+		})
+	}
+}
+
 // ***************************************************************************
 // *  Benches
 // ***************************************************************************
@@ -178,6 +215,16 @@ func BenchmarkMapWithIndex(b *testing.B) {
 		}
 	})
 
+	d2 := make([]int, 100)
+	b.Run("100 small slice", func(b *testing.B) {
+		b.ReportAllocs()
+		b.ResetTimer()
+
+		for i := 0; i < b.N; i++ {
+			_ = MapWithIndex(d2, func(x, i int) int { return x })
+		}
+	})
+
 }
 
 func BenchmarkFind(b *testing.B) {
@@ -227,4 +274,46 @@ func BenchmarkContains(b *testing.B) {
 			_ = Contains(numbers, 1001) // No match
 		}
 	})
+}
+
+func generateTestSlice(size int, hasDuplicates bool) []int {
+	// If hasDuplicates, repeat some subset of numbers
+	// else fill with unique values 0..size-1
+	out := make([]int, size)
+	for i := 0; i < size; i++ {
+		if hasDuplicates {
+			// This will force repeats.
+			// For example, for 100 items: 0, 1, 2, ... 49, 0, 1, 2, ... 49
+			out[i] = i % (size / 2)
+		} else {
+			out[i] = i
+		}
+	}
+	return out
+}
+
+func BenchmarkUnique(b *testing.B) {
+	benchmarks := []struct {
+		name  string
+		array []int
+	}{
+		{"SmallNoDup", generateTestSlice(10, false)},
+		{"SmallDupp", generateTestSlice(10, true)},
+		{"AverageSize - 1000 (NoDups)", generateTestSlice(1000, true)},
+		{"AverageSize - 1000 (Dups)", generateTestSlice(1000, true)},
+		{"LargeNoDup", generateTestSlice(100000, false)},
+		{"LargeDup", generateTestSlice(100000, true)},
+	}
+
+	for _, bm := range benchmarks {
+		b.Run(bm.name+" Map Based", func(b *testing.B) {
+			// We only benchmark the Unique call itself.
+			// b.ResetTimer() ensures no overhead is measured from slice generation above.
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				Unique(bm.array)
+			}
+		})
+	}
+
 }

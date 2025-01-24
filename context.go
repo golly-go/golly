@@ -19,7 +19,7 @@ type ContextFunc func(*Context)
 type Context struct {
 	application *Application
 
-	loader atomic.Value
+	loader atomic.Value // Stores *Dataloader
 	logger atomic.Value // Stores *logrus.Entry
 
 	// context.Context implementation
@@ -39,8 +39,8 @@ func (c *Context) Logger() *logrus.Entry {
 	}
 
 	var logger *logrus.Entry
-	if parentCtx, ok := c.parent.(*Context); ok {
-		logger = parentCtx.Logger()
+	if parent, ok := c.parent.(*Context); ok && parent != nil {
+		logger = parent.Logger()
 	}
 
 	if logger == nil {
@@ -57,8 +57,8 @@ func (c *Context) Cache() *DataLoader {
 	}
 
 	var loader *DataLoader
-	if parentCtx, ok := c.parent.(*Context); ok {
-		loader = parentCtx.Cache()
+	if parent, ok := c.parent.(*Context); ok && parent != nil {
+		loader = parent.Cache()
 	}
 
 	if loader == nil {
@@ -76,7 +76,7 @@ func (c *Context) Application() *Application {
 		return c.application
 	}
 
-	if parent, ok := c.parent.(*Context); ok {
+	if parent, ok := c.parent.(*Context); ok && parent != nil {
 		if parent.application != nil {
 			c.application = parent.application
 		}
@@ -279,7 +279,7 @@ func WithLoggerFields(parent context.Context, fields map[string]interface{}) *Co
 
 	gctx.logger.Store(gctx.Logger().WithFields(fields))
 
-	if c, ok := parent.(*Context); ok {
+	if c, ok := parent.(*Context); ok && c != nil {
 		gctx.loader = c.loader
 	}
 

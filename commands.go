@@ -29,7 +29,6 @@ var (
 			Run: Command(func(app *Application, cmd *cobra.Command, args []string) error {
 				fmt.Println("Listing Routes:")
 				fmt.Println(strings.Join(buildPath(app.routes, ""), "\n"))
-
 				return nil
 			}),
 		},

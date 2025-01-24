@@ -44,9 +44,13 @@ func Any[T any](slice []T, predicate func(T) bool) bool {
 }
 
 func Map[T any, R any](list []T, fn func(T) R) []R {
-	return MapWithIndex(list, func(x T, _ int) R {
-		return fn(x)
-	})
+	ret := make([]R, 0, len(list))
+
+	for pos := range list {
+		ret = append(ret, fn(list[pos]))
+	}
+
+	return ret
 }
 
 // Filter filters elements of the input slice based on a predicate function.
@@ -62,11 +66,24 @@ func Map[T any, R any](list []T, fn func(T) R) []R {
 //   numbers := []int{1, 2, 3, 4}
 //   evens := Filter(numbers, func(n int) bool { return n%2 == 0 }) // []int{2, 4}
 
+// func Filter[T any](list []T, fn func(T) bool) []T {
+// 	ret := []T{}
+
+// 	for i := range list {
+// 		if result := fn(list[i]); result {
+// 			ret = append(ret, list[i])
+// 		}
+// 	}
+
+// 	return ret
+// }
+
 func Filter[T any](list []T, fn func(T) bool) []T {
-	ret := []T{}
+	// Estimate capacity based on a fraction of the input size.
+	ret := make([]T, 0, len(list)/3)
 
 	for i := range list {
-		if result := fn(list[i]); result {
+		if fn(list[i]) {
 			ret = append(ret, list[i])
 		}
 	}
@@ -91,11 +108,57 @@ func Filter[T any](list []T, fn func(T) bool) []T {
 //   // result: []string{"0: 10", "1: 20", "2: 30"}
 
 func MapWithIndex[T any, R any](list []T, fn func(T, int) R) []R {
-	ret := make([]R, len(list))
+	ret := make([]R, 0, len(list))
 
 	for pos := range list {
-		ret[pos] = fn(list[pos], pos)
+		ret = append(ret, fn(list[pos], pos))
 	}
 
 	return ret
+}
+
+// // Unique removes duplicate elements (preserving first occurrences)
+// // by overwriting the input slice in place and returning a subslice.
+// func Unique[T comparable](original []T) []T {
+
+// 	// Small optimization: no work if slice length is 0 or 1
+// 	if len(original) < 2 {
+// 		return original
+// 	}
+
+// 	list := make([]T, len(original))
+
+// 	// Use map[T]struct{} to save a bit of space over map[T]bool.
+// 	// Pre-size to len(list) to minimize rehashing.
+// 	seen := make(map[T]bool, len(list))
+// 	copy(list, original)
+
+// 	writeIdx := 0
+// 	for pos := range list {
+// 		if _, exists := seen[list[pos]]; !exists {
+// 			seen[list[pos]] = true
+// 			list[writeIdx] = list[pos]
+// 			writeIdx++
+// 		}
+// 	}
+
+// 	// Return only the portion of 'list' that contains unique elements
+// 	return list[:writeIdx]
+// }
+
+func Unique[T comparable](original []T) []T {
+	if len(original) < 2 {
+		// Return a copy if you want truly non-destructive
+		return append([]T(nil), original...)
+	}
+	seen := make(map[T]struct{}, len(original))
+	result := make([]T, 0, len(original)) // grows by appending
+
+	for _, val := range original {
+		if _, found := seen[val]; !found {
+			seen[val] = struct{}{}
+			result = append(result, val)
+		}
+	}
+	return result
 }
