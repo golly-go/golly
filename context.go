@@ -168,7 +168,7 @@ func (c *Context) removeChild(child canceler) {
 			if children[pos] == child {
 				continue
 			}
-			newChildren = append(newChildren, c)
+			newChildren = append(newChildren, children[pos])
 		}
 
 		if atomic.CompareAndSwapPointer(&c.children, oldPtr, unsafe.Pointer(&newChildren)) {
