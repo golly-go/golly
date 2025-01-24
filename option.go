@@ -23,10 +23,11 @@ type Options struct {
 	// prior to starting the service and entering normal run mode
 	Initializers []AppFunc
 
-	// Preboots are executed place before config is initialized
+	// Preboot are executed place before config is initialized
 	// and any initializers are ran, this is right after signals
 	// are bound
-	// Preboots []AppFunc
+	Preboot AppFunc
+
 	Plugins []Plugin
 
 	// Services defines the services we are loading into the system

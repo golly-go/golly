@@ -64,11 +64,11 @@ type Application struct {
 	// but sure do i hate having to guarantee order of plugins
 	plugins *PluginManager
 
-	// preboots should not be needed however they run before
-	// anything is loaded into the system, the config is not guaranteed to be
-	// bootstrapped nothing is there - really only use this if you MUST guarantee
-	// something loads ahead of this
-	// preboots []AppFunc
+	// preboot should not be needed however they run before
+	// anything is loaded into the system, the config is the only tbing guaranteed to be
+	// if you need more then one use InitializerChain() - going to be switching alot of these
+	// arrays and loops to a single intializer function with a chain long term
+	preboot AppFunc
 
 	mu    sync.Mutex // Ensures safe concurrent access during initialization.
 	state ApplicationState
@@ -96,6 +96,10 @@ func (a *Application) changeState(state ApplicationState) {
 // initialize runs all registered initializer functions in sequence.
 // If any initializer returns an error, the initialization halts.
 func (a *Application) initialize() error {
+	if err := a.preboot(a); err != nil {
+		return err
+	}
+
 	if err := a.plugins.Initialize(app); err != nil {
 		return err
 	}
@@ -117,6 +121,13 @@ func (a *Application) Shutdown() {
 	go a.events.Dispatch(
 		WithApplication(context.Background(), a),
 		ApplicationShutdown{})
+}
+
+func (a *Application) RegisterInitializer(initializer AppFunc) {
+	lock.Lock()
+	defer lock.Unlock()
+
+	a.initializers = append(a.initializers, initializer)
 }
 
 // runAppFuncs runs Appfuncs returning on the first error
@@ -160,6 +171,7 @@ func NewApplication(options Options) *Application {
 		services:     serviceMap(options.Services),
 		initializers: initializers,
 		plugins:      NewPluginManager(options.Plugins...),
+		preboot:      options.Preboot,
 		events:       &EventManager{},
 		logger:       NewLogger(),
 		routes: NewRouteRoot().
