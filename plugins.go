@@ -10,6 +10,9 @@ import (
 // Plugin defines the structure for a plugin in the Golly framework.
 // Plugins should implement initialization, command provision, and deinitialization logic.
 type Plugin interface {
+	// Plugin Name
+	Name() string
+
 	// Initialize is called when the plugin is loaded into the application.
 	// This is where resources such as database connections or configurations should be initialized.
 	Initialize(app *Application) error
@@ -25,12 +28,23 @@ type Plugin interface {
 // PluginManager manages the lifecycle of all registered plugins.
 // It handles initialization, aggregation of commands, and deinitialization.
 type PluginManager struct {
-	plugins []Plugin
+	plugins map[string]Plugin
 }
 
 // NewPluginManager creates a new instance of PluginManager.
 func NewPluginManager(plugins ...Plugin) *PluginManager {
-	return &PluginManager{plugins: plugins}
+	pluginMap := make(map[string]Plugin, len(plugins))
+	for pos := range plugins {
+		pluginMap[plugins[pos].Name()] = plugins[pos]
+	}
+
+	return &PluginManager{plugins: pluginMap}
+}
+
+// Get returns a plugin from the plugins map (This is helpful - if you need to get access to a method on the plugin)
+// though be weary this is still a global value and can cause issues long term in testing
+func (pm *PluginManager) Get(name string) Plugin {
+	return pm.plugins[name]
 }
 
 // InitializeAll initializes all registered plugins by calling their Initialize method.
