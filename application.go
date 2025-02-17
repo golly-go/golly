@@ -81,6 +81,7 @@ func (a *Application) Routes() *Route          { return a.routes }
 func (a *Application) State() ApplicationState { return a.state }
 func (a *Application) Events() *EventManager   { return a.events }
 func (a *Application) Logger() *log.Logger     { return a.logger }
+func (a *Application) Plugins() *PluginManager { return a.plugins }
 
 // changeState changes application state within the application
 // and dispatches to all those who care
