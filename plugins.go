@@ -49,7 +49,7 @@ func (pm *PluginManager) Get(name string) Plugin {
 
 // InitializeAll initializes all registered plugins by calling their Initialize method.
 // If any plugin fails to initialize, it returns an error.
-func (pm *PluginManager) Initialize(app *Application) error {
+func (pm *PluginManager) initialize(app *Application) error {
 	for pos := range pm.plugins {
 		if err := pm.plugins[pos].Initialize(app); err != nil {
 			return fmt.Errorf("failed to initialize plugin %T: %w", pm.plugins[pos], err)
@@ -60,7 +60,7 @@ func (pm *PluginManager) Initialize(app *Application) error {
 
 // DeinitializeAll deinitializes all registered plugins by calling their Deinitialize method.
 // It collects errors from all plugins and returns a combined error if any deinitialization fails.
-func (pm *PluginManager) DeinitializeAll(app *Application) error {
+func (pm *PluginManager) deinitialize(app *Application) error {
 	var deinitErrors []error
 
 	for pos := range pm.plugins {

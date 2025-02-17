@@ -101,7 +101,7 @@ func (a *Application) initialize() error {
 		return err
 	}
 
-	if err := a.plugins.Initialize(app); err != nil {
+	if err := a.plugins.initialize(app); err != nil {
 		return err
 	}
 
@@ -122,6 +122,8 @@ func (a *Application) Shutdown() {
 	lock.RUnlock()
 
 	a.changeState(StateShutdown)
+
+	a.plugins.deinitialize(app)
 
 	a.events.Dispatch(
 		WithApplication(context.Background(), a),
