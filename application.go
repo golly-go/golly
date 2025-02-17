@@ -107,6 +107,10 @@ func (a *Application) initialize() error {
 	return runAppFuncs(a, a.initializers)
 }
 
+func (a *Application) On(event string, fnc EventFunc) {
+	a.Events().Register(event, fnc)
+}
+
 // Shutdown starts the shutdown process
 func (a *Application) Shutdown() {
 	lock.RLock()
@@ -118,7 +122,7 @@ func (a *Application) Shutdown() {
 
 	a.changeState(StateShutdown)
 
-	go a.events.Dispatch(
+	a.events.Dispatch(
 		WithApplication(context.Background(), a),
 		ApplicationShutdown{})
 }

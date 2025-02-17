@@ -39,6 +39,7 @@ func boot(f AppFunc) error {
 		return err
 	}
 
+	app.Shutdown()
 	return nil
 }
 
