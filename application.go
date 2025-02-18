@@ -189,9 +189,6 @@ func NewApplication(options Options) *Application {
 		events:       &EventManager{},
 		logger:       NewLogger(),
 		routes: NewRouteRoot().
-			mount("/", func(r *Route) {
-				// Default route mount point (can be extended with specific handlers).
-				r.Get("/routes", RenderRoutes(r))
-			}),
+			Get("/routes", renderRoutes), // Default route mount point (can be extended with specific handlers).
 	}
 }

@@ -83,6 +83,7 @@ type Route struct {
 	token *RouteToken
 
 	handlers map[methodType]HandlerFunc
+	chained  map[methodType]HandlerFunc
 
 	children   []*Route
 	middleware []MiddlewareFunc //TBD
@@ -196,6 +197,7 @@ func NewRouteRoot() *Route {
 func NewRoute(root *Route) *Route {
 	return &Route{
 		handlers:                map[methodType]HandlerFunc{},
+		chained:                 map[methodType]HandlerFunc{},
 		middleware:              []MiddlewareFunc{},
 		root:                    root,
 		methodNotAllowedHandler: notAllowedHandler,
@@ -204,16 +206,34 @@ func NewRoute(root *Route) *Route {
 }
 
 func (re *Route) updateHandlers() {
+	// Resolve middleware once and apply to all handlers
+	middleware := re.resolveMiddleware()
+
 	for method, handler := range re.handlers {
-		re.updateHandler(method, handler)
+		re.chained[method] = chain(middleware, handler)
 	}
 
-	re.methodNotAllowedHandler = chain(re.middleware, notAllowedHandler)
-	re.noOp = chain(re.middleware, noOpHandler)
+	for _, child := range re.children {
+		child.updateHandlers()
+	}
+
+	re.methodNotAllowedHandler = chain(middleware, notAllowedHandler)
+	re.noOp = chain(middleware, noOpHandler)
 }
 
-func (re *Route) updateHandler(method methodType, handler HandlerFunc) {
-	re.handlers[method] = chain(re.middleware, handler)
+func (re *Route) resolveMiddleware() []MiddlewareFunc {
+	middleware := []MiddlewareFunc{}
+
+	cur := re
+	for cur != nil {
+		// Prepend current route's middleware to the list
+		middleware = append(cur.middleware, middleware...)
+
+		// Move to the parent route
+		cur = cur.parent
+	}
+
+	return middleware
 }
 
 func (re *Route) add(path string, handler HandlerFunc, httpMethods methodType) *Route {
@@ -240,9 +260,8 @@ func (re *Route) add(path string, handler HandlerFunc, httpMethods methodType) *
 
 			// If node doesn't exist, create it
 			if node == nil {
-				node = NewRoute(re.root)
+				node = NewRoute(root)
 				node.parent = r
-				node.middleware = r.middleware
 				node.token = tokens[pos]
 				r.children = append(r.children, node)
 			}
@@ -264,10 +283,6 @@ func (re *Route) add(path string, handler HandlerFunc, httpMethods methodType) *
 
 func (re *Route) Use(fns ...MiddlewareFunc) *Route {
 	re.middleware = append(re.middleware, fns...)
-
-	for _, child := range re.children {
-		child.Use(fns...)
-	}
 
 	re.updateHandlers()
 
@@ -359,7 +374,7 @@ func RouteRequest(a *Application, r *http.Request, w http.ResponseWriter) {
 		method = r.Method
 	}
 
-	if handler, ok := re.handlers[methods[method]]; ok {
+	if handler, ok := re.chained[methods[method]]; ok {
 		if method == r.Method {
 			handler(wctx)
 			return
@@ -395,16 +410,19 @@ func chain(middlewares []MiddlewareFunc, endpoint HandlerFunc) HandlerFunc {
 	return h
 }
 
-func RenderRoutes(routes *Route) HandlerFunc {
-	return func(c *WebContext) {
-		if !Env().IsDevelopment() {
-			c.Response().WriteHeader(http.StatusNotFound)
-			return
-		}
-
-		text := strings.Join(buildPath(routes, ""), "\n")
-		c.RenderText(text)
+func renderRoutes(c *WebContext) {
+	if !Env().IsDevelopment() {
+		c.Response().WriteHeader(http.StatusNotFound)
+		return
 	}
+
+	root := c.route
+	for root.parent != nil {
+		root = root.parent
+	}
+
+	text := strings.Join(buildPath(root, ""), "\n")
+	c.RenderText(text)
 }
 
 func printRoutes(routes *Route) {
