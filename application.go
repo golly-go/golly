@@ -40,6 +40,13 @@ var (
 	app *Application
 )
 
+func Config() *viper.Viper {
+	if app == nil || app.config == nil {
+		return viper.GetViper()
+	}
+	return app.config
+}
+
 // Application represents the core structure of a Golly web application.
 // It holds metadata, routing configurations, and initializers responsible
 // for bootstrapping the app during startup.
