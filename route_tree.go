@@ -395,16 +395,18 @@ func chain(middlewares []MiddlewareFunc, endpoint HandlerFunc) HandlerFunc {
 	return h
 }
 
-// func RenderRoutes(routes *Route) HandlerFunc {
-// 	return func(c WebContext) {
-// 		if !c.Env().IsDevelopment() {
-// 			c.RenderStatus(http.StatusNotFound)
-// 		}
+func RenderRoutes(routes *Route) HandlerFunc {
+	return func(c *WebContext) {
+		if !Env().IsDevelopment() {
+			c.Response().WriteHeader(http.StatusNotFound)
+			return
+		}
 
-//			text := strings.Join(buildPath(routes, ""), "\n")
-//			c.RenderText(text)
-//		}
-//	}
+		text := strings.Join(buildPath(routes, ""), "\n")
+		c.RenderText(text)
+	}
+}
+
 func printRoutes(routes *Route) {
 	fmt.Printf("%s\n", strings.Join(buildPath(routes, ""), "\n"))
 }
