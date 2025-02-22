@@ -65,7 +65,7 @@ type Application struct {
 	routes *Route // Root route configuration for the application.
 
 	// Collection of initialization functions (This is the general thing that you should be using dependencies)
-	initializers []AppFunc
+	initializer AppFunc
 
 	// Collection of dependencies that need to be guaranteed to run before initializers (TBD if this is needed)
 	// but sure do i hate having to guarantee order of plugins
@@ -112,7 +112,11 @@ func (a *Application) initialize() error {
 		return err
 	}
 
-	return runAppFuncs(a, a.initializers)
+	if a.initializer == nil {
+		return nil
+	}
+
+	return a.initializer(a)
 }
 
 func (a *Application) On(event string, fnc EventFunc) {
@@ -141,7 +145,7 @@ func (a *Application) RegisterInitializer(initializer AppFunc) {
 	lock.Lock()
 	defer lock.Unlock()
 
-	a.initializers = append(a.initializers, initializer)
+	a.initializer = AppFuncChain(a.initializer, initializer)
 }
 
 // runAppFuncs runs Appfuncs returning on the first error
@@ -156,7 +160,7 @@ func runAppFuncs(a *Application, fncs []AppFunc) error {
 
 // InitializerChain returns a single GollyAppFunc that executes multiple initializers
 // sequentially. If any initializer fails, the chain is interrupted and the error is returned.
-func InitializerChain(initializers ...AppFunc) AppFunc {
+func AppFuncChain(initializers ...AppFunc) AppFunc {
 	return func(app *Application) error {
 		for pos := range initializers {
 			// reduce allocations
@@ -173,21 +177,17 @@ func InitializerChain(initializers ...AppFunc) AppFunc {
 // further route registration and initialization steps.
 func NewApplication(options Options) *Application {
 	// Ensure slices are initialized for safe iteration.
-	initializers := options.Initializers
-	if initializers == nil {
-		initializers = []AppFunc{}
-	}
 
 	return &Application{
-		Name:         options.Name,
-		Env:          Env(),      // Fetches the current environment.
-		StartedAt:    time.Now(), // Marks the startup time of the application.
-		services:     serviceMap(options.Services),
-		initializers: initializers,
-		plugins:      NewPluginManager(options.Plugins...),
-		preboot:      options.Preboot,
-		events:       &EventManager{},
-		logger:       NewLogger(),
+		Name:        options.Name,
+		Env:         Env(),      // Fetches the current environment.
+		StartedAt:   time.Now(), // Marks the startup time of the application.
+		services:    serviceMap(options.Services),
+		initializer: options.Initializer,
+		plugins:     NewPluginManager(options.Plugins...),
+		preboot:     options.Preboot,
+		events:      &EventManager{},
+		logger:      NewLogger(),
 		routes: NewRouteRoot().
 			Get("/routes", renderRoutes), // Default route mount point (can be extended with specific handlers).
 	}

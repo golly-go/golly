@@ -21,7 +21,7 @@ type Options struct {
 
 	// After config is loaded this is the last thing initialized
 	// prior to starting the service and entering normal run mode
-	Initializers []AppFunc
+	Initializer AppFunc
 
 	// Preboot are executed place before config is initialized
 	// and any initializers are ran, this is right after signals

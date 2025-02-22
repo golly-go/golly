@@ -17,12 +17,12 @@ func mockAppFunc(success bool) AppFunc {
 	}
 }
 
-type testService struct{}
+// type testService struct{}
 
-func (*testService) Initialize(*Application) error { return nil }
-func (*testService) Stop() error                   { return nil }
-func (*testService) Start() error                  { return nil }
-func (*testService) IsRunning() bool               { return false }
+// func (*testService) Initialize(*Application) error { return nil }
+// func (*testService) Stop() error                   { return nil }
+// func (*testService) Start() error                  { return nil }
+// func (*testService) IsRunning() bool               { return false }
 
 // Tests for InitializerChain
 func TestInitializerChain(t *testing.T) {
@@ -50,7 +50,7 @@ func TestInitializerChain(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			chain := InitializerChain(tt.initializers...)
+			chain := AppFuncChain(tt.initializers...)
 			app := &Application{}
 
 			err := chain(app)
@@ -124,8 +124,8 @@ func TestNewApplication(t *testing.T) {
 		{
 			name: "With initializers",
 			options: Options{
-				Name:         "TestApp",
-				Initializers: []AppFunc{mockAppFunc(true)},
+				Name:        "TestApp",
+				Initializer: mockAppFunc(true),
 			},
 			expectedName:          "TestApp",
 			expectedLength:        1,
@@ -148,7 +148,7 @@ func TestNewApplication(t *testing.T) {
 			app := NewApplication(tt.options)
 
 			assert.Equal(t, tt.expectedName, app.Name, "Application name mismatch")
-			assert.Len(t, app.initializers, len(tt.options.Initializers), "Unexpected number of initializers")
+			assert.NotNil(t, app.initializer)
 			assert.Len(t, app.services, tt.expectedServiceLength, "Unexpected number of services")
 		})
 	}

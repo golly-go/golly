@@ -25,6 +25,8 @@ type Plugin interface {
 	Deinitialize(app *Application) error
 }
 
+type Plugins []Plugin
+
 // PluginManager manages the lifecycle of all registered plugins.
 // It handles initialization, aggregation of commands, and deinitialization.
 type PluginManager struct {
