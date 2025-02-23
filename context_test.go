@@ -314,6 +314,40 @@ func TestContextLogger(t *testing.T) {
 	})
 }
 
+func TestToGollyContext(t *testing.T) {
+	tests := []struct {
+		name       string
+		input      context.Context
+		expectSame bool
+	}{
+		{
+			name:       "Already Golly context",
+			input:      NewContext(context.Background()),
+			expectSame: true,
+		},
+		{
+			name:       "Standard context",
+			input:      context.Background(),
+			expectSame: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := ToGollyContext(tc.input)
+			assert.NotNil(t, got, "expected non-nil Golly context")
+
+			if tc.expectSame {
+				// If the input is already a *Context, it should be returned as-is.
+				assert.Equal(t, tc.input, got, "expected same *Context instance")
+			} else {
+				// For a standard context, the returned context should be a new Golly context.
+				assert.NotEqual(t, tc.input, got, "expected a new Golly context wrapping the standard context")
+			}
+		})
+	}
+}
+
 // ***************************************************************************
 // *  Benches
 // ***************************************************************************

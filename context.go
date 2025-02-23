@@ -216,6 +216,13 @@ func NewContext(parent context.Context) *Context {
 	}
 }
 
+func ToGollyContext(ctx context.Context) *Context {
+	if gc, ok := ctx.(*Context); ok {
+		return gc
+	}
+	return NewContext(ctx)
+}
+
 func NewTestContext() *Context {
 	return NewContext(context.TODO())
 }
