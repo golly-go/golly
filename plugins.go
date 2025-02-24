@@ -88,3 +88,12 @@ func (pm *PluginManager) Commands() []*cobra.Command {
 
 	return commands
 }
+
+// CurrentPlugins returns the current loaded plugins
+// pulling from global App - nil if the app ahs not been started yet
+func CurrentPlugins() *PluginManager {
+	if app == nil {
+		return nil
+	}
+	return app.plugins
+}
