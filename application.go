@@ -40,6 +40,10 @@ var (
 	app *Application
 )
 
+func App() *Application {
+	return app
+}
+
 func Config() *viper.Viper {
 	if app == nil || app.config == nil {
 		return viper.GetViper()

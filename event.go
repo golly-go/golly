@@ -49,6 +49,12 @@ func (em *EventManager) Dispatch(gctx *Context, data any) {
 	}
 }
 
+func NewEventManager() *EventManager {
+	return &EventManager{
+		events: make(map[string][]EventFunc),
+	}
+}
+
 // ***************************************************************************
 // *  Events
 // ***************************************************************************
