@@ -181,12 +181,13 @@ func AppFuncChain(initializers ...AppFunc) AppFunc {
 // further route registration and initialization steps.
 func NewApplication(options Options) *Application {
 	// Ensure slices are initialized for safe iteration.
+	services := append(options.Services, pluginServices(options.Plugins)...)
 
 	return &Application{
 		Name:        options.Name,
 		Env:         Env(),      // Fetches the current environment.
 		StartedAt:   time.Now(), // Marks the startup time of the application.
-		services:    serviceMap(options.Services),
+		services:    serviceMap(services),
 		initializer: options.Initializer,
 		plugins:     NewPluginManager(options.Plugins...),
 		preboot:     options.Preboot,

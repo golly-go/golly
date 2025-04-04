@@ -47,6 +47,7 @@ func serviceMap(services []Service) map[string]Service {
 
 	svc := append(defaultServices, services...)
 	for _, service := range svc {
+
 		if nmr, ok := service.(Namer); ok {
 			ret[nmr.Name()] = service
 			continue

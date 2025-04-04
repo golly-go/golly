@@ -71,7 +71,8 @@ func Command(command CLICommand) func(cmd *cobra.Command, args []string) {
 func bindCommands(options Options) *cobra.Command {
 	rootCMD := &cobra.Command{}
 
-	services := append(options.Services, defaultServices...)
+	services := append(defaultServices, pluginServices(options.Plugins)...)
+	services = append(services, options.Services...)
 
 	// Add "list-services" command
 	listServiceCommand.Run = Command(listServices(services))

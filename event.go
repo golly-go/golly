@@ -9,6 +9,8 @@ type Event struct {
 	Data any
 }
 
+const AllEvents = "*"
+
 type EventFunc func(*Context, *Event)
 
 type EventManager struct {
@@ -35,10 +37,10 @@ func (em *EventManager) Dispatch(gctx *Context, data any) {
 
 	// Fast path: check existence without locking
 	em.mu.RLock()
-	handlers, exists := em.events[eventName]
+	handlers := append(em.events[eventName], em.events[AllEvents]...)
 	em.mu.RUnlock()
 
-	if !exists {
+	if len(handlers) == 0 {
 		return
 	}
 

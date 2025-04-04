@@ -25,7 +25,27 @@ type Plugin interface {
 	Deinitialize(app *Application) error
 }
 
+type PluginServices interface {
+	Services() []Service
+}
+
 type Plugins []Plugin
+
+func pluginServices(plugins []Plugin) []Service {
+	var services []Service
+
+	if len(plugins) == 0 {
+		return services
+	}
+
+	for pos := range plugins {
+		if ps, ok := plugins[pos].(PluginServices); ok {
+			services = append(services, ps.Services()...)
+		}
+	}
+
+	return services
+}
 
 // PluginManager manages the lifecycle of all registered plugins.
 // It handles initialization, aggregation of commands, and deinitialization.

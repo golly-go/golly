@@ -1,7 +1,7 @@
 package golly
 
 import (
-	"fmt"
+	"os"
 	"strings"
 
 	"github.com/spf13/viper"
@@ -15,8 +15,30 @@ import (
 func initConfig(app *Application) (*viper.Viper, error) {
 	v := viper.New()
 
+	v.SetConfigName(app.Name)
+
+	app.Logger().Tracef("Initializing config: %s", app.Name)
+
 	v.SetConfigType("yaml")
-	v.AddConfigPath(fmt.Sprintf("$HOME/%s", app.Name))
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil, err
+	}
+
+	app.Logger().Tracef("Adding Home dir config path: %s", home)
+	v.AddConfigPath(home)
+
+	wd, err := os.Getwd()
+	if err != nil {
+		return nil, err
+	}
+
+	app.Logger().Tracef("Adding working dir config path: %s", wd)
+
+	v.AddConfigPath(wd)
+
+	app.Logger().Tracef("Adding current dir config path: %s", ".")
 	v.AddConfigPath(".")
 
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
