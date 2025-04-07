@@ -94,6 +94,18 @@ func (a *Application) Events() *EventManager   { return a.events }
 func (a *Application) Logger() *log.Logger     { return a.logger }
 func (a *Application) Plugins() *PluginManager { return a.plugins }
 
+func (a *Application) Services() []Service {
+	lock.RLock()
+	defer lock.RUnlock()
+
+	services := make([]Service, 0, len(a.services))
+	for _, s := range a.services {
+		services = append(services, s)
+	}
+
+	return services
+}
+
 // changeState changes application state within the application
 // and dispatches to all those who care
 func (a *Application) changeState(state ApplicationState) {
