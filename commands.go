@@ -20,6 +20,12 @@ var (
 		Short: "List services",
 	}
 
+	allServicesCommand = &cobra.Command{
+		Use:   "all",
+		Short: "List all services",
+		Run:   Command(runAllServices()),
+	}
+
 	commands = []*cobra.Command{
 		serviceCommand,
 		{
@@ -77,6 +83,7 @@ func bindCommands(options Options) *cobra.Command {
 	// Add "list-services" command
 	listServiceCommand.Run = Command(listServices(services))
 	serviceCommand.AddCommand(listServiceCommand)
+	serviceCommand.AddCommand(allServicesCommand)
 
 	// Add individual service commands
 	for pos := range services {

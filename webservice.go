@@ -53,7 +53,8 @@ func (ws *WebService) Stop() error {
 	if ws.running.Load() {
 		ws.application.logger.Trace("shutting down webserver")
 
-		ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
 
 		if err := ws.server.Shutdown(ctx); err != nil {
 			return err

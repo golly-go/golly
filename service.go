@@ -3,6 +3,7 @@ package golly
 import (
 	"errors"
 	"fmt"
+	"sync"
 
 	"github.com/spf13/cobra"
 )
@@ -138,5 +139,53 @@ func serviceRun(name string) CLICommand {
 
 		// Add actual service start logic here
 		return service.Start()
+	}
+}
+
+// runAllServices creates a CLICommand for running all registered services concurrently.
+//
+// Returns an error if any service stops unexpectedly before shutdown.
+func runAllServices() CLICommand {
+	return func(app *Application, cmd *cobra.Command, args []string) error {
+		var wg sync.WaitGroup
+		errChan := make(chan error, len(app.services))
+
+		// Run each service in its own goroutine
+		for name, svc := range app.services {
+			wg.Add(1)
+
+			// Initialize the service
+			if err := svc.Initialize(app); err != nil {
+				return err
+			}
+
+			// Handle shutdown event for this service
+			app.events.Register(EventShutdown, func(*Context, *Event) {
+				svc.Stop()
+			})
+
+			go func(serviceName string, service Service) {
+				defer wg.Done()
+				if err := service.Start(); err != nil {
+					errChan <- errors.New("service '" + serviceName + "' terminated unexpectedly: " + err.Error())
+				} else {
+					errChan <- errors.New("service '" + serviceName + "' terminated unexpectedly without error")
+				}
+			}(name, svc)
+		}
+
+		// Wait for all services to stop
+		wg.Wait()
+		close(errChan)
+
+		// Listen for service errors
+		for err := range errChan {
+			if err != nil {
+				app.Shutdown()
+				return err
+			}
+		}
+
+		return nil
 	}
 }
