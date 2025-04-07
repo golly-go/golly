@@ -152,7 +152,7 @@ func runAllServices() CLICommand {
 
 		// Run each service in its own goroutine
 		for name, svc := range app.services {
-			wg.Add(1)
+			app.logger.Tracef("Starting service: %s", name)
 
 			// Initialize the service
 			if err := svc.Initialize(app); err != nil {
@@ -164,6 +164,7 @@ func runAllServices() CLICommand {
 				svc.Stop()
 			})
 
+			wg.Add(1)
 			go func(serviceName string, service Service) {
 				defer wg.Done()
 				if err := service.Start(); err != nil {
