@@ -18,7 +18,7 @@ type EventManager struct {
 	mu     sync.RWMutex
 }
 
-func (em *EventManager) Register(name string, fnc EventFunc) {
+func (em *EventManager) Register(name string, fnc EventFunc) *EventManager {
 	em.mu.Lock()
 	defer em.mu.Unlock()
 
@@ -27,6 +27,7 @@ func (em *EventManager) Register(name string, fnc EventFunc) {
 	}
 
 	em.events[name] = append(em.events[name], fnc)
+	return em
 }
 
 // Dispatch triggers all handlers for the given event data.
