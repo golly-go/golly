@@ -169,8 +169,6 @@ func runAllServices() CLICommand {
 				defer wg.Done()
 				if err := service.Start(); err != nil {
 					errChan <- errors.New("service '" + serviceName + "' terminated unexpectedly: " + err.Error())
-				} else {
-					errChan <- errors.New("service '" + serviceName + "' terminated unexpectedly without error")
 				}
 			}(name, svc)
 		}
