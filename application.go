@@ -120,12 +120,16 @@ func (a *Application) changeState(state ApplicationState) {
 // initialize runs all registered initializer functions in sequence.
 // If any initializer returns an error, the initialization halts.
 func (a *Application) initialize() error {
-	if err := a.preboot(a); err != nil {
-		return err
+	if a.preboot != nil {
+		if err := a.preboot(a); err != nil {
+			return err
+		}
 	}
 
-	if err := a.plugins.initialize(app); err != nil {
-		return err
+	if a.plugins != nil {
+		if err := a.plugins.initialize(app); err != nil {
+			return err
+		}
 	}
 
 	if a.initializer == nil {
