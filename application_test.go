@@ -113,13 +113,15 @@ func TestNewApplication(t *testing.T) {
 		expectedName          string
 		expectedLength        int
 		expectedServiceLength int
+		hasInitializer        bool
 	}{
 		{
 			name:                  "Empty options",
 			options:               Options{},
 			expectedName:          "",
 			expectedLength:        0,
-			expectedServiceLength: 1,
+			expectedServiceLength: 0,
+			hasInitializer:        false,
 		},
 		{
 			name: "With initializers",
@@ -129,7 +131,8 @@ func TestNewApplication(t *testing.T) {
 			},
 			expectedName:          "TestApp",
 			expectedLength:        1,
-			expectedServiceLength: 1,
+			expectedServiceLength: 0,
+			hasInitializer:        true,
 		},
 		{
 			name: "With services",
@@ -139,7 +142,8 @@ func TestNewApplication(t *testing.T) {
 			},
 			expectedName:          "ServiceApp",
 			expectedLength:        1,
-			expectedServiceLength: 2,
+			expectedServiceLength: 1,
+			hasInitializer:        false,
 		},
 	}
 
@@ -148,7 +152,11 @@ func TestNewApplication(t *testing.T) {
 			app := NewApplication(tt.options)
 
 			assert.Equal(t, tt.expectedName, app.Name, "Application name mismatch")
-			assert.NotNil(t, app.initializer)
+			if tt.hasInitializer {
+				assert.NotNil(t, app.initializer)
+			} else {
+				assert.Nil(t, app.initializer)
+			}
 			assert.Len(t, app.services, tt.expectedServiceLength, "Unexpected number of services")
 		})
 	}

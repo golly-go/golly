@@ -90,7 +90,9 @@ func TestUse(t *testing.T) {
 
 		assert.Len(t, root.middleware, 1)
 		assert.Len(t, root.children, 1)
-		assert.Len(t, root.children[0].middleware, 1)
+		// We no longer apply middleware to the children route handler
+		// instead we apply downwards as we chain
+		assert.Len(t, root.children[0].middleware, 0)
 	})
 }
 

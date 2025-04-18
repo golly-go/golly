@@ -42,6 +42,11 @@ type Service interface {
 func serviceMap(services []Service) map[string]Service {
 	ret := make(map[string]Service)
 
+	// do break on nil
+	if len(services) == 0 {
+		return ret
+	}
+
 	for _, service := range services {
 		ret[getServiceName(service)] = service
 	}

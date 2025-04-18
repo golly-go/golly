@@ -11,9 +11,10 @@ func TestServiceMap(t *testing.T) {
 		services []Service
 		expected map[string]Service
 	}{
+		{name: "nil", services: nil, expected: map[string]Service{}},
 		{name: "empty", services: []Service{}, expected: map[string]Service{}},
 		{name: "one service", services: []Service{&WebService{}}, expected: map[string]Service{
-			"WebService": &WebService{},
+			"web": &WebService{},
 		}},
 	}
 
