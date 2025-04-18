@@ -9,10 +9,6 @@ import (
 )
 
 var (
-	defaultServices = []Service{
-		&WebService{},
-	}
-
 	ErrorServiceNotRegistered = errors.New("Service is not registered")
 )
 
@@ -46,15 +42,8 @@ type Service interface {
 func serviceMap(services []Service) map[string]Service {
 	ret := make(map[string]Service)
 
-	svc := append(defaultServices, services...)
-	for _, service := range svc {
-
-		if nmr, ok := service.(Namer); ok {
-			ret[nmr.Name()] = service
-			continue
-		}
-
-		ret[InfNameNoPackage(service)] = service
+	for _, service := range services {
+		ret[getServiceName(service)] = service
 	}
 
 	return ret

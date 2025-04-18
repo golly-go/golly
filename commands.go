@@ -76,9 +76,7 @@ func Command(command CLICommand) func(cmd *cobra.Command, args []string) {
 
 func bindCommands(options Options) *cobra.Command {
 	rootCMD := &cobra.Command{}
-
-	services := append(defaultServices, pluginServices(options.Plugins)...)
-	services = append(services, options.Services...)
+	services := append(pluginServices(options.Plugins), options.Services...)
 
 	// Add "list-services" command
 	listServiceCommand.Run = Command(listServices(services))
@@ -102,9 +100,7 @@ func bindCommands(options Options) *cobra.Command {
 	// loop through our plugins incase they are defining
 	// cli commands - i am putting this here for now cause it needs
 	// to happen prior to rootCMD.execute
-	for _, plugin := range options.Plugins {
-		rootCMD.AddCommand(plugin.Commands()...)
-	}
+	rootCMD.AddCommand(pluginCommands(options.Plugins)...)
 
 	// Any misc commands defined by the end user
 	rootCMD.AddCommand(options.Commands...)

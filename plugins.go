@@ -3,6 +3,7 @@ package golly
 import (
 	"errors"
 	"fmt"
+	"maps"
 
 	"github.com/spf13/cobra"
 )
@@ -17,9 +18,6 @@ type Plugin interface {
 	// This is where resources such as database connections or configurations should be initialized.
 	Initialize(app *Application) error
 
-	// Commands returns the list of CLI commands provided by the plugin.
-	Commands() []*cobra.Command
-
 	// Deinitialize is called when the application is shutting down.
 	// This is where resources should be cleaned up, such as closing database connections or committing transactions.
 	Deinitialize(app *Application) error
@@ -27,6 +25,10 @@ type Plugin interface {
 
 type PluginServices interface {
 	Services() []Service
+}
+
+type PluginCommands interface {
+	Commands() []*cobra.Command
 }
 
 type Plugins []Plugin
@@ -100,10 +102,22 @@ func (pm *PluginManager) deinitialize(app *Application) error {
 
 // AggregateCommands collects all CLI commands from registered plugins and returns them as a slice.
 func (pm *PluginManager) Commands() []*cobra.Command {
+	var plugins []Plugin
+
+	for plugin := range maps.Values(pm.plugins) {
+		plugins = append(plugins, plugin)
+	}
+
+	return pluginCommands(plugins)
+}
+
+func pluginCommands(plugins []Plugin) []*cobra.Command {
 	var commands []*cobra.Command
 
-	for pos := range pm.plugins {
-		commands = append(commands, pm.plugins[pos].Commands()...)
+	for pos := range plugins {
+		if pc, ok := plugins[pos].(PluginCommands); ok {
+			commands = append(commands, pc.Commands()...)
+		}
 	}
 
 	return commands
