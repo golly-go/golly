@@ -29,6 +29,11 @@ var (
 	commands = []*cobra.Command{
 		serviceCommand,
 		{
+			Use:   "plugins",
+			Short: "List all plugins",
+			Run:   Command(listAllPluginsCommand),
+		},
+		{
 			Use:     "routes",
 			Short:   "Lists registered routes",
 			Aliases: []string{"route"},

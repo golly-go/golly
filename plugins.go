@@ -124,6 +124,14 @@ func pluginCommands(plugins []Plugin) []*cobra.Command {
 	return commands
 }
 
+func listAllPluginsCommand(app *Application, cmd *cobra.Command, args []string) error {
+	fmt.Println("Listing all plugins:")
+	for pos := range app.plugins.plugins {
+		fmt.Println(app.plugins.plugins[pos].Name())
+	}
+	return nil
+}
+
 // CurrentPlugins returns the current loaded plugins
 // pulling from global App - nil if the app ahs not been started yet
 func CurrentPlugins() *PluginManager {
