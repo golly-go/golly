@@ -126,8 +126,12 @@ func pluginCommands(plugins []Plugin) []*cobra.Command {
 
 func listAllPluginsCommand(app *Application, cmd *cobra.Command, args []string) error {
 	fmt.Println("Listing all plugins:")
+
+	cnt := 1
+
 	for pos := range app.plugins.plugins {
-		fmt.Println(app.plugins.plugins[pos].Name())
+		fmt.Printf("\t %d. %s\n", cnt, app.plugins.plugins[pos].Name())
+		cnt++
 	}
 	return nil
 }

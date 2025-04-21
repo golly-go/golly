@@ -108,7 +108,7 @@ func listServices(services []Service) func(cmd *cobra.Command, args []string) {
 
 		for i, service := range services {
 			name := getServiceName(service)
-			fmt.Printf("%d %s\n", i+1, name)
+			fmt.Printf("\t %d. %s\n", i+1, name)
 		}
 	}
 }
