@@ -4,6 +4,7 @@ import (
 	"flag"
 	"os"
 	"strings"
+	"sync"
 )
 
 const (
@@ -17,40 +18,38 @@ const (
 
 type EnvName string
 
-var currentENV EnvName = ""
+var (
+	currentENV EnvName = ""
+	envOnce    sync.Once
+)
 
 // CurrentENV returns the current environment of the application
 func Env() EnvName {
-	if currentENV != "" {
-		return currentENV
-	}
+	envOnce.Do(func() {
+		currentENV = getCurrentEnv(os.Getenv(envVarName))
+	})
+	return currentENV
+}
 
-	// Not threadsafe, we will make it that way if currentEnv isnt set
-	// tho the only time this should be called is on startup
-	lock.Lock()
-	defer lock.Unlock()
-
-	if currentENV = EnvName(os.Getenv(envVarName)); currentENV != "" {
-		return currentENV
+// getCurrentEnv returns the current environment of the application
+func getCurrentEnv(envVarValue string) EnvName {
+	if envVarValue != "" {
+		return EnvName(envVarValue)
 	}
 
 	if strings.HasSuffix(os.Args[0], ".test") {
-		currentENV = Test
-		return currentENV
+		return Test
 	}
 
 	if strings.Contains(os.Args[0], "/_test/") {
-		currentENV = Test
-		return currentENV
+		return Test
 	}
 
 	if flag.Lookup("test.v") != nil {
-		currentENV = Test
-		return currentENV
+		return Test
 	}
 
-	currentENV = Development
-	return currentENV
+	return Development
 }
 
 // IsTest returns if current env is test
