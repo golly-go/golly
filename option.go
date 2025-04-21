@@ -34,4 +34,8 @@ type Options struct {
 	// By default Web service will be loaded (This is required for any K8s health checks)
 	// Though note we do have a standalone version of this which is used for non web run modes
 	Services []Service
+
+	// WatchConfig if true will watch the config file for changes and reloaded
+	// golly will dispatch a ConfigChanged event when the config file is changed
+	WatchConfig bool
 }

@@ -75,6 +75,10 @@ type Application struct {
 	// but sure do i hate having to guarantee order of plugins
 	plugins *PluginManager
 
+	// WatchConfig if true will watch the config file for changes and reloaded
+	// golly will dispatch a ConfigChanged event when the config file is changed
+	watchConfig bool
+
 	// preboot should not be needed however they run before
 	// anything is loaded into the system, the config is the only tbing guaranteed to be
 	// if you need more then one use InitializerChain() - going to be switching alot of these
@@ -209,8 +213,16 @@ func NewApplication(options Options) *Application {
 		preboot:     options.Preboot,
 		events:      &EventManager{},
 		logger:      NewLogger(),
+		watchConfig: options.WatchConfig,
 		config:      viper.New(),
 		routes: NewRouteRoot().
 			Get("/routes", renderRoutes), // Default route mount point (can be extended with specific handlers).
 	}
+}
+
+func (a *Application) ConfigChanged() {
+	a.Events().Dispatch(
+		WithApplication(context.Background(), a),
+		&ConfigChanged{Config: a.config},
+	)
 }

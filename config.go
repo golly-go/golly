@@ -4,6 +4,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/fsnotify/fsnotify"
 	"github.com/spf13/viper"
 )
 
@@ -13,35 +14,20 @@ import (
 // initConfig initializes the config looking for the config files in various places
 // this is a good place to put global defaults that are used by all packages.
 func initConfig(app *Application) (*viper.Viper, error) {
-	if app.config == nil {
-		app.config = viper.New()
-	}
-
-	v := app.config
+	v := viper.New()
 
 	v.SetConfigName(app.Name)
-	app.Logger().Tracef("Initializing config: %s", app.Name)
 
 	v.SetConfigType("yaml")
 
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return nil, err
+	if home, err := os.UserHomeDir(); err == nil {
+		v.AddConfigPath(home)
 	}
 
-	app.Logger().Tracef("Adding Home dir config path: %s", home)
-	v.AddConfigPath(home)
-
-	wd, err := os.Getwd()
-	if err != nil {
-		return nil, err
+	if wd, err := os.Getwd(); err == nil {
+		v.AddConfigPath(wd)
 	}
 
-	app.Logger().Tracef("Adding working dir config path: %s", wd)
-
-	v.AddConfigPath(wd)
-
-	app.Logger().Tracef("Adding current dir config path: %s", ".")
 	v.AddConfigPath(".")
 
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
@@ -54,6 +40,16 @@ func initConfig(app *Application) (*viper.Viper, error) {
 		}
 		return v, err
 	}
+
+	if !app.watchConfig {
+		return v, nil
+	}
+
+	v.OnConfigChange(func(e fsnotify.Event) {
+		app.ConfigChanged()
+	})
+
+	v.WatchConfig()
 
 	return v, nil
 }

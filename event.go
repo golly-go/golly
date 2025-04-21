@@ -2,6 +2,8 @@ package golly
 
 import (
 	"sync"
+
+	"github.com/spf13/viper"
 )
 
 type Event struct {
@@ -67,6 +69,7 @@ const (
 	EventStateChanged   = "golly.ApplicationStateChanged"
 	EventServiceLoaded  = "golly.ServiceLoaded"
 	EventServicestarted = "golly.ServiceStarted"
+	EventConfigChanged  = "golly.ConfigChanged"
 )
 
 type ServiceLoaded struct {
@@ -81,4 +84,8 @@ type ApplicationShutdown struct{}
 
 type ApplicationStateChanged struct {
 	State ApplicationState
+}
+
+type ConfigChanged struct {
+	Config *viper.Viper
 }

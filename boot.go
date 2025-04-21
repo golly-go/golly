@@ -15,7 +15,7 @@ func boot(f AppFunc) error {
 	app.changeState(StateStarting)
 
 	{
-		v, err := initConfig(app)
+		v, err := initConfig()
 		if err != nil {
 			return err
 		}
