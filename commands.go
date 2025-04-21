@@ -70,7 +70,9 @@ func bindCommands(options Options) *cobra.Command {
 	rootCMD := &cobra.Command{}
 
 	if options.Standalone {
-		rootCMD.AddCommand(commands...)
+		if len(options.Commands) > 0 {
+			rootCMD.AddCommand(options.Commands...)
+		}
 		return rootCMD
 	}
 
