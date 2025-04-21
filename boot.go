@@ -75,3 +75,8 @@ func Run(opts Options) {
 		panic(err)
 	}
 }
+
+func RunStandalone(opts Options) {
+	opts.Standalone = true
+	Run(opts)
+}
