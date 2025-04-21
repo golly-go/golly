@@ -79,7 +79,8 @@ func bindCommands(options Options) *cobra.Command {
 	services := append(pluginServices(options.Plugins), options.Services...)
 
 	// Add "list-services" command
-	listServiceCommand.Run = Command(listServices(services))
+	listServiceCommand.Run = listServices(services)
+
 	serviceCommand.AddCommand(listServiceCommand)
 	serviceCommand.AddCommand(allServicesCommand)
 

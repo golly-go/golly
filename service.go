@@ -20,13 +20,19 @@ type Descriptioner interface {
 	Description() string
 }
 
-// Service this holds a service definition for golly,
-// not 100% sure i like the event engine either but
-// as i decouple various pieces i flush this out
+// Service defines a self-contained component within the Golly framework that runs independently and can be started or stopped separately from the main application.
+// While services usually align with the application's lifecycle, they can also be started or stopped dynamically, including from the command line (e.g., `golly service service_name`).
 type Service interface {
+	// Initialize prepares the service before it starts running.
 	Initialize(*Application) error
-	Stop() error
+
+	// Start activates the service, beginning its operation.
 	Start() error
+
+	// Stop gracefully halts the service's operation.
+	Stop() error
+
+	// IsRunning indicates whether the service is currently active.
 	IsRunning() bool
 }
 
@@ -96,16 +102,14 @@ func getServiceDescription(service Service) string {
 //
 // Returns:
 //   - A CLICommand function to execute the listing command within the application context.
-func listServices(services []Service) CLICommand {
-	return func(app *Application, cmd *cobra.Command, args []string) error {
+func listServices(services []Service) func(cmd *cobra.Command, args []string) {
+	return func(cmd *cobra.Command, args []string) {
 		fmt.Println("Registered Services:")
 
 		for i, service := range services {
 			name := getServiceName(service)
 			fmt.Printf("%d %s\n", i+1, name)
 		}
-
-		return nil
 	}
 }
 

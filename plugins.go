@@ -8,25 +8,26 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// Plugin defines the structure for a plugin in the Golly framework.
-// Plugins should implement initialization, command provision, and deinitialization logic.
+// Plugin defines an extension for the Golly framework.
+// Plugins provide additional functionality, manage application-wide resources (e.g., database connections, configuration), and handle lifecycle events.
+// Plugins initialize resources when loaded and clean them up on shutdown, directly tying their lifecycle to that of the application.
 type Plugin interface {
-	// Plugin Name
+	// Name returns the plugin's name.
 	Name() string
 
-	// Initialize is called when the plugin is loaded into the application.
-	// This is where resources such as database connections or configurations should be initialized.
+	// Initialize sets up resources needed by the plugin when loaded.
 	Initialize(app *Application) error
 
-	// Deinitialize is called when the application is shutting down.
-	// This is where resources should be cleaned up, such as closing database connections or committing transactions.
+	// Deinitialize cleans up resources (e.g., closes database connections) before the application shuts down.
 	Deinitialize(app *Application) error
 }
 
+// PluginServices provides a list of services that the plugin provides.
 type PluginServices interface {
 	Services() []Service
 }
 
+// PluginCommands provides a list of commands that the plugin provides.
 type PluginCommands interface {
 	Commands() []*cobra.Command
 }
