@@ -2,9 +2,13 @@ package golly
 
 import (
 	"context"
+	"fmt"
 	"net/http"
+	"strings"
 	"sync/atomic"
 	"time"
+
+	"github.com/spf13/cobra"
 )
 
 type WebService struct {
@@ -34,6 +38,20 @@ func (ws *WebService) Initialize(app *Application) error {
 	}
 
 	return nil
+}
+
+func (ws *WebService) Commands() []*cobra.Command {
+	return []*cobra.Command{
+		{
+			Use:   "routes",
+			Short: "List all routes",
+			Run: Command(func(app *Application, cmd *cobra.Command, args []string) error {
+				fmt.Println("Listing Routes:")
+				fmt.Println(strings.Join(buildPath(app.routes, ""), "\n"))
+				return nil
+			}),
+		},
+	}
 }
 
 func (ws *WebService) Start() error {

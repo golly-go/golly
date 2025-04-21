@@ -36,6 +36,10 @@ type Service interface {
 	IsRunning() bool
 }
 
+type ServiceCommands interface {
+	Commands() []*cobra.Command
+}
+
 // serviceMap converts a slice of Service into a map with service names as keys.
 // It uses the Namer interface to determine the service name, or falls back
 // to the type name if the interface is not implemented.

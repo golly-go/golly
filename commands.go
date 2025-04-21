@@ -1,9 +1,6 @@
 package golly
 
 import (
-	"fmt"
-	"strings"
-
 	"github.com/spf13/cobra"
 )
 
@@ -32,16 +29,6 @@ var (
 			Use:   "plugins",
 			Short: "List all plugins",
 			Run:   Command(listAllPluginsCommand),
-		},
-		{
-			Use:     "routes",
-			Short:   "Lists registered routes",
-			Aliases: []string{"route"},
-			Run: Command(func(app *Application, cmd *cobra.Command, args []string) error {
-				fmt.Println("Listing Routes:")
-				fmt.Println(strings.Join(buildPath(app.routes, ""), "\n"))
-				return nil
-			}),
 		},
 	}
 )
@@ -102,6 +89,13 @@ func bindCommands(options Options) *cobra.Command {
 
 	// Add other non dynamic application commands and options
 	rootCMD.AddCommand(commands...)
+
+	// Add service commands
+	for pos := range services {
+		if sc, ok := services[pos].(ServiceCommands); ok {
+			rootCMD.AddCommand(sc.Commands()...)
+		}
+	}
 
 	// loop through our plugins incase they are defining
 	// cli commands - i am putting this here for now cause it needs
