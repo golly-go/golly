@@ -38,4 +38,9 @@ type Options struct {
 	// WatchConfig if true will watch the config file for changes and reloaded
 	// golly will dispatch a ConfigChanged event when the config file is changed
 	WatchConfig bool
+
+	// Standalone if true will run in standalone mode
+	// this is good for cli tools that want to provide their own commands and not
+	// become confusing with the default commands
+	Standalone bool
 }
