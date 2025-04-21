@@ -13,10 +13,13 @@ import (
 // initConfig initializes the config looking for the config files in various places
 // this is a good place to put global defaults that are used by all packages.
 func initConfig(app *Application) (*viper.Viper, error) {
-	v := viper.New()
+	if app.config == nil {
+		app.config = viper.New()
+	}
+
+	v := app.config
 
 	v.SetConfigName(app.Name)
-
 	app.Logger().Tracef("Initializing config: %s", app.Name)
 
 	v.SetConfigType("yaml")

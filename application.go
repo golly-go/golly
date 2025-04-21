@@ -209,6 +209,7 @@ func NewApplication(options Options) *Application {
 		preboot:     options.Preboot,
 		events:      &EventManager{},
 		logger:      NewLogger(),
+		config:      viper.New(),
 		routes: NewRouteRoot().
 			Get("/routes", renderRoutes), // Default route mount point (can be extended with specific handlers).
 	}
