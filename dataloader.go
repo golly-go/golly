@@ -27,6 +27,22 @@ func NewDataLoader() *DataLoader {
 	}
 }
 
+func (dl *DataLoader) Has(key any) bool {
+	dl.mu.RLock()
+	defer dl.mu.RUnlock()
+
+	_, ok := dl.cache[key]
+	return ok
+}
+
+func (dl *DataLoader) Get(key any) (any, bool) {
+	dl.mu.RLock()
+	defer dl.mu.RUnlock()
+
+	value, ok := dl.cache[key]
+	return value.value, ok
+}
+
 func (dl *DataLoader) Set(key any, value any) {
 	dl.mu.Lock()
 	defer dl.mu.Unlock()
@@ -81,6 +97,21 @@ func FetchData[T any](loader *DataLoader, key any, fetchFn FetchFunc[T]) (T, err
 	}
 
 	return castedResult, nil
+}
+
+func GetData[T any](loader *DataLoader, key any) (T, bool) {
+	var zero T
+
+	if value, ok := loader.Get(key); ok {
+		castedResult, ok := value.(T)
+		if !ok {
+			return zero, false
+		}
+
+		return castedResult, true
+	}
+
+	return zero, false
 }
 
 // Documentation
