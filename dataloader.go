@@ -27,6 +27,13 @@ func NewDataLoader() *DataLoader {
 	}
 }
 
+func (dl *DataLoader) Set(key any, value any) {
+	dl.mu.Lock()
+	defer dl.mu.Unlock()
+
+	dl.cache[key] = cacheResult{value: value, err: nil}
+}
+
 // Fetch attempts to retrieve a value from the cache by key.
 // If the key is not found, it calls the provided fetch function to obtain the value, caches it,
 // and then returns the result.

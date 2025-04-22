@@ -3,7 +3,24 @@ package golly
 import (
 	"errors"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
+
+func TestDataLoaderSet(t *testing.T) {
+	loader := NewDataLoader()
+	loader.Set("key1", "Hello")
+
+	called := false
+	value, err := loader.Fetch("key1", func() (any, error) {
+		called = true
+		return "Hello", nil
+	})
+
+	assert.False(t, called)
+	assert.NoError(t, err)
+	assert.Equal(t, "Hello", value)
+}
 
 // Test for FetchData using table-driven tests.
 func TestFetchData(t *testing.T) {
