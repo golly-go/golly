@@ -1,7 +1,9 @@
 package golly
 
 import (
+	"fmt"
 	"reflect"
+	"runtime"
 	"strings"
 )
 
@@ -30,4 +32,34 @@ func InfNameNoPackage(source interface{}) string {
 	}
 
 	return name
+}
+
+// FuncPath safely returns the fully qualified name of a handler (function or struct type)
+// personally this is just for debugging purposes
+func FuncPath(handler interface{}) string {
+	val := reflect.ValueOf(handler)
+	typ := val.Type()
+
+	// Safely unwrap interfaces or pointers, avoid calling Elem on Func
+	for typ.Kind() == reflect.Interface || typ.Kind() == reflect.Ptr {
+		if val.IsNil() {
+			return "<nil>"
+		}
+		val = val.Elem()
+		typ = val.Type()
+	}
+
+	switch typ.Kind() {
+	case reflect.Func:
+		fn := runtime.FuncForPC(val.Pointer())
+		if fn != nil {
+			return fn.Name()
+		}
+		return typ.String()
+	default:
+		if typ.PkgPath() != "" {
+			return fmt.Sprintf("%s.%s", typ.PkgPath(), typ.Name())
+		}
+		return typ.Name()
+	}
 }

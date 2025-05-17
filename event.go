@@ -24,6 +24,8 @@ func (em *EventManager) Register(name string, fnc EventFunc) *EventManager {
 	em.mu.Lock()
 	defer em.mu.Unlock()
 
+	Logger().Tracef("registering event %s", name)
+
 	if em.events == nil {
 		em.events = make(map[string][]EventFunc)
 	}

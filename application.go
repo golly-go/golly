@@ -113,6 +113,10 @@ func (a *Application) Services() []Service {
 // changeState changes application state within the application
 // and dispatches to all those who care
 func (a *Application) changeState(state ApplicationState) {
+	if a.state == StateShutdown || a.state == StateErrored {
+		return
+	}
+
 	a.state = state
 
 	a.events.Dispatch(
