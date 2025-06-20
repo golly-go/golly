@@ -220,8 +220,15 @@ func NewApplication(options Options) *Application {
 		watchConfig: options.WatchConfig,
 		config:      viper.New(),
 		routes: NewRouteRoot().
-			Get("/routes", renderRoutes), // Default route mount point (can be extended with specific handlers).
+			Get("/routes", renderRoutes).
+			Get("/status", renderStatus), // Default route mount point (can be extended with specific handlers).
 	}
+}
+
+func renderStatus(ctx *WebContext) {
+	ctx.RenderJSON(map[string]string{
+		"status": "ok",
+	})
 }
 
 func (a *Application) ConfigChanged() {
