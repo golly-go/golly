@@ -200,6 +200,7 @@ func AppFuncChain(initializers ...AppFunc) AppFunc {
 				return err
 			}
 		}
+
 		return nil
 	}
 }

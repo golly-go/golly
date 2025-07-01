@@ -223,10 +223,6 @@ func ToGollyContext(ctx context.Context) *Context {
 	return NewContext(ctx)
 }
 
-func NewTestContext() *Context {
-	return NewContext(context.TODO())
-}
-
 func WithValue(parent context.Context, key, val interface{}) *Context {
 	ctx := NewContext(parent)
 	ctx.values[key] = val
@@ -273,6 +269,20 @@ func WithDeadline(parent context.Context, d time.Time) (*Context, context.Cancel
 		}
 	}()
 	return ctx, cancel
+}
+
+// NewTestContext creates a new context for testing
+// it will use the default options if no options are provided
+// keep backwards compatibility with the old way of doing things
+func NewTestContext(options ...Options) *Context {
+	ctx := NewContext(context.TODO())
+
+	if len(options) > 0 {
+		ctx.application = NewApplication(options[0])
+	} else {
+		ctx.application = NewApplication(Options{})
+	}
+	return ctx
 }
 
 func WithApplication(parent context.Context, app *Application) *Context {
