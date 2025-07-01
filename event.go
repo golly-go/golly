@@ -1,6 +1,7 @@
 package golly
 
 import (
+	"reflect"
 	"sync"
 
 	"github.com/spf13/viper"
@@ -31,6 +32,28 @@ func (em *EventManager) Register(name string, fnc EventFunc) *EventManager {
 	}
 
 	em.events[name] = append(em.events[name], fnc)
+	return em
+}
+
+func (em *EventManager) Unregister(name string, fnc EventFunc) *EventManager {
+	em.mu.Lock()
+	defer em.mu.Unlock()
+
+	handlers, ok := em.events[name]
+	if !ok {
+		return em
+	}
+
+	targetPtr := reflect.ValueOf(fnc).Pointer()
+	newHandlers := make([]EventFunc, 0, len(handlers))
+
+	for pos := range handlers {
+		if reflect.ValueOf(handlers[pos]).Pointer() != targetPtr {
+			newHandlers = append(newHandlers, handlers[pos])
+		}
+	}
+
+	em.events[name] = newHandlers
 	return em
 }
 

@@ -151,6 +151,10 @@ func (a *Application) On(event string, fnc EventFunc) {
 	a.Events().Register(event, fnc)
 }
 
+func (a *Application) Off(event string, fnc EventFunc) {
+	a.Events().Unregister(event, fnc)
+}
+
 // Shutdown starts the shutdown process
 func (a *Application) Shutdown() {
 	lock.RLock()
