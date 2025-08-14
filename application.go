@@ -135,6 +135,10 @@ func (a *Application) initialize() error {
 	}
 
 	if a.plugins != nil {
+		if err := a.plugins.beforeInitialize(app); err != nil {
+			return err
+		}
+
 		if err := a.plugins.initialize(app); err != nil {
 			return err
 		}
@@ -166,11 +170,18 @@ func (a *Application) Shutdown() {
 
 	a.changeState(StateShutdown)
 
-	a.plugins.deinitialize(app)
+	if a.plugins != nil {
+		a.plugins.deinitialize(app)
+	}
 
 	a.events.Dispatch(
 		WithApplication(context.Background(), a),
 		ApplicationShutdown{})
+
+	if a.plugins != nil {
+		a.plugins.afterDeinitialize(app)
+	}
+
 }
 
 func (a *Application) RegisterInitializer(initializer AppFunc) {

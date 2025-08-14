@@ -58,6 +58,8 @@ func (ws *WebService) Start() error {
 	ws.running.Store(true)
 	defer ws.running.Store(false)
 
+	fmt.Println("Starting WebService")
+
 	ws.application.logger.Infof("listening on %s", ws.server.Addr)
 
 	if err := ws.server.ListenAndServe(); err != http.ErrServerClosed {

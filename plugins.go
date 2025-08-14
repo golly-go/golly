@@ -22,6 +22,14 @@ type Plugin interface {
 	Deinitialize(app *Application) error
 }
 
+type PluginAfterDeinitialize interface {
+	AfterDeinitialize(app *Application) error
+}
+
+type PluginBeforeInitialize interface {
+	BeforeInitialize(app *Application) error
+}
+
 // PluginServices provides a list of services that the plugin provides.
 type PluginServices interface {
 	Services() []Service
@@ -81,6 +89,28 @@ func (pm *PluginManager) initialize(app *Application) error {
 		}
 	}
 	return nil
+}
+
+func (pm *PluginManager) beforeInitialize(app *Application) error {
+	for pos := range pm.plugins {
+		if p, ok := pm.plugins[pos].(PluginBeforeInitialize); ok {
+			if err := p.BeforeInitialize(app); err != nil {
+				return fmt.Errorf("failed to before initialize plugin %T: %w", pm.plugins[pos], err)
+			}
+		}
+	}
+	return nil
+}
+
+func (pm *PluginManager) afterDeinitialize(app *Application) {
+	for pos := range pm.plugins {
+		if p, ok := pm.plugins[pos].(PluginAfterDeinitialize); ok {
+			if err := p.AfterDeinitialize(app); err != nil {
+				// just log errors we are shutting down maybe cuase we are crashing
+				Logger().Error(err)
+			}
+		}
+	}
 }
 
 // DeinitializeAll deinitializes all registered plugins by calling their Deinitialize method.
