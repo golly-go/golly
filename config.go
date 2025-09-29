@@ -16,19 +16,23 @@ import (
 func initConfig(app *Application) (*viper.Viper, error) {
 	v := viper.New()
 
-	v.SetConfigName(app.Name)
-
-	v.SetConfigType("yaml")
-
-	if home, err := os.UserHomeDir(); err == nil {
-		v.AddConfigPath(home)
+	if app.ConfigPath != "" {
+		v.SetConfigFile(app.ConfigPath)
+		goto cont
 	}
 
+	v.SetConfigName(app.Name)
 	if wd, err := os.Getwd(); err == nil {
 		v.AddConfigPath(wd)
 	}
-
 	v.AddConfigPath(".")
+
+cont:
+
+	v.SetConfigType("yaml")
+	if home, err := os.UserHomeDir(); err == nil {
+		v.AddConfigPath(home)
+	}
 
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.AutomaticEnv()

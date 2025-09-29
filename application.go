@@ -55,10 +55,11 @@ func Config() *viper.Viper {
 // It holds metadata, routing configurations, and initializers responsible
 // for bootstrapping the app during startup.
 type Application struct {
-	Name      string    `json:"name"`     // Application name.
-	Version   string    `json:"version"`  // Application version.
-	Hostname  string    `json:"hostname"` // Hostname of the server running the app.
-	StartedAt time.Time // Timestamp of when the application was started.
+	Name       string    `json:"name"`     // Application name.
+	Version    string    `json:"version"`  // Application version.
+	Hostname   string    `json:"hostname"` // Hostname of the server running the app.
+	StartedAt  time.Time // Timestamp of when the application was started.
+	ConfigPath string    `json:"config_path"` // Config path of the application.
 
 	Env EnvName // Current environment (e.g., development, production).
 
@@ -234,6 +235,7 @@ func NewApplication(options Options) *Application {
 		events:      &EventManager{},
 		logger:      NewLogger(),
 		watchConfig: options.WatchConfig,
+		ConfigPath:  options.ConfigPath,
 		config:      viper.New(),
 		routes: NewRouteRoot().
 			Get("/routes", renderRoutes).

@@ -11,6 +11,11 @@ type Options struct {
 	// is it can be assigned by Terraform IE: myapp-consumers, myapp-webservice
 	Name string
 
+	// ConfigPath is the path to the config file
+	// if not set it will look for a config file in the current directory
+	// or the home directory based on <Name>.yaml
+	ConfigPath string
+
 	// Commands Supported commands
 	Commands []*cobra.Command
 
