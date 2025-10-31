@@ -207,6 +207,11 @@ func TestEventManagerUnregister(t *testing.T) {
 	}
 }
 
+// Test event type for dispatch testing
+type TestDispatchEvent struct {
+	Name string
+}
+
 // Test that we can dispatch events properly after unregistering
 func TestEventManagerUnregisterWithDispatch(t *testing.T) {
 	em := NewEventManager()
@@ -216,22 +221,23 @@ func TestEventManagerUnregisterWithDispatch(t *testing.T) {
 	handler1 := func(_ *Context, _ *Event) { callCount++ }
 	handler2 := func(_ *Context, _ *Event) { callCount += 10 }
 
-	// Register both handlers
-	em.Register("test.dispatch", handler1)
-	em.Register("test.dispatch", handler2)
+	// Register both handlers - use the type name that Dispatch will generate
+	eventName := TypeNoPtr(TestDispatchEvent{}).String()
+	em.Register(eventName, handler1)
+	em.Register(eventName, handler2)
 
 	// Dispatch - should call both handlers
-	em.Dispatch(gctx, struct{ Name string }{Name: "test"})
+	em.Dispatch(gctx, TestDispatchEvent{Name: "test"})
 	if callCount != 11 { // 1 + 10
 		t.Errorf("Expected callCount to be 11 after first dispatch, got %d", callCount)
 	}
 
 	// Unregister one handler
-	em.Unregister("test.dispatch", handler1)
+	em.Unregister(eventName, handler1)
 
 	// Reset and dispatch again - should only call handler2
 	callCount = 0
-	em.Dispatch(gctx, struct{ Name string }{Name: "test"})
+	em.Dispatch(gctx, TestDispatchEvent{Name: "test"})
 	if callCount != 10 { // Only handler2 should be called
 		t.Errorf("Expected callCount to be 10 after unregister and dispatch, got %d", callCount)
 	}
