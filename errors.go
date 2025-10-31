@@ -57,7 +57,7 @@ func (e *Error) WithExtensions(m map[string]any) *Error {
 	return &cp
 }
 
-func New(code uint, cause error, ext ...map[string]any) *Error {
+func NewError(code uint, cause error, ext ...map[string]any) *Error {
 	if len(ext) == 0 {
 		return &Error{
 			statusCode: int(code),
