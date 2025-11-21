@@ -64,14 +64,28 @@ func (dl *DataLoader) Fetch(key any, fetchFn FetchFunc[any]) (any, error) {
 
 	// Write lock for cache miss
 	dl.mu.Lock()
-	defer dl.mu.Unlock()
 
 	// Double-check to avoid race condition
 	if result, ok := dl.cache[key]; ok {
+		dl.mu.Unlock()
 		return result.value, result.err
 	}
 
+	// Release lock before calling fetchFn to avoid deadlock
+	// This allows other goroutines to proceed while we fetch
+	dl.mu.Unlock()
+
+	// Call fetch function without holding the lock
 	value, err := fetchFn()
+
+	// Re-acquire lock to store the result
+	dl.mu.Lock()
+	defer dl.mu.Unlock()
+
+	// Double-check again in case another goroutine already cached it
+	if result, ok := dl.cache[key]; ok {
+		return result.value, result.err
+	}
 
 	dl.cache[key] = cacheResult{value: value, err: err}
 

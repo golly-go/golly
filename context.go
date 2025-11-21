@@ -217,9 +217,14 @@ func NewContext(parent context.Context) *Context {
 }
 
 func ToGollyContext(ctx context.Context) *Context {
+	if wc, ok := ctx.(*WebContext); ok {
+		return wc.Context
+	}
+
 	if gc, ok := ctx.(*Context); ok {
 		return gc
 	}
+
 	return NewContext(ctx)
 }
 
@@ -247,7 +252,7 @@ func WithCancel(parent context.Context) (*Context, context.CancelFunc) {
 
 // WithDeadline returns a context with a deadline
 func WithDeadline(parent context.Context, d time.Time) (*Context, context.CancelFunc) {
-	ctx := NewContext(parent)
+	ctx := ToGollyContext(parent)
 
 	ctx.deadline.Store(d)
 
@@ -292,7 +297,7 @@ func WithApplication(parent context.Context, app *Application) *Context {
 }
 
 func WithLoggerFields(parent context.Context, fields map[string]interface{}) *Context {
-	gctx := NewContext(parent)
+	gctx := ToGollyContext(parent)
 
 	gctx.logger.Store(gctx.Logger().WithFields(fields))
 
