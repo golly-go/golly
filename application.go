@@ -185,11 +185,41 @@ func (a *Application) Shutdown() {
 
 }
 
+// RegisterInitializer registers an initializer with the application.
+//
+// Parameters:
+//   - initializer: The initializer to register.
+//
+// Returns:
+//   - nil if the initializer is registered successfully.
 func (a *Application) RegisterInitializer(initializer AppFunc) {
 	lock.Lock()
 	defer lock.Unlock()
 
 	a.initializer = AppFuncChain(a.initializer, initializer)
+}
+
+// RegisterService registers a service with the application.
+//
+// Parameters:
+//   - service: The service to register.
+//
+// Returns:
+//   - An error if the service is already registered.
+//   - nil if the service is registered successfully.
+//   - ErrorServiceAlreadyRegistered if the service is already registered.
+func (a *Application) RegisterService(service Service) error {
+	lock.Lock()
+	defer lock.Unlock()
+
+	name := getServiceName(service)
+
+	if _, exists := a.services[name]; exists {
+		return ErrorServiceAlreadyRegistered
+	}
+
+	a.services[name] = service
+	return nil
 }
 
 // runAppFuncs runs Appfuncs returning on the first error
