@@ -129,7 +129,11 @@ func listServices(services []Service) func(cmd *cobra.Command, args []string) {
 // Returns:
 //   - An error if the service fails to start.
 //   - nil if the service starts successfully.
-func startService(app *Application, service Service) error {
+//
+// we should probably move this to (application struct as it starts to need more and more of it)
+func StartService(app *Application, service Service) error {
+	app.logger.Tracef("Starting service: %s", getServiceName(service))
+
 	if i, ok := service.(Initializer); ok {
 		if err := i.Initialize(app); err != nil {
 			return err
@@ -176,7 +180,7 @@ func serviceRun(name string) CLICommand {
 			return ErrorServiceNotRegistered
 		}
 
-		return startService(app, service)
+		return StartService(app, service)
 	}
 }
 
@@ -191,7 +195,6 @@ func runAllServices(app *Application, cmd *cobra.Command, args []string) error {
 
 	// Run each service in its own goroutine
 	for name, svc := range app.services {
-		app.logger.Tracef("Starting service: %s", name)
 
 		// Initialize the service
 		if s, ok := svc.(Initializer); ok {
@@ -202,7 +205,7 @@ func runAllServices(app *Application, cmd *cobra.Command, args []string) error {
 
 		fnc := func(svc Service, name string) func() error {
 			return func() error {
-				if err := startService(app, svc); err != nil {
+				if err := StartService(app, svc); err != nil {
 					return errors.New("service '" + name + "' terminated unexpectedly: " + err.Error())
 				}
 				return nil
