@@ -17,8 +17,8 @@ type WebService struct {
 	running     atomic.Bool
 }
 
-func (*WebService) Name() string    { return "web" }
-func (*WebService) IsRunning() bool { return false }
+func (*WebService) Name() string       { return "web" }
+func (ws *WebService) IsRunning() bool { return ws.running.Load() }
 
 func (ws *WebService) Initialize(app *Application) error {
 	ws.application = app
