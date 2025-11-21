@@ -57,7 +57,13 @@ func (em *EventManager) Unregister(name string, fnc EventFunc) *EventManager {
 
 // Dispatch triggers all handlers for the given event data.
 func (em *EventManager) Dispatch(ctx context.Context, data any) {
-	eventName := TypeNoPtr(data).String()
+
+	var eventName string
+	if event, ok := data.(Namer); ok {
+		eventName = event.Name()
+	} else {
+		eventName = TypeNoPtr(data).String()
+	}
 
 	Logger().Tracef("dispatching event %s", eventName)
 
