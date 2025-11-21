@@ -93,7 +93,7 @@ const (
 	EventShutdown       = "golly.ApplicationShutdown"
 	EventStateChanged   = "golly.ApplicationStateChanged"
 	EventServiceLoaded  = "golly.ServiceLoaded"
-	EventServicestarted = "golly.ServiceStarted"
+	EventServiceStarted = "golly.ServiceStarted"
 	EventConfigChanged  = "golly.ConfigChanged"
 )
 

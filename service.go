@@ -1,9 +1,11 @@
 package golly
 
 import (
+	"context"
 	"errors"
 	"fmt"
-	"sync"
+
+	"golang.org/x/sync/errgroup"
 
 	"github.com/spf13/cobra"
 )
@@ -20,12 +22,13 @@ type Descriptioner interface {
 	Description() string
 }
 
+type Initializer interface {
+	Initialize(*Application) error
+}
+
 // Service defines a self-contained component within the Golly framework that runs independently and can be started or stopped separately from the main application.
 // While services usually align with the application's lifecycle, they can also be started or stopped dynamically, including from the command line (e.g., `golly service service_name`).
 type Service interface {
-	// Initialize prepares the service before it starts running.
-	Initialize(*Application) error
-
 	// Start activates the service, beginning its operation.
 	Start() error
 
@@ -117,6 +120,45 @@ func listServices(services []Service) func(cmd *cobra.Command, args []string) {
 	}
 }
 
+// startService starts a service.
+//
+// Parameters:
+//   - app: The application instance.
+//   - service: The service to start.
+//
+// Returns:
+//   - An error if the service fails to start.
+//   - nil if the service starts successfully.
+func startService(app *Application, service Service) error {
+	if i, ok := service.(Initializer); ok {
+		if err := i.Initialize(app); err != nil {
+			return err
+		}
+	}
+
+	app.Events().Dispatch(
+		WithApplication(context.Background(), app),
+		&ServiceStarted{Name: getServiceName(service)})
+
+	return service.Start()
+}
+
+// stopRunningServices stops all running services.
+func stopRunningServices(app *Application) {
+	for name, svc := range app.services {
+		if !svc.IsRunning() {
+			continue
+		}
+		if err := svc.Stop(); err != nil {
+			app.logger.Errorf("error stopping service %s: %s", name, err.Error())
+		}
+	}
+}
+
+/***
+ * CLI Commands
+ */
+
 // serviceRun creates a CLICommand for running a specific service by name.
 // The function can be extended with logic to start or manage the service.
 //
@@ -127,66 +169,48 @@ func listServices(services []Service) func(cmd *cobra.Command, args []string) {
 //   - A CLICommand function to execute the service run command within the application context.
 func serviceRun(name string) CLICommand {
 	return func(app *Application, cmd *cobra.Command, args []string) error {
+		app.On(EventShutdown, func(*Context, *Event) { stopRunningServices(app) })
+
 		service, exists := app.services[name]
 		if !exists {
 			return ErrorServiceNotRegistered
 		}
 
-		if err := service.Initialize(app); err != nil {
-			return err
-		}
-
-		app.events.
-			Register(EventShutdown, func(*Context, *Event) { service.Stop() })
-
-		// Add actual service start logic here
-		return service.Start()
+		return startService(app, service)
 	}
 }
 
 // runAllServices creates a CLICommand for running all registered services concurrently.
 //
 // Returns an error if any service stops unexpectedly before shutdown.
-func runAllServices() CLICommand {
-	return func(app *Application, cmd *cobra.Command, args []string) error {
-		var wg sync.WaitGroup
-		errChan := make(chan error, len(app.services))
+func runAllServices(app *Application, cmd *cobra.Command, args []string) error {
 
-		// Run each service in its own goroutine
-		for name, svc := range app.services {
-			app.logger.Tracef("Starting service: %s", name)
+	app.On(EventShutdown, func(*Context, *Event) { stopRunningServices(app) })
 
-			// Initialize the service
-			if err := svc.Initialize(app); err != nil {
+	var eg errgroup.Group
+
+	// Run each service in its own goroutine
+	for name, svc := range app.services {
+		app.logger.Tracef("Starting service: %s", name)
+
+		// Initialize the service
+		if s, ok := svc.(Initializer); ok {
+			if err := s.Initialize(app); err != nil {
 				return err
 			}
+		}
 
-			// Handle shutdown event for this service
-			app.events.Register(EventShutdown, func(*Context, *Event) {
-				svc.Stop()
-			})
-
-			wg.Add(1)
-			go func(serviceName string, service Service) {
-				defer wg.Done()
-				if err := service.Start(); err != nil {
-					errChan <- errors.New("service '" + serviceName + "' terminated unexpectedly: " + err.Error())
+		fnc := func(svc Service, name string) func() error {
+			return func() error {
+				if err := startService(app, svc); err != nil {
+					return errors.New("service '" + name + "' terminated unexpectedly: " + err.Error())
 				}
-			}(name, svc)
-		}
-
-		// Wait for all services to stop
-		wg.Wait()
-		close(errChan)
-
-		// Listen for service errors
-		for err := range errChan {
-			if err != nil {
-				app.Shutdown()
-				return err
+				return nil
 			}
 		}
 
-		return nil
+		eg.Go(fnc(svc, name))
 	}
+
+	return eg.Wait()
 }

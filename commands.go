@@ -20,7 +20,7 @@ var (
 	allServicesCommand = &cobra.Command{
 		Use:   "all",
 		Short: "List all services",
-		Run:   Command(runAllServices()),
+		Run:   Command(runAllServices),
 	}
 
 	commands = []*cobra.Command{
