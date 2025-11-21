@@ -30,6 +30,10 @@ type PluginBeforeInitialize interface {
 	BeforeInitialize(app *Application) error
 }
 
+type PluginAfterInitialize interface {
+	AfterInitialize(app *Application) error
+}
+
 // PluginServices provides a list of services that the plugin provides.
 type PluginServices interface {
 	Services() []Service
@@ -38,6 +42,10 @@ type PluginServices interface {
 // PluginCommands provides a list of commands that the plugin provides.
 type PluginCommands interface {
 	Commands() []*cobra.Command
+}
+
+type PluginEvents interface {
+	Events() map[string]EventFunc
 }
 
 type Plugins []Plugin
@@ -91,11 +99,33 @@ func (pm *PluginManager) initialize(app *Application) error {
 	return nil
 }
 
+func (pm *PluginManager) bindEvents(app *Application) error {
+	for pos := range pm.plugins {
+		if p, ok := pm.plugins[pos].(PluginEvents); ok {
+			for name, event := range p.Events() {
+				app.Events().Register(name, event)
+			}
+		}
+	}
+	return nil
+}
+
 func (pm *PluginManager) beforeInitialize(app *Application) error {
 	for pos := range pm.plugins {
 		if p, ok := pm.plugins[pos].(PluginBeforeInitialize); ok {
 			if err := p.BeforeInitialize(app); err != nil {
 				return fmt.Errorf("failed to before initialize plugin %T: %w", pm.plugins[pos], err)
+			}
+		}
+	}
+	return nil
+}
+
+func (pm *PluginManager) afterInitialize(app *Application) error {
+	for pos := range pm.plugins {
+		if p, ok := pm.plugins[pos].(PluginAfterInitialize); ok {
+			if err := p.AfterInitialize(app); err != nil {
+				return fmt.Errorf("failed to after initialize plugin %T: %w", pm.plugins[pos], err)
 			}
 		}
 	}

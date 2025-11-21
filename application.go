@@ -136,11 +136,19 @@ func (a *Application) initialize() error {
 	}
 
 	if a.plugins != nil {
+		if err := a.plugins.bindEvents(app); err != nil {
+			return err
+		}
+
 		if err := a.plugins.beforeInitialize(app); err != nil {
 			return err
 		}
 
 		if err := a.plugins.initialize(app); err != nil {
+			return err
+		}
+
+		if err := a.plugins.afterInitialize(app); err != nil {
 			return err
 		}
 	}
