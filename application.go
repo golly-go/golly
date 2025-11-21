@@ -179,6 +179,8 @@ func (a *Application) Shutdown() {
 
 	a.changeState(StateShutdown)
 
+	stopRunningServices(a)
+
 	if a.plugins != nil {
 		a.plugins.deinitialize(app)
 	}

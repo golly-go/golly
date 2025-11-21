@@ -7,9 +7,9 @@ import (
 )
 
 func TestEventManagerUnregister(t *testing.T) {
-	handler1 := func(_ *Context, _ *Event) {}
-	handler2 := func(_ *Context, _ *Event) {}
-	handler3 := func(_ *Context, _ *Event) {}
+	handler1 := func(ctx context.Context, data any) {}
+	handler2 := func(ctx context.Context, data any) {}
+	handler3 := func(ctx context.Context, data any) {}
 
 	tests := []struct {
 		name           string
@@ -218,8 +218,8 @@ func TestEventManagerUnregisterWithDispatch(t *testing.T) {
 	gctx := NewContext(context.Background())
 
 	callCount := 0
-	handler1 := func(_ *Context, _ *Event) { callCount++ }
-	handler2 := func(_ *Context, _ *Event) { callCount += 10 }
+	handler1 := func(ctx context.Context, data any) { callCount++ }
+	handler2 := func(ctx context.Context, data any) { callCount += 10 }
 
 	// Register both handlers - use the type name that Dispatch will generate
 	eventName := TypeNoPtr(TestDispatchEvent{}).String()
@@ -257,7 +257,7 @@ func BenchmarkEventManagerDispatch(b *testing.B) {
 	}
 
 	// Simple handler function that does minimal work
-	handler := func(_ *Context, _ *Event) {}
+	handler := func(ctx context.Context, data any) {}
 
 	// Register handlers for the event
 	em.Register("golly.SampleEvent", handler)
@@ -284,7 +284,7 @@ func BenchmarkEventManagerDispatch_MultiEvent(b *testing.B) {
 	type EventB struct{}
 	type EventC struct{}
 
-	handler := func(_ *Context, _ *Event) {}
+	handler := func(ctx context.Context, data any) {}
 
 	// Register different handlers
 	em.Register("golly.EventA", handler)

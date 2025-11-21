@@ -1,20 +1,18 @@
 package golly
 
 import (
+	"context"
 	"reflect"
 	"sync"
 
 	"github.com/spf13/viper"
 )
 
-type Event struct {
-	Name string
-	Data any
-}
+type Event any
 
 const AllEvents = "*"
 
-type EventFunc func(*Context, *Event)
+type EventFunc func(context.Context, any)
 
 type EventManager struct {
 	events map[string][]EventFunc
@@ -58,7 +56,7 @@ func (em *EventManager) Unregister(name string, fnc EventFunc) *EventManager {
 }
 
 // Dispatch triggers all handlers for the given event data.
-func (em *EventManager) Dispatch(gctx *Context, data any) {
+func (em *EventManager) Dispatch(ctx context.Context, data any) {
 	eventName := TypeNoPtr(data).String()
 
 	Logger().Tracef("dispatching event %s", eventName)
@@ -72,10 +70,9 @@ func (em *EventManager) Dispatch(gctx *Context, data any) {
 		return
 	}
 
-	event := Event{Name: eventName, Data: data}
 	// Call handlers without holding the lock
-	for _, handler := range handlers {
-		handler(gctx, &event)
+	for pos := range handlers {
+		handlers[pos](ctx, data)
 	}
 }
 

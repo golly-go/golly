@@ -468,9 +468,9 @@ func TestChangeState(t *testing.T) {
 			var dispatchedState ApplicationState
 
 			// Register event handler to verify dispatch
-			app.On(EventStateChanged, func(_ *Context, event *Event) {
+			app.On(EventStateChanged, func(ctx context.Context, data any) {
 				eventDispatched = true
-				if stateChanged, ok := event.Data.(ApplicationStateChanged); ok {
+				if stateChanged, ok := data.(ApplicationStateChanged); ok {
 					dispatchedState = stateChanged.State
 				}
 			})
@@ -562,7 +562,7 @@ func TestOn(t *testing.T) {
 	app := NewApplication(Options{})
 
 	callCount := 0
-	handler := func(_ *Context, _ *Event) {
+	handler := func(ctx context.Context, data any) {
 		callCount++
 	}
 
@@ -583,7 +583,7 @@ func TestOn(t *testing.T) {
 
 	// Register multiple handlers for same event
 	callCount2 := 0
-	handler2 := func(_ *Context, _ *Event) {
+	handler2 := func(ctx context.Context, data any) {
 		callCount2++
 	}
 
@@ -602,7 +602,7 @@ func TestOff(t *testing.T) {
 	app := NewApplication(Options{})
 
 	callCount := 0
-	handler := func(_ *Context, _ *Event) {
+	handler := func(ctx context.Context, data any) {
 		callCount++
 	}
 
@@ -666,12 +666,12 @@ func TestShutdown(t *testing.T) {
 			stateChangedDispatched := false
 
 			// Register event handlers
-			app.On(EventShutdown, func(_ *Context, _ *Event) {
+			app.On(EventShutdown, func(ctx context.Context, data any) {
 				shutdownDispatched = true
 			})
 
-			app.On(EventStateChanged, func(_ *Context, event *Event) {
-				if stateChanged, ok := event.Data.(ApplicationStateChanged); ok {
+			app.On(EventStateChanged, func(ctx context.Context, data any) {
+				if stateChanged, ok := data.(ApplicationStateChanged); ok {
 					if stateChanged.State == StateShutdown {
 						stateChangedDispatched = true
 					}
@@ -702,7 +702,7 @@ func TestShutdownMultipleTimes(t *testing.T) {
 	app.state = StateRunning
 
 	shutdownCount := 0
-	app.On(EventShutdown, func(_ *Context, _ *Event) {
+	app.On(EventShutdown, func(ctx context.Context, data any) {
 		shutdownCount++
 	})
 

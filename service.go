@@ -173,8 +173,6 @@ func stopRunningServices(app *Application) {
 //   - A CLICommand function to execute the service run command within the application context.
 func serviceRun(name string) CLICommand {
 	return func(app *Application, cmd *cobra.Command, args []string) error {
-		app.On(EventShutdown, func(*Context, *Event) { stopRunningServices(app) })
-
 		service, exists := app.services[name]
 		if !exists {
 			return ErrorServiceNotRegistered
@@ -188,8 +186,6 @@ func serviceRun(name string) CLICommand {
 //
 // Returns an error if any service stops unexpectedly before shutdown.
 func runAllServices(app *Application, cmd *cobra.Command, args []string) error {
-
-	app.On(EventShutdown, func(*Context, *Event) { stopRunningServices(app) })
 
 	var eg errgroup.Group
 
