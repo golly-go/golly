@@ -14,6 +14,10 @@ const AllEvents = "*"
 
 type EventFunc func(context.Context, any)
 
+type EventNamer interface {
+	EventName() string
+}
+
 type EventManager struct {
 	events map[string][]EventFunc
 	mu     sync.RWMutex
@@ -59,8 +63,8 @@ func (em *EventManager) Unregister(name string, fnc EventFunc) *EventManager {
 func (em *EventManager) Dispatch(ctx context.Context, data any) {
 
 	var eventName string
-	if event, ok := data.(Namer); ok {
-		eventName = event.Name()
+	if event, ok := data.(EventNamer); ok {
+		eventName = event.EventName()
 	} else {
 		eventName = TypeNoPtr(data).String()
 	}
@@ -95,25 +99,28 @@ func NewEventManager() *EventManager {
 const (
 	EventShutdown       = "golly.ApplicationShutdown"
 	EventStateChanged   = "golly.ApplicationStateChanged"
-	EventServiceLoaded  = "golly.ServiceLoaded"
 	EventServiceStarted = "golly.ServiceStarted"
 	EventConfigChanged  = "golly.ConfigChanged"
 )
-
-type ServiceLoaded struct {
-	Name string
-}
 
 type ServiceStarted struct {
 	Name string
 }
 
+func (s *ServiceStarted) EventName() string { return EventServiceStarted }
+
 type ApplicationShutdown struct{}
+
+func (s *ApplicationShutdown) EventName() string { return EventShutdown }
 
 type ApplicationStateChanged struct {
 	State ApplicationState
 }
 
+func (s *ApplicationStateChanged) EventName() string { return EventStateChanged }
+
 type ConfigChanged struct {
 	Config *viper.Viper
 }
+
+func (s *ConfigChanged) EventName() string { return EventConfigChanged }
