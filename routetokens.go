@@ -41,128 +41,128 @@ func stringToBytes(s string) []byte {
 	return unsafe.Slice(unsafe.StringData(s), len(s))
 }
 
-// tokenize takes a string path and turns them into RouteTokens
-// Optimized to reduce allocations by working with byte arrays
-func tokenize(path string) []*RouteToken {
+// tokenize takes a string path and turns it into RouteTokens.
+// Optimized for hotpath: no []byte conversion, no per-token heap objects.
+// All strings are slices of the original path (zero alloc).
+func tokenize(path string) []RouteToken {
 	if path == "" {
 		return nil
 	}
 
-	// Use unsafe conversion to avoid copying the string to bytes
-	pathBytes := stringToBytes(path)
 	segmentCount := strings.Count(path, "/") + 1
-	tokens := make([]*RouteToken, segmentCount)
-	cnt := 0
+	tokens := make([]RouteToken, 0, segmentCount)
 
+	n := len(path)
 	pos := 0
-	end := len(pathBytes)
 
-	// Add leading root if path starts with "/"
-	if pathBytes[0] == '/' {
-		tokens[cnt] = &RouteToken{value: "/"}
-		cnt++
-		pos++ // Skip the initial slash
+	// Leading root if path starts with "/"
+	if path[0] == '/' {
+		tokens = append(tokens, RouteToken{value: "/"})
+		pos = 1
 	}
 
-	for pos < end {
+	for pos < n {
 		start := pos
 
-		// Handle variable segments {var:[0-9]+}
-		if pathBytes[pos] == '{' {
+		// Dynamic segment: {var} or {var:matcher}
+		if path[pos] == '{' {
 			pos++
-			for pos < end && pathBytes[pos] != '}' {
+			for pos < n && path[pos] != '}' {
 				pos++
 			}
-			if pos < end && pathBytes[pos] == '}' {
+			if pos < n && path[pos] == '}' {
+				// scan for colon inside braces
 				colon := -1
 				for i := start + 1; i < pos; i++ {
-					if pathBytes[i] == ':' {
+					if path[i] == ':' {
 						colon = i
 						break
 					}
 				}
 
 				if colon >= 0 {
-					// Convert bytes to string only when creating the token
-					tokens[cnt] = &RouteToken{
-						value:     string(pathBytes[start+1 : colon]),
+					tokens = append(tokens, RouteToken{
+						value:     path[start+1 : colon],
 						isDynamic: true,
-						matcher:   string(pathBytes[colon+1 : pos]),
-					}
+						matcher:   path[colon+1 : pos],
+					})
 				} else {
-					tokens[cnt] = &RouteToken{
-						value:     string(pathBytes[start+1 : pos]),
+					tokens = append(tokens, RouteToken{
+						value:     path[start+1 : pos],
 						isDynamic: true,
-					}
+					})
 				}
 
-				cnt++
-
-				pos++ // Move past '}'
+				pos++ // past '}'
+				if pos < n && path[pos] == '/' {
+					pos++
+				}
 				continue
 			}
+			// malformed '{' falls through and treated as static below
+			pos = start
 		}
 
-		// Handle static path segments
-		for pos < end && pathBytes[pos] != '/' && pathBytes[pos] != '{' {
+		// Static segment
+		for pos < n && path[pos] != '/' && path[pos] != '{' {
 			pos++
 		}
-
 		if start != pos {
-			// Convert bytes to string only when creating the token
-			tokens[cnt] = &RouteToken{value: string(pathBytes[start:pos])}
-			cnt++
+			tokens = append(tokens, RouteToken{value: path[start:pos]})
 		}
 
-		// Skip trailing slash
-		if pos < end && pathBytes[pos] == '/' {
+		if pos < n && path[pos] == '/' {
 			pos++
 		}
 	}
 
-	return tokens[:cnt]
+	return tokens
 }
 
-// pathSegments takes a string path and turns them into segments
-// this is used for walking the path, matching routes and creating variables
-// Optimized to reduce allocations by working with byte arrays
+// pathSegments takes a string path and turns it into segments.
+// Used for walking/matching/vars. Optimized for runtime hotpath:
+// - no []byte conversion
+// - no []byte->string copies
+// - segments are string views into `path` (zero-alloc)
+// Only allocation is the segments slice backing array (once).
 func pathSegments(path string) []string {
-
 	if path == "" {
 		return []string{}
 	}
-
 	if path == "/" {
-		return []string{path}
+		return []string{"/"}
 	}
 
-	// Use unsafe conversion to avoid copying the string to bytes
-	pathBytes := stringToBytes(path)
+	// Preallocate based on slash count. This is an upper bound because we
+	// skip empty segments from repeated slashes.
 	tokenCount := strings.Count(path, "/")
-	segments := make([]string, tokenCount+1) // add + 1 to handle /
+	segments := make([]string, 0, tokenCount+1)
 
-	start, cnt := 0, 0
-	if pathBytes[cnt] == '/' {
-		segments[cnt] = "/"
-		start = 1
-		cnt++
+	n := len(path)
+	i := 0
+
+	// Leading root segment if starts with '/'
+	if path[0] == '/' {
+		segments = append(segments, "/")
+		i = 1
 	}
 
-	tokenStart := start
-	for i := start; i < len(pathBytes); i++ {
-		if pathBytes[i] == '/' {
-			if tokenStart != i {
-				// Convert bytes to string only when storing the segment
-				segments[cnt] = string(pathBytes[tokenStart:i])
-				cnt++
-			}
-			tokenStart = i + 1
+	for i < n {
+		// Skip any extra slashes (prevents empty segments)
+		for i < n && path[i] == '/' {
+			i++
 		}
-	}
+		if i >= n {
+			break
+		}
 
-	// Capture the last segment if the path doesn't end with '/'
-	if tokenStart < len(pathBytes) {
-		segments[cnt] = string(pathBytes[tokenStart:])
+		start := i
+		for i < n && path[i] != '/' {
+			i++
+		}
+
+		// Zero-alloc substring view
+		segments = append(segments, path[start:i])
 	}
 
 	return segments

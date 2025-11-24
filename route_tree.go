@@ -254,13 +254,15 @@ func (re *Route) add(path string, handler HandlerFunc, httpMethods methodType) *
 		if tokens[pos].value == "/" {
 			r = re
 		} else {
-			node := r.FindChildByToken(tokens[pos])
+			token := &tokens[pos]
+
+			node := r.FindChildByToken(token)
 
 			// If node doesn't exist, create it
 			if node == nil {
 				node = NewRoute(root)
 				node.parent = r
-				node.token = tokens[pos]
+				node.token = token
 				r.children = append(r.children, node)
 			}
 			r = node
