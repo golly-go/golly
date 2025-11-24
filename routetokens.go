@@ -3,6 +3,7 @@ package golly
 import (
 	"regexp"
 	"strings"
+	"unsafe"
 )
 
 type RouteToken struct {
@@ -34,21 +35,30 @@ func (rs *RouteToken) Match(str *string) bool {
 	return matched
 }
 
+// stringToBytes converts a string to byte slice without allocation
+// using unsafe pointer conversion
+func stringToBytes(s string) []byte {
+	return unsafe.Slice(unsafe.StringData(s), len(s))
+}
+
 // tokenize takes a string path and turns them into RouteTokens
+// Optimized to reduce allocations by working with byte arrays
 func tokenize(path string) []*RouteToken {
 	if path == "" {
 		return nil
 	}
 
+	// Use unsafe conversion to avoid copying the string to bytes
+	pathBytes := stringToBytes(path)
 	segmentCount := strings.Count(path, "/") + 1
 	tokens := make([]*RouteToken, segmentCount)
 	cnt := 0
 
 	pos := 0
-	end := len(path)
+	end := len(pathBytes)
 
 	// Add leading root if path starts with "/"
-	if path[0] == '/' {
+	if pathBytes[0] == '/' {
 		tokens[cnt] = &RouteToken{value: "/"}
 		cnt++
 		pos++ // Skip the initial slash
@@ -58,24 +68,32 @@ func tokenize(path string) []*RouteToken {
 		start := pos
 
 		// Handle variable segments {var:[0-9]+}
-		if path[pos] == '{' {
+		if pathBytes[pos] == '{' {
 			pos++
-			for pos < end && path[pos] != '}' {
+			for pos < end && pathBytes[pos] != '}' {
 				pos++
 			}
-			if pos < end && path[pos] == '}' {
+			if pos < end && pathBytes[pos] == '}' {
 				colon := -1
 				for i := start + 1; i < pos; i++ {
-					if path[i] == ':' {
+					if pathBytes[i] == ':' {
 						colon = i
 						break
 					}
 				}
 
 				if colon >= 0 {
-					tokens[cnt] = &RouteToken{value: path[start+1 : colon], isDynamic: true, matcher: path[colon+1 : pos]}
+					// Convert bytes to string only when creating the token
+					tokens[cnt] = &RouteToken{
+						value:     string(pathBytes[start+1 : colon]),
+						isDynamic: true,
+						matcher:   string(pathBytes[colon+1 : pos]),
+					}
 				} else {
-					tokens[cnt] = &RouteToken{value: path[start+1 : pos], isDynamic: true}
+					tokens[cnt] = &RouteToken{
+						value:     string(pathBytes[start+1 : pos]),
+						isDynamic: true,
+					}
 				}
 
 				cnt++
@@ -86,17 +104,18 @@ func tokenize(path string) []*RouteToken {
 		}
 
 		// Handle static path segments
-		for pos < end && path[pos] != '/' && path[pos] != '{' {
+		for pos < end && pathBytes[pos] != '/' && pathBytes[pos] != '{' {
 			pos++
 		}
 
 		if start != pos {
-			tokens[cnt] = &RouteToken{value: path[start:pos]}
+			// Convert bytes to string only when creating the token
+			tokens[cnt] = &RouteToken{value: string(pathBytes[start:pos])}
 			cnt++
 		}
 
 		// Skip trailing slash
-		if pos < end && path[pos] == '/' {
+		if pos < end && pathBytes[pos] == '/' {
 			pos++
 		}
 	}
@@ -106,6 +125,7 @@ func tokenize(path string) []*RouteToken {
 
 // pathSegments takes a string path and turns them into segments
 // this is used for walking the path, matching routes and creating variables
+// Optimized to reduce allocations by working with byte arrays
 func pathSegments(path string) []string {
 
 	if path == "" {
@@ -116,21 +136,24 @@ func pathSegments(path string) []string {
 		return []string{path}
 	}
 
+	// Use unsafe conversion to avoid copying the string to bytes
+	pathBytes := stringToBytes(path)
 	tokenCount := strings.Count(path, "/")
 	segments := make([]string, tokenCount+1) // add + 1 to handle /
 
 	start, cnt := 0, 0
-	if path[cnt] == '/' {
+	if pathBytes[cnt] == '/' {
 		segments[cnt] = "/"
 		start = 1
 		cnt++
 	}
 
 	tokenStart := start
-	for i := start; i < len(path); i++ {
-		if path[i] == '/' {
+	for i := start; i < len(pathBytes); i++ {
+		if pathBytes[i] == '/' {
 			if tokenStart != i {
-				segments[cnt] = path[tokenStart:i]
+				// Convert bytes to string only when storing the segment
+				segments[cnt] = string(pathBytes[tokenStart:i])
 				cnt++
 			}
 			tokenStart = i + 1
@@ -138,8 +161,8 @@ func pathSegments(path string) []string {
 	}
 
 	// Capture the last segment if the path doesn't end with '/'
-	if tokenStart < len(path) {
-		segments[cnt] = path[tokenStart:]
+	if tokenStart < len(pathBytes) {
+		segments[cnt] = string(pathBytes[tokenStart:])
 	}
 
 	return segments

@@ -5,7 +5,6 @@ import (
 	"maps"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
 )
 
@@ -13,15 +12,15 @@ type methodType uint
 
 const (
 	STUB    methodType = 0x001
-	CONNECT            = 0x002
-	DELETE             = 0x004
-	GET                = 0x008
-	HEAD               = 0x010
-	OPTIONS            = 0x020
-	PATCH              = 0x040
-	POST               = 0x080
-	PUT                = 0x100
-	TRACE              = 0x200
+	CONNECT methodType = 0x002
+	DELETE  methodType = 0x004
+	GET     methodType = 0x008
+	HEAD    methodType = 0x010
+	OPTIONS methodType = 0x020
+	PATCH   methodType = 0x040
+	POST    methodType = 0x080
+	PUT     methodType = 0x100
+	TRACE   methodType = 0x200
 )
 
 type Controller interface {
@@ -93,7 +92,6 @@ type Route struct {
 	// Keep these here for runtime performance so we do not need to chain
 	// while running (need to think about how to handle this long term)
 	methodNotAllowedHandler HandlerFunc
-	notFoundHandler         HandlerFunc
 	noOp                    HandlerFunc
 
 	parent *Route
@@ -171,8 +169,8 @@ func (re *Route) search(segments []string) *Route {
 	}
 
 	// Continue searching in children
-	for _, child := range re.children {
-		if found := child.search(segments); found != nil {
+	for pos := range re.children {
+		if found := re.children[pos].search(segments); found != nil {
 			return found
 		}
 	}
@@ -425,10 +423,6 @@ func renderRoutes(c *WebContext) {
 	c.RenderText(text)
 }
 
-func printRoutes(routes *Route) {
-	fmt.Printf("%s\n", strings.Join(buildPath(routes, ""), "\n"))
-}
-
 func buildPath(route *Route, prefix string) []string {
 	ret := []string{}
 
@@ -472,43 +466,43 @@ func buildPath(route *Route, prefix string) []string {
 	return ret
 }
 
-func debugTree(route *Route, tabDepth int) []string {
+// func debugTree(route *Route, tabDepth int) []string {
 
-	ret := []string{}
+// 	ret := []string{}
 
-	var prefix = ""
+// 	var prefix = ""
 
-	// Handle root path explicitly by ensuring prefix starts at "/"
-	if route.token != nil {
-		if route.token.value == "/" {
-			prefix = "/"
-		} else {
-			if route.token.isDynamic {
-				pattern := ""
-				if m := route.token.matcher; m != "" {
-					pattern = ":" + m
-				}
+// 	// Handle root path explicitly by ensuring prefix starts at "/"
+// 	if route.token != nil {
+// 		if route.token.value == "/" {
+// 			prefix = "/"
+// 		} else {
+// 			if route.token.isDynamic {
+// 				pattern := ""
+// 				if m := route.token.matcher; m != "" {
+// 					pattern = ":" + m
+// 				}
 
-				prefix =
-					fmt.Sprintf(" {%s%s}\n", route.token.value, pattern)
+// 				prefix =
+// 					fmt.Sprintf(" {%s%s}\n", route.token.value, pattern)
 
-			} else {
-				prefix = route.token.value
-			}
-		}
-	} else if route.root == nil {
-		prefix = "[root]"
-	}
+// 			} else {
+// 				prefix = route.token.value
+// 			}
+// 		}
+// 	} else if route.root == nil {
+// 		prefix = "[root]"
+// 	}
 
-	ret = append(ret, strings.Repeat("\t", tabDepth)+"d:"+strconv.Itoa(tabDepth)+" "+prefix)
+// 	ret = append(ret, strings.Repeat("\t", tabDepth)+"d:"+strconv.Itoa(tabDepth)+" "+prefix)
 
-	// Recursively build paths for children
-	for _, child := range route.children {
-		ret = append(ret, debugTree(child, tabDepth+1)...)
-	}
+// 	// Recursively build paths for children
+// 	for _, child := range route.children {
+// 		ret = append(ret, debugTree(child, tabDepth+1)...)
+// 	}
 
-	return ret
-}
+// 	return ret
+// }
 
 /*
   root->child->grandchild->ggchild

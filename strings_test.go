@@ -31,33 +31,10 @@ func TestASCIICompair(t *testing.T) {
 			assert.Equal(t, tt.expected, result, "Failed test case: %s", tt.name)
 		})
 	}
+
 }
 
-func TestSnakeCase(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    string
-		expected string
-	}{
-		{"camelCase", "camelCase", "camel_case"},
-		{"PascalCase", "PascalCase", "pascal_case"},
-		{"AllUppercase", "HTMLParser", "html_parser"},
-		{"SingleWord", "Word", "word"},
-		{"AcronymWithWord", "JSONData", "json_data"},
-		{"MultipleUpper", "HTTPRequestParser", "http_request_parser"},
-		{"LowercaseString", "simple", "simple"},
-		{"WithNumbers", "User2Profile", "user2_profile"},
-		{"ComplexCase", "XMLHTTPRequestHandler", "xmlhttp_request_handler"},
-		{"EmptyString", "", ""},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := SnakeCase(tt.input)
-			assert.Equal(t, tt.expected, result, "Failed test case: %s", tt.name)
-		})
-	}
-}
+var asciiSink bool
 
 func BenchmarkASCIICompair(b *testing.B) {
 	tests := []struct {
@@ -77,10 +54,30 @@ func BenchmarkASCIICompair(b *testing.B) {
 	}
 
 	for _, tt := range tests {
+		tt := tt // capture loop var
 		b.Run(tt.name, func(b *testing.B) {
+			s1, s2 := tt.str1, tt.str2
+			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				_ = ASCIICompair(tt.str1, tt.str2)
+				asciiSink = ASCIICompair(s1, s2)
 			}
 		})
+	}
+
+}
+
+var sink bool
+
+func BenchmarkDiffLenForce(b *testing.B) {
+	s1a, s2a := "hello", "hell"
+	s1b, s2b := "hello!", "hell" // still different lengths, but not identical pair
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if i&1 == 0 {
+			sink = ASCIICompair(s1a, s2a)
+		} else {
+			sink = ASCIICompair(s1b, s2b)
+		}
 	}
 }

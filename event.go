@@ -27,7 +27,7 @@ func (em *EventManager) Register(name string, fnc EventFunc) *EventManager {
 	em.mu.Lock()
 	defer em.mu.Unlock()
 
-	Logger().Tracef("registering event %s", name)
+	Tracef("registering event %s", name)
 
 	if em.events == nil {
 		em.events = make(map[string][]EventFunc)
@@ -68,8 +68,6 @@ func (em *EventManager) Dispatch(ctx context.Context, data any) {
 	} else {
 		eventName = TypeNoPtr(data).String()
 	}
-
-	Logger().Tracef("dispatching event %s", eventName)
 
 	// Fast path: check existence without locking
 	em.mu.RLock()

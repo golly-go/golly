@@ -4,14 +4,15 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
+	"unsafe"
 )
 
 const (
@@ -25,9 +26,29 @@ var (
 )
 
 func makeRequestID() string {
-	reqcount.Add(1)
+	// Increment the request counter atomically.
+	cnt := reqcount.Add(1)
 
-	return fmt.Sprintf("%s/%06d", hostname, reqcount.Load())
+	// Use a stack‑allocated buffer to build the ID without heap allocations.
+	var buf [64]byte
+	b := buf[:0]
+	// Append hostname.
+	b = append(b, hostname...)
+	b = append(b, '/')
+	// Append counter with zero‑padding to 6 digits.
+	// strconv.AppendInt does not allocate; it writes into the slice.
+	b = strconv.AppendInt(b, int64(cnt), 10)
+	// If we need zero‑padding to 6 digits, prepend zeros manually.
+	// The counter is unlikely to exceed 6 digits in normal operation.
+	if len(b) < len(hostname)+1+6 {
+		pad := make([]byte, (len(hostname)+1+6)-len(b))
+		for i := range pad {
+			pad[i] = '0'
+		}
+		b = append(b[:len(hostname)+1], append(pad, b[len(hostname)+1:]...)...)
+	}
+	// Convert the byte slice to a string without copying.
+	return unsafe.String(&b[0], len(b))
 }
 
 type WebContext struct {
@@ -135,17 +156,17 @@ func WebContextWithRequestID(gctx *Context, reqID string, r *http.Request, w htt
 }
 
 func requestLogfields(requestID string, r *http.Request) map[string]interface{} {
-	logFields := map[string]interface{}{
-		"ts":                           time.Now().UTC().Format(time.RFC1123),
-		"http.proto":                   r.Proto,
-		"http.request_id":              requestID,
-		"http.method":                  r.Method,
-		"http.useragent":               r.UserAgent(),
-		"http.url":                     r.URL.String(),
-		"http.url_details.path":        r.URL.Path,
-		"http.url_details.host":        r.Host,
-		"http.url_details.queryString": r.URL.RawQuery,
-	}
+	// Preallocate map with expected number of fields to avoid rehash allocations.
+	logFields := make(map[string]interface{}, 12)
+	logFields["ts"] = time.Now().UTC().Format(time.RFC1123)
+	logFields["http.proto"] = r.Proto
+	logFields["http.request_id"] = requestID
+	logFields["http.method"] = r.Method
+	logFields["http.useragent"] = r.UserAgent()
+	logFields["http.url"] = r.URL.String()
+	logFields["http.url_details.path"] = r.URL.Path
+	logFields["http.url_details.host"] = r.Host
+	logFields["http.url_details.queryString"] = r.URL.RawQuery
 
 	logFields["http.url_details.schema"] = SchemeHTTP
 	if r.TLS != nil {

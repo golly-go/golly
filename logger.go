@@ -56,3 +56,31 @@ func Logger() *log.Logger {
 	// this happens in test
 	return NewLogger()
 }
+
+func Tracef(format string, args ...interface{}) {
+	if silenced {
+		return
+	}
+
+	if app == nil || app.logger == nil {
+		return
+	}
+
+	if app.logger.IsLevelEnabled(log.TraceLevel) {
+		app.logger.Tracef(format, args...)
+	}
+}
+
+func TraceWithContext(ctx *Context, format string, args ...interface{}) {
+	if silenced {
+		return
+	}
+
+	if app == nil || app.logger == nil {
+		return
+	}
+
+	if app.logger.IsLevelEnabled(log.TraceLevel) {
+		ctx.Logger().Tracef(format, args...)
+	}
+}

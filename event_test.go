@@ -268,12 +268,14 @@ func BenchmarkEventManagerDispatch(b *testing.B) {
 	gctx := NewContext(context.Background())
 	event := SampleEvent{ID: 1}
 
-	b.ResetTimer()
-	b.ReportAllocs()
+	b.Run("Dispatch", func(b *testing.B) {
+		b.ResetTimer()
+		b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
-		em.Dispatch(gctx, event)
-	}
+		for i := 0; i < b.N; i++ {
+			em.Dispatch(gctx, event)
+		}
+	})
 }
 
 // Benchmark with multiple event types to simulate diverse workloads
