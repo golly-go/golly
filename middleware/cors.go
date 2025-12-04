@@ -102,8 +102,6 @@ func Cors(co CorsOptions) func(next golly.HandlerFunc) golly.HandlerFunc {
 		return func(wctx *golly.WebContext) {
 			r := wctx.Request()
 
-			wctx.Logger().Tracef("Starting cors check for %s", r.Method)
-
 			if r.Method == http.MethodOptions && r.Header.Get("Access-Control-Request-Method") != "" {
 				crs.preflight(wctx)
 			} else {
@@ -130,7 +128,6 @@ func (c cors) preflight(wctx *golly.WebContext) {
 
 	origin := r.Header.Get(originHeader)
 	if origin == "" {
-		wctx.Logger().Tracef("empty origin in cors check")
 		return
 	}
 
@@ -178,7 +175,6 @@ func (c cors) request(wctx *golly.WebContext) {
 
 	origin := r.Header.Get(originHeader)
 	if origin == "" {
-		wctx.Logger().Tracef("request: empty origin in cors check")
 		return
 	}
 

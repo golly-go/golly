@@ -14,7 +14,7 @@ func RequestLogger(next golly.HandlerFunc) golly.HandlerFunc {
 	return func(wctx *golly.WebContext) {
 
 		// TODO move this into a middleware
-		defer func(t time.Time, method string, w http.ResponseWriter) {
+		defer func(t time.Time, req *http.Request, w http.ResponseWriter) {
 			writer, ok := w.(golly.WrapResponseWriter)
 			if !ok {
 				return
@@ -27,6 +27,9 @@ func RequestLogger(next golly.HandlerFunc) golly.HandlerFunc {
 				"http.status_code":      status,
 				"network.bytes_written": writer.BytesWritten(),
 				"duration":              elapsed.Nanoseconds(),
+				"request.url":           req.URL.String(),
+				"request.path":          req.URL.Path,
+				"request.method":        req.Method,
 			})
 
 			str := fmt.Sprintf("Completed request [%v] [%d %s]", elapsed, status, http.StatusText(status))
@@ -38,7 +41,7 @@ func RequestLogger(next golly.HandlerFunc) golly.HandlerFunc {
 			} else {
 				logger.Error(str)
 			}
-		}(time.Now(), wctx.Request().Method, wctx.Response())
+		}(time.Now(), wctx.Request(), wctx.Response())
 
 		next(wctx)
 	}
