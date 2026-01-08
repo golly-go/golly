@@ -57,3 +57,13 @@ cont:
 
 	return v, nil
 }
+
+func setAndInitConfig(app *Application) error {
+	v, err := initConfig(app)
+	if err != nil {
+		return err
+	}
+	app.config = v
+
+	return nil
+}
