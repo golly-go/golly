@@ -284,17 +284,23 @@ func NewApplication(options Options) *Application {
 }
 
 func NewTestApplication(options Options) (*Application, error) {
-	app := NewApplication(options)
+	a := NewApplication(options)
 
-	if err := setAndInitConfig(app); err != nil {
+	if err := setAndInitConfig(a); err != nil {
 		return nil, err
 	}
 
-	if err := app.initialize(); err != nil {
+	if err := a.initialize(); err != nil {
 		return nil, err
 	}
+
+	app = a
 
 	return app, nil
+}
+
+func ResetTestApp() {
+	app = nil
 }
 
 func renderStatus(ctx *WebContext) {
