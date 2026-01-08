@@ -284,23 +284,25 @@ func NewApplication(options Options) *Application {
 }
 
 func NewTestApplication(options Options) (*Application, error) {
-	a := NewApplication(options)
+	lock.Lock()
+	app = NewApplication(options)
+	lock.Unlock()
 
-	if err := setAndInitConfig(a); err != nil {
+	if err := setAndInitConfig(app); err != nil {
 		return nil, err
 	}
 
-	if err := a.initialize(); err != nil {
+	if err := app.initialize(); err != nil {
 		return nil, err
 	}
-
-	app = a
 
 	return app, nil
 }
 
 func ResetTestApp() {
+	lock.Lock()
 	app = nil
+	lock.Unlock()
 }
 
 func renderStatus(ctx *WebContext) {
