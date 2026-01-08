@@ -288,12 +288,16 @@ func NewTestApplication(options Options) (*Application, error) {
 
 	initConfig(app)
 
-	if err := options.Preboot(app); err != nil {
-		return nil, err
+	if options.Preboot != nil {
+		if err := options.Preboot(app); err != nil {
+			return nil, err
+		}
 	}
 
-	if err := options.Initializer(app); err != nil {
-		return nil, err
+	if options.Initializer != nil {
+		if err := options.Initializer(app); err != nil {
+			return nil, err
+		}
 	}
 
 	return app, nil
