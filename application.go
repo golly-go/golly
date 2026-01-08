@@ -286,12 +286,6 @@ func NewApplication(options Options) *Application {
 func NewTestApplication(options Options) (*Application, error) {
 	app := NewApplication(options)
 
-	if app.preboot != nil {
-		if err := app.preboot(app); err != nil {
-			return nil, err
-		}
-	}
-
 	if err := setAndInitConfig(app); err != nil {
 		return nil, err
 	}
