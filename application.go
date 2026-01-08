@@ -283,6 +283,22 @@ func NewApplication(options Options) *Application {
 	}
 }
 
+func NewTestApplication(options Options) (*Application, error) {
+	app := NewApplication(options)
+
+	initConfig(app)
+
+	if err := options.Preboot(app); err != nil {
+		return nil, err
+	}
+
+	if err := options.Initializer(app); err != nil {
+		return nil, err
+	}
+
+	return app, nil
+}
+
 func renderStatus(ctx *WebContext) {
 	ctx.RenderJSON(map[string]string{
 		"status": "ok",
