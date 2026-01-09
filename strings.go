@@ -4,6 +4,7 @@ import (
 	"errors"
 	"regexp"
 	"strings"
+	"unsafe"
 )
 
 var (
@@ -74,4 +75,12 @@ func SnakeCase(str string) string {
 	snake := matchFirstCap.ReplaceAllString(str, "${1}_${2}")
 	snake = matchAllCap.ReplaceAllString(snake, "${1}_${2}")
 	return strings.ToLower(snake)
+}
+
+// func unsafeString(b []byte) string {
+// 	return *(*string)(unsafe.Pointer(&b))
+// }
+
+func unsafeString(b []byte) string {
+	return unsafe.String(unsafe.SliceData(b), len(b))
 }

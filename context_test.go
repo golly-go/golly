@@ -243,7 +243,7 @@ func TestPropagateCancel(t *testing.T) {
 func TestContextLogger(t *testing.T) {
 	t.Run("FastPathCachedLogger", func(t *testing.T) {
 		// Create a context and preload a logger
-		ctx := NewContext(nil)
+		ctx := NewContext(context.TODO())
 		preloadedLogger := logrus.NewEntry(logrus.New())
 		ctx.logger.Store(preloadedLogger)
 
@@ -256,7 +256,7 @@ func TestContextLogger(t *testing.T) {
 
 	t.Run("SlowPathInheritParentLogger", func(t *testing.T) {
 		// Create a parent context and set its logger
-		parentCtx := NewContext(nil)
+		parentCtx := NewContext(context.TODO())
 		parentLogger := logrus.NewEntry(logrus.New())
 		parentCtx.logger.Store(parentLogger)
 
@@ -272,7 +272,7 @@ func TestContextLogger(t *testing.T) {
 
 	t.Run("SlowPathNewLogger", func(t *testing.T) {
 		// Create a standalone context with no parent
-		standaloneCtx := NewContext(nil)
+		standaloneCtx := NewContext(context.TODO())
 
 		// Retrieve the logger from the context
 		logger := standaloneCtx.Logger()
@@ -284,7 +284,7 @@ func TestContextLogger(t *testing.T) {
 
 	t.Run("CascadingLoggerUpwards", func(t *testing.T) {
 		// Create a parent context and set its logger
-		rootCtx := NewContext(nil)
+		rootCtx := NewContext(context.TODO())
 		rootLogger := logrus.NewEntry(logrus.New())
 		rootCtx.logger.Store(rootLogger)
 
@@ -301,7 +301,7 @@ func TestContextLogger(t *testing.T) {
 
 	t.Run("HandleParentAsContextInterface", func(t *testing.T) {
 		// Create a parent context of type context.Context
-		rootCtx := NewContext(nil)
+		rootCtx := NewContext(context.TODO())
 
 		// Create a child context with a parent that is not a *Context
 		childCtx := NewContext(rootCtx)
@@ -411,12 +411,12 @@ func BenchmarkContextWithValuePropagation(b *testing.B) {
 
 func BenchmarkContextLogger(b *testing.B) {
 	// Setup: Create a parent context with a pre-set logger
-	parentCtx := NewContext(nil)
+	parentCtx := NewContext(context.TODO())
 	parentLogger := logrus.NewEntry(logrus.New())
 	parentCtx.logger.Store(parentLogger)
 
 	childCtx := NewContext(parentCtx)
-	standaloneCtx := NewContext(nil)
+	standaloneCtx := NewContext(context.TODO())
 
 	// Benchmark: Fast path (logger is cached)
 	b.Run("FastPath", func(b *testing.B) {

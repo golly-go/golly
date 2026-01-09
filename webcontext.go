@@ -9,10 +9,10 @@ import (
 	"net/url"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
-	"unsafe"
 )
 
 const (
@@ -26,29 +26,29 @@ var (
 )
 
 func makeRequestID() string {
-	// Increment the request counter atomically.
 	cnt := reqcount.Add(1)
 
-	// Use a stack‑allocated buffer to build the ID without heap allocations.
-	var buf [64]byte
+	var buf [128]byte
 	b := buf[:0]
-	// Append hostname.
 	b = append(b, hostname...)
 	b = append(b, '/')
-	// Append counter with zero‑padding to 6 digits.
-	// strconv.AppendInt does not allocate; it writes into the slice.
+
+	// Pre-calculate length for zero-padding
+	countStart := len(b)
 	b = strconv.AppendInt(b, int64(cnt), 10)
-	// If we need zero‑padding to 6 digits, prepend zeros manually.
-	// The counter is unlikely to exceed 6 digits in normal operation.
-	if len(b) < len(hostname)+1+6 {
-		pad := make([]byte, (len(hostname)+1+6)-len(b))
-		for i := range pad {
-			pad[i] = '0'
+	countLen := len(b) - countStart
+
+	if countLen < 6 {
+		padLen := 6 - countLen
+		// Shift count to make room for padding
+		copy(buf[countStart+padLen:], buf[countStart:countStart+countLen])
+		for i := 0; i < padLen; i++ {
+			buf[countStart+i] = '0'
 		}
-		b = append(b[:len(hostname)+1], append(pad, b[len(hostname)+1:]...)...)
+		b = buf[:countStart+padLen+countLen]
 	}
-	// Convert the byte slice to a string without copying.
-	return unsafe.String(&b[0], len(b))
+
+	return string(b)
 }
 
 type WebContext struct {
@@ -68,6 +68,12 @@ type WebContext struct {
 	params atomic.Value
 
 	mu sync.RWMutex
+
+	// scratch buffer to avoid allocations for path segments in most cases
+	segmentBuf [16]string
+	reqIDBuf   [64]byte // Scratch buffer for request ID
+
+	body []byte
 }
 
 // Some helper functions
@@ -110,8 +116,8 @@ func (wctx *WebContext) RenderData(data []byte)                       { Render(w
 func (wctx *WebContext) RenderText(data string)                       { Render(wctx, FormatTypeText, data) }
 func (wctx *WebContext) RenderHTML(data string)                       { Render(wctx, FormatTypeHTML, data) }
 
-func (wctx *WebContext) URLParams() url.Values {
-	if p, ok := wctx.params.Load().(url.Values); ok {
+func (wctx *WebContext) URLParams() *RouteVars {
+	if p, ok := wctx.params.Load().(*RouteVars); ok {
 		return p
 	}
 
@@ -128,8 +134,12 @@ func (wctx *WebContext) Marshal(out interface{}) error {
 
 // RequestBody return the request body in a buffer
 func (wctx *WebContext) RequestBody() []byte {
+	if wctx.body != nil {
+		return wctx.body
+	}
 	b, _ := io.ReadAll(wctx.request.Body)
 	wctx.request.Body = io.NopCloser(bytes.NewBuffer(b))
+	wctx.body = b
 	return b
 }
 func (wctx *WebContext) Write(b []byte) (int, error) {
@@ -138,14 +148,58 @@ func (wctx *WebContext) Write(b []byte) (int, error) {
 
 // NewWebContext returns a new web context
 func NewWebContext(gctx *Context, r *http.Request, w http.ResponseWriter) *WebContext {
-	return &WebContext{
-		path:     r.URL.Path,
-		method:   r.Method,
-		segments: pathSegments(r.URL.Path),
-		Context:  gctx,
-		request:  r,
-		writer:   NewWrapResponseWriter(w, r.ProtoMajor),
+	wctx := &WebContext{
+		path:    r.URL.Path,
+		method:  r.Method,
+		Context: gctx,
+		request: r,
+		writer:  NewWrapResponseWriter(w, r.ProtoMajor),
 	}
+	wctx.segments = wctx.fillSegments(r.URL.Path)
+	return wctx
+}
+
+func (wctx *WebContext) fillSegments(path string) []string {
+	if path == "" {
+		return []string{}
+	}
+	if path == "/" {
+		return []string{"/"}
+	}
+
+	tokenCount := strings.Count(path, "/")
+	var segments []string
+
+	if tokenCount < len(wctx.segmentBuf) {
+		segments = wctx.segmentBuf[:0]
+	} else {
+		segments = make([]string, 0, tokenCount+1)
+	}
+
+	n := len(path)
+	i := 0
+
+	if path[0] == '/' {
+		segments = append(segments, "/")
+		i = 1
+	}
+
+	for i < n {
+		for i < n && path[i] == '/' {
+			i++
+		}
+		if i >= n {
+			break
+		}
+
+		start := i
+		for i < n && path[i] != '/' {
+			i++
+		}
+		segments = append(segments, path[start:i])
+	}
+
+	return segments
 }
 
 func WebContextWithRequestID(gctx *Context, reqID string, r *http.Request, w http.ResponseWriter) *WebContext {

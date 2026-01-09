@@ -22,9 +22,10 @@ type Context struct {
 	loader atomic.Value // Stores *Dataloader
 	logger atomic.Value // Stores *logrus.Entry
 
-	// context.Context implementation
+	// context.Context implementation (stdlib pattern)
 	parent   context.Context
-	values   map[interface{}]interface{}
+	key      interface{} // Single key-value pair (creates new context per WithValue)
+	val      interface{}
 	deadline atomic.Value
 	done     chan struct{}
 	err      atomic.Value
@@ -80,11 +81,15 @@ func (c *Context) Application() *Application {
 		if parent.application != nil {
 			c.application = parent.application
 		}
-	} else {
+	} else if app != nil {
 		c.application = app
 	}
 
 	return c.application
+}
+
+func (c *Context) SetApplication(app *Application) {
+	c.application = app
 }
 
 // Implementation of context.Context so we can be passed around
@@ -105,21 +110,25 @@ func (c *Context) Deadline() (deadline time.Time, ok bool) {
 	return time.Time{}, false
 }
 
-// Done returns a channel that is closed when the context is canceled
 func (c *Context) Done() <-chan struct{} {
+	if c.done != nil {
+		return c.done
+	}
 	if c.parent != nil {
 		return c.parent.Done()
 	}
-	return c.done
+	return nil
 }
 
-// Err returns the error explaining why the context was canceled, if any
 func (c *Context) Err() error {
 	if e := c.err.Load(); e != nil {
 		return e.(error)
 	}
+	// if parent canceled first and this context hasn't, you should reflect that
 	if c.parent != nil {
-		return c.parent.Err()
+		if err := c.parent.Err(); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -130,10 +139,11 @@ func (c *Context) Value(key interface{}) interface{} {
 	for inf != nil {
 		switch ctx := inf.(type) {
 		case *Context:
-			if val, exists := ctx.values[key]; exists {
-				return val
+			// Check single key
+			if ctx.key == key {
+				return ctx.val
 			}
-			inf = ctx.parent // Fix is here
+			inf = ctx.parent // Walk up chain
 		default:
 			return inf.Value(key)
 		}
@@ -142,6 +152,9 @@ func (c *Context) Value(key interface{}) interface{} {
 }
 
 func (c *Context) cancel(err error) {
+	if c.done == nil {
+		return // Not a cancellable context
+	}
 	if !c.err.CompareAndSwap(nil, err) {
 		return
 	}
@@ -207,13 +220,64 @@ func (c *Context) addChild(child canceler) {
 	}
 }
 
-func NewContext(parent context.Context) *Context {
-	return &Context{
-		parent:      parent,
-		application: app,
-		values:      make(map[interface{}]interface{}),
-		done:        make(chan struct{}),
+// Add to context.go
+func (c *Context) Detach() *Context {
+	// Create new context with same values but independent lifecycle
+	newCtx := &Context{
+		parent:      context.Background(), // No cancellation
+		application: c.application,
 	}
+
+	// Copy values by walking up the chain
+	var values []struct{ k, v interface{} }
+	cur := c
+	for cur != nil {
+		if cur.key != nil {
+			values = append(values, struct{ k, v interface{} }{cur.key, cur.val})
+		}
+		if parent, ok := cur.parent.(*Context); ok {
+			cur = parent
+		} else {
+			break
+		}
+	}
+
+	// Build new chain
+	result := newCtx
+	for i := len(values) - 1; i >= 0; i-- {
+		result = WithValue(result, values[i].k, values[i].v)
+	}
+
+	return result
+}
+
+func NewContext(parent context.Context) *Context {
+	if parent == nil {
+		parent = context.TODO()
+	}
+
+	ctx := &Context{
+		parent: parent,
+		done:   make(chan struct{}),
+	}
+
+	// Inherit application
+	if c, ok := parent.(*Context); ok && c != nil {
+		ctx.application = c.application
+	} else if app != nil {
+		ctx.application = app
+	}
+
+	// Propagate cancellation from non-Golly parent contexts
+	if parent.Done() != nil {
+		if _, ok := parent.(*Context); !ok {
+			context.AfterFunc(parent, func() {
+				ctx.cancel(parent.Err())
+			})
+		}
+	}
+
+	return ctx
 }
 
 func ToGollyContext(ctx context.Context) *Context {
@@ -228,9 +292,23 @@ func ToGollyContext(ctx context.Context) *Context {
 	return NewContext(ctx)
 }
 
+// WithValue returns a new context with the given key-value pair.
+// Each call creates a new context (stdlib pattern).
 func WithValue(parent context.Context, key, val interface{}) *Context {
-	ctx := NewContext(parent)
-	ctx.values[key] = val
+	if parent == nil {
+		parent = context.TODO()
+	}
+
+	ctx := &Context{
+		parent: parent,
+		key:    key,
+		val:    val,
+	}
+
+	// Inherit application
+	if c, ok := parent.(*Context); ok && c != nil {
+		ctx.application = c.application
+	}
 
 	return ctx
 }
@@ -304,6 +382,15 @@ func WithLoggerFields(parent context.Context, fields map[string]interface{}) *Co
 	if c, ok := parent.(*Context); ok && c != nil {
 		gctx.loader = c.loader
 	}
+
+	return gctx
+}
+
+// WithLoggerField adds a single field to the logger (lightweight, avoids map allocation).
+func WithLoggerField(parent context.Context, key string, value interface{}) *Context {
+	gctx := ToGollyContext(parent)
+
+	gctx.logger.Store(gctx.Logger().WithField(key, value))
 
 	return gctx
 }

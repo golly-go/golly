@@ -66,7 +66,7 @@ func TestRouteVariables(t *testing.T) {
 
 			vars := routeVariables(route, pathSegments(tt.path))
 
-			assert.Len(t, vars, len(tt.expectedValues))
+			assert.Equal(t, len(tt.expectedValues), vars.Len())
 			for key, expected := range tt.expectedValues {
 				actual := vars.Get(key)
 

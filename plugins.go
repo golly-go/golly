@@ -1,6 +1,7 @@
 package golly
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"maps"
@@ -48,7 +49,7 @@ type PluginEvents interface {
 	Events() map[string]EventFunc
 }
 
-type Plugins []Plugin
+type PluginList []Plugin
 
 func pluginServices(plugins []Plugin) []Service {
 	var services []Service
@@ -203,4 +204,35 @@ func CurrentPlugins() *PluginManager {
 		return nil
 	}
 	return app.plugins
+}
+
+// GetPlugin retrieves a plugin by name with type safety.
+// Tries context first (for tests), falls back to global.
+//
+// Usage:
+//
+//	eventsource := golly.GetPlugin[*eventsource.Plugin](ctx, "eventsource")
+//	if eventsource != nil {
+//	    eventsource.DoSomething()
+//	}
+func GetPlugin[T any](ctx context.Context, name string) T {
+	var zero T
+
+	// Try context first (for testing)
+	if gctx, ok := ctx.(*Context); ok {
+		if app := gctx.Application(); app != nil {
+			if plugin, ok := app.Plugins().Get(name).(T); ok {
+				return plugin
+			}
+		}
+	}
+
+	// Fallback to global
+	if pm := CurrentPlugins(); pm != nil {
+		if plugin, ok := pm.Get(name).(T); ok {
+			return plugin
+		}
+	}
+
+	return zero
 }

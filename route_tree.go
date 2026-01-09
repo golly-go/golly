@@ -4,9 +4,84 @@ import (
 	"fmt"
 	"maps"
 	"net/http"
-	"net/url"
+	"sort"
 	"strings"
 )
+
+// RouteVars holds route path variables using zero-alloc SoA with byte slices.
+// Uses fixed-size stack buffer for common case (≤8 vars), with heap overflow for rare deep routes.
+type RouteVars struct {
+	keys      [8][]byte // Stack-allocated slice headers
+	values    [8][]byte // Stack-allocated slice headers
+	kOverflow [][]byte  // Heap overflow (rare)
+	vOverflow [][]byte  // Heap overflow (rare)
+	count     int
+}
+
+// Get returns the value for the given key, or empty string if not found.
+// Only allocates string on successful lookup (materializes from []byte).
+func (rv *RouteVars) Get(key string) string {
+	if rv == nil {
+		return ""
+	}
+
+	keyBytes := []byte(key)
+
+	// Fast path: check fixed buffer
+	n := rv.count
+	if n > 8 {
+		n = 8
+	}
+	for i := 0; i < n; i++ {
+		if bytesEqual(rv.keys[i], keyBytes) {
+			return unsafeString(rv.values[i])
+		}
+	}
+
+	// Slow path: check overflow (rare)
+	for i := 0; i < len(rv.kOverflow); i++ {
+		if bytesEqual(rv.kOverflow[i], keyBytes) {
+			return unsafeString(rv.vOverflow[i])
+		}
+	}
+
+	return ""
+}
+
+// set adds a key-value pair (internal, uses []byte).
+func (rv *RouteVars) set(key, value []byte) {
+	if rv.count < 8 {
+		// Fast path: use stack buffer (zero alloc)
+		rv.keys[rv.count] = key
+		rv.values[rv.count] = value
+	} else {
+		// Slow path: overflow to heap (rare)
+		rv.kOverflow = append(rv.kOverflow, key)
+		rv.vOverflow = append(rv.vOverflow, value)
+	}
+	rv.count++
+}
+
+// Len returns the number of variables.
+func (rv *RouteVars) Len() int {
+	if rv == nil {
+		return 0
+	}
+	return rv.count
+}
+
+// bytesEqual compares two byte slices for equality (inline candidate).
+func bytesEqual(a, b []byte) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
 
 type methodType uint
 
@@ -43,22 +118,36 @@ var (
 	}
 )
 
-func routeVariables(re *Route, segments []string) url.Values {
+func routeVariables(re *Route, segments []string) *RouteVars {
 	if re == nil || len(segments) == 0 {
 		return nil
 	}
 
-	var ret url.Values
+	// First pass: check if there are ANY dynamic tokens
+	// This avoids allocation for routes with no variables
+	hasDynamic := false
 	p := re
+	for p != nil {
+		if p.token != nil && p.token.isDynamic {
+			hasDynamic = true
+			break
+		}
+		p = p.parent
+	}
+
+	if !hasDynamic {
+		return nil
+	}
+
+	// Second pass: extract variable values using zero-alloc RouteVars
+	ret := &RouteVars{}
+	p = re
 
 	// Walk backwards through the segments
 	for i := len(segments) - 1; i >= 0; i-- {
-
 		if p.token != nil && p.token.isDynamic {
-			if ret == nil {
-				ret = make(url.Values, 2)
-			}
-			ret.Set(p.token.value, segments[i])
+			// Use byte slices to avoid string allocation
+			ret.set([]byte(p.token.value), []byte(segments[i]))
 		}
 
 		if p.parent == nil {
@@ -208,7 +297,15 @@ func (re *Route) updateHandlers() {
 	middleware := re.resolveMiddleware()
 
 	for method, handler := range re.handlers {
-		re.chained[method] = chain(middleware, handler)
+		if method == ALL {
+			for _, mType := range methods {
+				if _, exists := re.chained[mType]; !exists {
+					re.chained[mType] = chain(middleware, handler)
+				}
+			}
+		} else {
+			re.chained[method] = chain(middleware, handler)
+		}
 	}
 
 	for _, child := range re.children {
@@ -264,6 +361,11 @@ func (re *Route) add(path string, handler HandlerFunc, httpMethods methodType) *
 				node.parent = r
 				node.token = token
 				r.children = append(r.children, node)
+
+				// Sort children: static routes first, then dynamic routes
+				sort.Slice(r.children, func(i, j int) bool {
+					return !r.children[i].token.isDynamic && r.children[j].token.isDynamic
+				})
 			}
 			r = node
 		}
@@ -350,7 +452,7 @@ func RouteRequest(a *Application, r *http.Request, w http.ResponseWriter) {
 	reID := makeRequestID()
 
 	wctx := WebContextWithRequestID(
-		WithLoggerFields(r.Context(), requestLogfields(reID, r)),
+		NewContext(r.Context()),
 		reID,
 		r,
 		w,
