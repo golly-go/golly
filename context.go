@@ -30,7 +30,8 @@ type Context struct {
 	done     chan struct{}
 	err      atomic.Value
 
-	children unsafe.Pointer
+	children   unsafe.Pointer
+	isDetached bool // If true, cuts off cancellation propagation
 }
 
 func (c *Context) Logger() *logrus.Entry {
@@ -111,6 +112,9 @@ func (c *Context) Deadline() (deadline time.Time, ok bool) {
 }
 
 func (c *Context) Done() <-chan struct{} {
+	if c.isDetached {
+		return nil
+	}
 	if c.done != nil {
 		return c.done
 	}
@@ -121,6 +125,9 @@ func (c *Context) Done() <-chan struct{} {
 }
 
 func (c *Context) Err() error {
+	if c.isDetached {
+		return nil
+	}
 	if e := c.err.Load(); e != nil {
 		return e.(error)
 	}
@@ -223,41 +230,22 @@ func (c *Context) addChild(child canceler) {
 // Detach creates a new context that preserves all values but has independent lifecycle.
 // Useful for async operations that need identity/tenant info but outlive the request.
 //
-// Note: Only copies values from golly.WithValue (not stdlib context.WithValue).
-// For full compatibility, use golly.WithValue in your code.
+// The detached context:
+// - Preserves all values (from both golly.WithValue and stdlib context.WithValue)
+// - Won't be cancelled when the original context is cancelled
+// - Has no deadline/timeout
+// - Keeps the same Application reference
 //
 // Example:
 //
 //	detached := ctx.Detach()
 //	go processAsync(detached, event)  // Safe even after request finishes
 func (c *Context) Detach() *Context {
-	// Create new context with independent lifecycle
-	newCtx := &Context{
-		parent:      context.Background(), // No cancellation
+	return &Context{
+		parent:      c, // Preserve for Value() lookups
 		application: c.Application(),
+		isDetached:  true, // Cut off cancellation
 	}
-
-	// Copy values by walking up the Golly context chain
-	var values []struct{ k, v interface{} }
-	cur := c
-	for cur != nil {
-		if cur.key != nil {
-			values = append(values, struct{ k, v interface{} }{cur.key, cur.val})
-		}
-		if parent, ok := cur.parent.(*Context); ok {
-			cur = parent
-		} else {
-			break
-		}
-	}
-
-	// Build new chain with copied values
-	result := newCtx
-	for i := len(values) - 1; i >= 0; i-- {
-		result = WithValue(result, values[i].k, values[i].v)
-	}
-
-	return result
 }
 
 func NewContext(parent context.Context) *Context {
