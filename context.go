@@ -151,6 +151,12 @@ func (c *Context) Value(key interface{}) interface{} {
 				return ctx.val
 			}
 			inf = ctx.parent // Walk up chain
+		case *WebContext:
+			// do nothing
+			if ctx.key == key {
+				return ctx.val
+			}
+			inf = ctx.parent // Walk up chain
 		default:
 			return inf.Value(key)
 		}
