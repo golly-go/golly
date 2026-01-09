@@ -259,6 +259,11 @@ func NewContext(parent context.Context) *Context {
 		parent = context.TODO()
 	}
 
+	// Unroll WebContext to prevent cycles
+	if wc, ok := parent.(*WebContext); ok {
+		parent = wc.Context
+	}
+
 	ctx := &Context{
 		parent: parent,
 		done:   make(chan struct{}),
@@ -305,6 +310,11 @@ func ToGollyContext(ctx context.Context) *Context {
 func WithValue(parent context.Context, key, val interface{}) *Context {
 	if parent == nil {
 		parent = context.TODO()
+	}
+
+	// Unroll WebContext to prevent cycles
+	if wc, ok := parent.(*WebContext); ok {
+		parent = wc.Context
 	}
 
 	ctx := &Context{

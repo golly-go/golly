@@ -230,14 +230,20 @@ func requestLogfields(requestID string, r *http.Request) map[string]interface{} 
 	return logFields
 }
 
-// WithContext returns a shallow copy with the provided context.
+// WithContext updates the embedded context.
+// Note: This mutates the WebContext in place, as intended.
 func (w *WebContext) WithContext(ctx context.Context) *WebContext {
 	if w == nil {
 		return nil
 	}
 
 	w.mu.Lock()
-	w.Context = ToGollyContext(ctx)
+	switch x := ctx.(type) {
+	case *WebContext:
+		w.Context = NewContext(x.Context)
+	default:
+		w.Context = ToGollyContext(ctx)
+	}
 	w.mu.Unlock()
 
 	return w
