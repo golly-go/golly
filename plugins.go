@@ -236,3 +236,13 @@ func GetPlugin[T any](ctx context.Context, name string) T {
 
 	return zero
 }
+
+func GetPluginFromApp[T Plugin](app *Application, name string) T {
+	var zero T
+
+	if plugin, ok := app.Plugins().Get(name).(T); ok {
+		return plugin
+	}
+
+	return zero
+}
