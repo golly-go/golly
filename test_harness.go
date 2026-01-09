@@ -2,6 +2,7 @@ package golly
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -184,4 +185,18 @@ func findSubstring(s, substr string) bool {
 		}
 	}
 	return false
+}
+
+// NewTestContext creates a new context for testing
+// it will use the default options if no options are provided
+// keep backwards compatibility with the old way of doing things
+func NewTestContext(options ...Options) *Context {
+	ctx := NewContext(context.TODO())
+
+	if len(options) > 0 {
+		ctx.application = NewApplication(options[0])
+	} else {
+		ctx.application = NewApplication(Options{})
+	}
+	return ctx
 }

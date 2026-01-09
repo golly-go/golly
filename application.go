@@ -14,6 +14,10 @@ var (
 	ErrorServiceAlreadyRegistered = errors.New("service already registered")
 )
 
+type ApplicationTracker interface {
+	Application() *Application
+}
+
 type ApplicationState string
 
 const (
@@ -92,12 +96,13 @@ type Application struct {
 	services map[string]Service
 }
 
-func (a *Application) Config() *viper.Viper    { return a.config }
-func (a *Application) Routes() *Route          { return a.routes }
-func (a *Application) State() ApplicationState { return a.state }
-func (a *Application) Events() *EventManager   { return a.events }
-func (a *Application) Logger() *log.Logger     { return a.logger }
-func (a *Application) Plugins() *PluginManager { return a.plugins }
+func (a *Application) Application() *Application { return a }
+func (a *Application) Config() *viper.Viper      { return a.config }
+func (a *Application) Routes() *Route            { return a.routes }
+func (a *Application) State() ApplicationState   { return a.state }
+func (a *Application) Events() *EventManager     { return a.events }
+func (a *Application) Logger() *log.Logger       { return a.logger }
+func (a *Application) Plugins() *PluginManager   { return a.plugins }
 
 func (a *Application) Services() []Service {
 	lock.RLock()

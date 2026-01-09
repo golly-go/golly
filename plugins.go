@@ -1,7 +1,6 @@
 package golly
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"maps"
@@ -207,7 +206,8 @@ func CurrentPlugins() *PluginManager {
 }
 
 // GetPlugin retrieves a plugin by name with type safety.
-// Tries context first (for tests), falls back to global.
+// Tries context first, if its a golly context it will grab it from that internals application
+// else falls back to global.
 //
 // Usage:
 //
@@ -215,23 +215,23 @@ func CurrentPlugins() *PluginManager {
 //	if eventsource != nil {
 //	    eventsource.DoSomething()
 //	}
-func GetPlugin[T Plugin](ctx context.Context, name string) T {
+func GetPlugin[T Plugin](tracker ApplicationTracker, name string) T {
 	// Try context first (for testing)
-	var gctx *Context
+	var a *Application
 
-	switch c := ctx.(type) {
+	switch c := tracker.(type) {
 	case *Context:
-		gctx = c
+		a = c.Application()
 	case *WebContext:
-		gctx = c.Context
-	}
-
-	if gctx != nil {
-		return GetPluginFromApp[T](gctx.Application(), name)
+		a = c.Context.Application()
+	case *Application:
+		a = c
+	default:
+		a = app
 	}
 
 	// Fallback to global
-	return GetPluginFromApp[T](app, name)
+	return GetPluginFromApp[T](a, name)
 }
 
 // GetPluginFromApp retrieves a plugin by name with type safety.
