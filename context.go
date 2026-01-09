@@ -220,15 +220,24 @@ func (c *Context) addChild(child canceler) {
 	}
 }
 
-// Add to context.go
+// Detach creates a new context that preserves all values but has independent lifecycle.
+// Useful for async operations that need identity/tenant info but outlive the request.
+//
+// Note: Only copies values from golly.WithValue (not stdlib context.WithValue).
+// For full compatibility, use golly.WithValue in your code.
+//
+// Example:
+//
+//	detached := ctx.Detach()
+//	go processAsync(detached, event)  // Safe even after request finishes
 func (c *Context) Detach() *Context {
-	// Create new context with same values but independent lifecycle
+	// Create new context with independent lifecycle
 	newCtx := &Context{
 		parent:      context.Background(), // No cancellation
-		application: c.application,
+		application: c.Application(),
 	}
 
-	// Copy values by walking up the chain
+	// Copy values by walking up the Golly context chain
 	var values []struct{ k, v interface{} }
 	cur := c
 	for cur != nil {
@@ -242,7 +251,7 @@ func (c *Context) Detach() *Context {
 		}
 	}
 
-	// Build new chain
+	// Build new chain with copied values
 	result := newCtx
 	for i := len(values) - 1; i >= 0; i-- {
 		result = WithValue(result, values[i].k, values[i].v)

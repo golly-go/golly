@@ -215,30 +215,39 @@ func CurrentPlugins() *PluginManager {
 //	if eventsource != nil {
 //	    eventsource.DoSomething()
 //	}
-func GetPlugin[T any](ctx context.Context, name string) T {
-	var zero T
-
+func GetPlugin[T Plugin](ctx context.Context, name string) T {
 	// Try context first (for testing)
-	if gctx, ok := ctx.(*Context); ok {
-		if app := gctx.Application(); app != nil {
-			if plugin, ok := app.Plugins().Get(name).(T); ok {
-				return plugin
-			}
-		}
+	var gctx *Context
+
+	switch c := ctx.(type) {
+	case *Context:
+		gctx = c
+	case *WebContext:
+		gctx = c.Context
+	}
+
+	if gctx != nil {
+		return GetPluginFromApp[T](gctx.Application(), name)
 	}
 
 	// Fallback to global
-	if pm := CurrentPlugins(); pm != nil {
-		if plugin, ok := pm.Get(name).(T); ok {
-			return plugin
-		}
-	}
-
-	return zero
+	return GetPluginFromApp[T](app, name)
 }
 
+// GetPluginFromApp retrieves a plugin by name with type safety.
+//
+// Usage:
+//
+//	eventsource := golly.GetPlugin[*eventsource.Plugin](ctx, "eventsource")
+//	if eventsource != nil {
+//	    eventsource.DoSomething()
+//	}
 func GetPluginFromApp[T Plugin](app *Application, name string) T {
 	var zero T
+
+	if app == nil {
+		return zero
+	}
 
 	if plugin, ok := app.Plugins().Get(name).(T); ok {
 		return plugin
