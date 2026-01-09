@@ -147,16 +147,77 @@ func StartService(app *Application, service Service) error {
 	return service.Start()
 }
 
+// StopService stops a specific service and emits the ServiceStopped event
+func StopService(app *Application, service Service) error {
+	name := getServiceName(service)
+	app.logger.Tracef("Stopping service: %s", name)
+
+	if !service.IsRunning() {
+		return nil
+	}
+
+	if err := service.Stop(); err != nil {
+		return fmt.Errorf("error stopping service %s: %w", name, err)
+	}
+
+	app.Events().Dispatch(
+		WithApplication(context.Background(), app),
+		&ServiceStopped{Name: name})
+
+	return nil
+}
+
 // stopRunningServices stops all running services.
 func stopRunningServices(app *Application) {
-	for name, svc := range app.services {
+	for _, svc := range app.services {
 		if !svc.IsRunning() {
 			continue
 		}
-		if err := svc.Stop(); err != nil {
-			app.logger.Errorf("error stopping service %s: %s", name, err.Error())
+		if err := StopService(app, svc); err != nil {
+			app.logger.Error(err)
 		}
 	}
+}
+
+// GetService retrieves a service by name with type safety.
+// Tries context first, then falls back to global.
+func GetService[T Service](tracker any, name string) T {
+	var a *Application
+
+	switch c := tracker.(type) {
+	case *Context:
+		a = c.Application()
+	case *WebContext:
+		a = c.Application()
+	case *Application:
+		a = c
+	case context.Context:
+		// Try to convert to Golly context
+		if gctx, ok := c.(*Context); ok {
+			a = gctx.Application()
+		} else {
+			a = app // fallback to global
+		}
+	default:
+		a = app
+	}
+
+	return GetServiceFromApp[T](a, name)
+}
+
+// GetServiceFromApp retrieves a service by name directly from an application instance.
+func GetServiceFromApp[T Service](app *Application, name string) T {
+	var zero T
+
+	if app == nil {
+		return zero
+	}
+
+	if svc, ok := app.services[name].(T); ok {
+		return svc
+	}
+
+	return zero
 }
 
 /***
@@ -186,18 +247,11 @@ func serviceRun(name string) CLICommand {
 //
 // Returns an error if any service stops unexpectedly before shutdown.
 func runAllServices(app *Application, cmd *cobra.Command, args []string) error {
-
 	var eg errgroup.Group
 
 	// Run each service in its own goroutine
-	for name, svc := range app.services {
-
-		// Initialize the service
-		if s, ok := svc.(Initializer); ok {
-			if err := s.Initialize(app); err != nil {
-				return err
-			}
-		}
+	for _, svc := range app.services {
+		// Note: StartService handles Initialize() if needed
 
 		fnc := func(svc Service, name string) func() error {
 			return func() error {
@@ -208,7 +262,7 @@ func runAllServices(app *Application, cmd *cobra.Command, args []string) error {
 			}
 		}
 
-		eg.Go(fnc(svc, name))
+		eg.Go(fnc(svc, getServiceName(svc)))
 	}
 
 	return eg.Wait()

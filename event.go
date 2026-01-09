@@ -98,6 +98,7 @@ const (
 	EventShutdown       = "golly.ApplicationShutdown"
 	EventStateChanged   = "golly.ApplicationStateChanged"
 	EventServiceStarted = "golly.ServiceStarted"
+	EventServiceStopped = "golly.ServiceStopped"
 	EventConfigChanged  = "golly.ConfigChanged"
 )
 
@@ -106,6 +107,13 @@ type ServiceStarted struct {
 }
 
 func (s *ServiceStarted) EventName() string { return EventServiceStarted }
+
+// ServiceStopped event
+type ServiceStopped struct {
+	Name string
+}
+
+func (s *ServiceStopped) EventName() string { return EventServiceStopped }
 
 type ApplicationShutdown struct{}
 

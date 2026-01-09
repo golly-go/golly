@@ -267,7 +267,12 @@ func NewContext(parent context.Context) *Context {
 
 	// Propagate cancellation from non-Golly parent contexts
 	if parent.Done() != nil {
-		if _, ok := parent.(*Context); !ok {
+		switch parent.(type) {
+		case *Context:
+			// do nothing
+		case *WebContext:
+			// do nothing
+		default:
 			context.AfterFunc(parent, func() {
 				ctx.cancel(parent.Err())
 			})
