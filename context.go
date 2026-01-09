@@ -34,15 +34,24 @@ type Context struct {
 	isDetached bool // If true, cuts off cancellation propagation
 }
 
-func (c *Context) Logger() *logrus.Logger {
+func (c *Context) Logger() *logrus.Entry {
 	// Fast path: Check for an existing logger in the current context
-	if logger, ok := c.logger.Load().(*logrus.Logger); ok && logger != nil {
+	if logger, ok := c.logger.Load().(*logrus.Entry); ok && logger != nil {
 		return logger
 	}
 
-	var logger *logrus.Logger
+	var logger *logrus.Entry
+	if c.parent != nil {
+		switch p := c.parent.(type) {
+		case *Context:
+			logger = p.Logger()
+		case *WebContext:
+			logger = p.Logger()
+		}
+	}
+
 	if logger == nil {
-		logger = logrus.New()
+		logger = Logger().WithFields(logrus.Fields{})
 	}
 
 	c.logger.Store(logger)
