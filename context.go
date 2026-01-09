@@ -34,19 +34,15 @@ type Context struct {
 	isDetached bool // If true, cuts off cancellation propagation
 }
 
-func (c *Context) Logger() *logrus.Entry {
+func (c *Context) Logger() *logrus.Logger {
 	// Fast path: Check for an existing logger in the current context
-	if logger := c.logger.Load(); logger != nil {
-		return logger.(*logrus.Entry)
+	if logger, ok := c.logger.Load().(*logrus.Logger); ok && logger != nil {
+		return logger
 	}
 
-	var logger *logrus.Entry
-	if parent, ok := c.parent.(*Context); ok && parent != nil {
-		logger = parent.Logger()
-	}
-
+	var logger *logrus.Logger
 	if logger == nil {
-		logger = logrus.NewEntry(Logger())
+		logger = logrus.New()
 	}
 
 	c.logger.Store(logger)
@@ -147,6 +143,12 @@ func (c *Context) Value(key interface{}) interface{} {
 		switch ctx := inf.(type) {
 		case *Context:
 			// Check single key
+			if ctx.key == key {
+				return ctx.val
+			}
+			inf = ctx.parent // Walk up chain
+		case WebContext:
+			// do nothing
 			if ctx.key == key {
 				return ctx.val
 			}
@@ -281,6 +283,8 @@ func NewContext(parent context.Context) *Context {
 		switch parent.(type) {
 		case *Context:
 			// do nothing
+		case WebContext:
+			// do nothing
 		case *WebContext:
 			// do nothing
 		default:
@@ -294,12 +298,13 @@ func NewContext(parent context.Context) *Context {
 }
 
 func ToGollyContext(ctx context.Context) *Context {
-	if wc, ok := ctx.(*WebContext); ok {
-		return wc.Context
-	}
-
-	if gc, ok := ctx.(*Context); ok {
-		return gc
+	switch c := ctx.(type) {
+	case *Context:
+		return c
+	case WebContext:
+		return c.Context
+	case *WebContext:
+		return c.Context
 	}
 
 	return NewContext(ctx)
@@ -323,9 +328,16 @@ func WithValue(parent context.Context, key, val interface{}) *Context {
 		val:    val,
 	}
 
-	// Inherit application
-	if c, ok := parent.(*Context); ok && c != nil {
-		ctx.application = c.application
+	// inherit application
+	switch p := parent.(type) {
+	case *Context:
+		ctx.application = p.application
+	case WebContext:
+		ctx.application = p.application
+	case *WebContext:
+		ctx.application = p.application
+	default:
+		ctx.application = app
 	}
 
 	return ctx
@@ -335,7 +347,12 @@ func WithValue(parent context.Context, key, val interface{}) *Context {
 func WithCancel(parent context.Context) (*Context, context.CancelFunc) {
 	ctx := NewContext(parent)
 
-	if p, ok := parent.(*Context); ok {
+	switch p := parent.(type) {
+	case *Context:
+		p.addChild(ctx)
+	case WebContext:
+		p.addChild(ctx)
+	case *WebContext:
 		p.addChild(ctx)
 	}
 
@@ -352,7 +369,12 @@ func WithDeadline(parent context.Context, d time.Time) (*Context, context.Cancel
 
 	ctx.deadline.Store(d)
 
-	if p, ok := parent.(*Context); ok {
+	switch p := parent.(type) {
+	case *Context:
+		p.addChild(ctx)
+	case WebContext:
+		p.addChild(ctx)
+	case *WebContext:
 		p.addChild(ctx)
 	}
 
@@ -383,8 +405,13 @@ func WithLoggerFields(parent context.Context, fields map[string]interface{}) *Co
 
 	gctx.logger.Store(gctx.Logger().WithFields(fields))
 
-	if c, ok := parent.(*Context); ok && c != nil {
-		gctx.loader = c.loader
+	switch p := parent.(type) {
+	case *Context:
+		gctx.loader = p.loader
+	case *WebContext:
+		gctx.loader = p.Context.loader
+	case WebContext:
+		gctx.loader = p.loader
 	}
 
 	return gctx
