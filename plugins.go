@@ -1,6 +1,7 @@
 package golly
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"maps"
@@ -215,7 +216,7 @@ func CurrentPlugins() *PluginManager {
 //	if eventsource != nil {
 //	    eventsource.DoSomething()
 //	}
-func GetPlugin[T Plugin](tracker ApplicationTracker, name string) T {
+func GetPlugin[T Plugin](tracker any, name string) T {
 	// Try context first (for testing)
 	var a *Application
 
@@ -226,6 +227,8 @@ func GetPlugin[T Plugin](tracker ApplicationTracker, name string) T {
 		a = c.Context.Application()
 	case *Application:
 		a = c
+	case context.Context:
+		a = app
 	default:
 		a = app
 	}
