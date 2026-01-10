@@ -50,7 +50,7 @@ func (c *Context) Logger() *Entry {
 	}
 
 	if logger == nil {
-		logger = DefaultLogger.newEntry()
+		logger = defaultLogger.newEntry()
 	}
 
 	c.logger.Store(logger)

@@ -243,7 +243,7 @@ func TestContextLogger(t *testing.T) {
 	t.Run("FastPathCachedLogger", func(t *testing.T) {
 		// Create a context and preload a logger
 		ctx := NewContext(context.TODO())
-		preloadedLogger := DefaultLogger.WithFields(nil)
+		preloadedLogger := defaultLogger.WithFields(nil)
 		ctx.logger.Store(preloadedLogger)
 
 		// Retrieve the logger
@@ -256,7 +256,7 @@ func TestContextLogger(t *testing.T) {
 	t.Run("SlowPathInheritParentLogger", func(t *testing.T) {
 		// Create a parent context and set its logger
 		parentCtx := NewContext(context.TODO())
-		parentLogger := DefaultLogger.WithFields(nil)
+		parentLogger := defaultLogger.WithFields(nil)
 		parentCtx.logger.Store(parentLogger)
 
 		// Create a child context inheriting from the parent
@@ -291,7 +291,7 @@ func TestContextLogger(t *testing.T) {
 	t.Run("CascadingLoggerUpwards", func(t *testing.T) {
 		// Create a parent context and set its logger
 		rootCtx := NewContext(context.TODO())
-		rootLogger := DefaultLogger.WithFields(Fields{"root": "true"})
+		rootLogger := defaultLogger.WithFields(Fields{"root": "true"})
 		rootCtx.logger.Store(rootLogger)
 
 		// Create a chain of child contexts
@@ -428,7 +428,7 @@ func BenchmarkContextWithValuePropagation(b *testing.B) {
 func BenchmarkContextLogger(b *testing.B) {
 	// Setup: Create a parent context with a pre-set logger
 	parentCtx := NewContext(context.TODO())
-	parentLogger := DefaultLogger.WithFields(nil)
+	parentLogger := defaultLogger.WithFields(nil)
 	parentCtx.logger.Store(parentLogger)
 
 	childCtx := NewContext(parentCtx)

@@ -54,8 +54,8 @@ func (l Level) String() string {
 type Fields map[string]interface{}
 
 var (
-	// DefaultLogger is the global logger instance
-	DefaultLogger = NewLogger()
+	// defaultLogger is the global logger instance
+	defaultLogger = NewLogger()
 	// bufferPool reuses byte buffers to reduce allocations
 	bufferPool = sync.Pool{
 		New: func() interface{} {
@@ -457,36 +457,35 @@ func (e *Entry) WithField(key string, value interface{}) *Entry {
 }
 
 // Global helpers
-func SetLevel(l Level) {
-	atomic.StoreInt32((*int32)(&DefaultLogger.Level), int32(l))
-}
 
-func Trace(args ...interface{})                 { DefaultLogger.Log(LogLevelTrace, args...) }
-func Tracef(format string, args ...interface{}) { DefaultLogger.Logf(LogLevelTrace, format, args...) }
-func Debug(args ...interface{})                 { DefaultLogger.Log(LogLevelDebug, args...) }
-func Debugf(format string, args ...interface{}) { DefaultLogger.Logf(LogLevelDebug, format, args...) }
-func Info(args ...interface{})                  { DefaultLogger.Log(LogLevelInfo, args...) }
-func Infof(format string, args ...interface{})  { DefaultLogger.Logf(LogLevelInfo, format, args...) }
-func Warn(args ...interface{})                  { DefaultLogger.Log(LogLevelWarn, args...) }
-func Warnf(format string, args ...interface{})  { DefaultLogger.Logf(LogLevelWarn, format, args...) }
-func LogError(args ...interface{})              { DefaultLogger.Log(LogLevelError, args...) }
+func SetLevel(l Level)                          { defaultLogger.SetLevel(l) }
+func DefaultLogger() *Logger                    { return defaultLogger }
+func Trace(args ...interface{})                 { defaultLogger.Log(LogLevelTrace, args...) }
+func Tracef(format string, args ...interface{}) { defaultLogger.Logf(LogLevelTrace, format, args...) }
+func Debug(args ...interface{})                 { defaultLogger.Log(LogLevelDebug, args...) }
+func Debugf(format string, args ...interface{}) { defaultLogger.Logf(LogLevelDebug, format, args...) }
+func Info(args ...interface{})                  { defaultLogger.Log(LogLevelInfo, args...) }
+func Infof(format string, args ...interface{})  { defaultLogger.Logf(LogLevelInfo, format, args...) }
+func Warn(args ...interface{})                  { defaultLogger.Log(LogLevelWarn, args...) }
+func Warnf(format string, args ...interface{})  { defaultLogger.Logf(LogLevelWarn, format, args...) }
+func LogError(args ...interface{})              { defaultLogger.Log(LogLevelError, args...) }
 func LogErrorf(format string, args ...interface{}) {
-	DefaultLogger.Logf(LogLevelError, format, args...)
+	defaultLogger.Logf(LogLevelError, format, args...)
 }
 
 func Fatal(args ...interface{}) {
-	DefaultLogger.Log(LogLevelFatal, args...)
+	defaultLogger.Log(LogLevelFatal, args...)
 	os.Exit(1)
 }
 func Fatalf(format string, args ...interface{}) {
-	DefaultLogger.Logf(LogLevelFatal, format, args...)
+	defaultLogger.Logf(LogLevelFatal, format, args...)
 	os.Exit(1)
 }
 func Panic(args ...interface{}) {
-	DefaultLogger.Log(LogLevelPanic, args...)
+	defaultLogger.Log(LogLevelPanic, args...)
 	panic(fmt.Sprint(args...))
 }
 func Panicf(format string, args ...interface{}) {
-	DefaultLogger.Logf(LogLevelPanic, format, args...)
+	defaultLogger.Logf(LogLevelPanic, format, args...)
 	panic(fmt.Sprintf(format, args...))
 }
