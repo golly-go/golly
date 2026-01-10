@@ -163,18 +163,20 @@ func (c *Context) Application() *Application {
 	return c.application
 }
 
+// SetApplication explicitly sets the application instance for this context.
+// This is typically used during application initialization or testing.
 func (c *Context) SetApplication(app *Application) {
 	c.application = app
 }
 
-// Implementation of context.Context so we can be passed around
-// regardless of library, this allows golly to be more portable
-// while still providing its libaries a consistent Context
+// canceler is an internal interface for contexts that can be canceled.
 type canceler interface {
 	cancel(err error)
 }
 
-// Deadline returns the deadline, if set, otherwise zero time
+// Deadline returns the deadline for this context, if one is set.
+// It implements the context.Context interface.
+// Returns the deadline time and true if set, or zero time and false otherwise.
 func (c *Context) Deadline() (deadline time.Time, ok bool) {
 	if d := c.deadline.Load(); d != nil {
 		return d.(time.Time), true
@@ -185,6 +187,9 @@ func (c *Context) Deadline() (deadline time.Time, ok bool) {
 	return time.Time{}, false
 }
 
+// Done returns a channel that is closed when this context is canceled or times out.
+// It implements the context.Context interface.
+// Returns nil for detached contexts, which ignore parent cancellation.
 func (c *Context) Done() <-chan struct{} {
 	if c.isDetached {
 		return nil
@@ -198,6 +203,9 @@ func (c *Context) Done() <-chan struct{} {
 	return nil
 }
 
+// Err returns the error that caused this context to be canceled.
+// It implements the context.Context interface.
+// Returns nil if the context is not canceled, or if it's detached.
 func (c *Context) Err() error {
 	if c.isDetached {
 		return nil
@@ -214,6 +222,14 @@ func (c *Context) Err() error {
 	return nil
 }
 
+// Value returns the value associated with this context for key.
+// It implements the context.Context interface.
+//
+// It walks up the parent chain iteratively to find the key-value pair.
+// Maximum depth is 1000 to prevent infinite loops from circular references.
+// This should be sufficient for any legitimate context chain.
+//
+// Returns nil if the key is not found or if max depth is reached.
 func (c *Context) Value(key interface{}) interface{} {
 	var inf context.Context = c
 	// Without bruning the stack, or doing fancy
@@ -319,13 +335,14 @@ func (c *Context) addChild(child canceler) {
 // The detached context:
 // - Preserves all values (from both golly.WithValue and stdlib context.WithValue)
 // - Won't be cancelled when the original context is cancelled
-// - Has no deadline/timeout
-// - Keeps the same Application reference
+// Detach creates a new context that preserves values from the parent chain
+// but is independent from the parent's cancellation.
 //
-// Example:
+// This is useful for async operations that should continue even after
+// the parent context is canceled (e.g., background processing, cleanup tasks).
 //
-//	detached := ctx.Detach()
-//	go processAsync(detached, event)  // Safe even after request finishes
+// The detached context will still inherit values via Value(), but Done()
+// and Err() will always return nil.
 func (c *Context) Detach() *Context {
 	return &Context{
 		parent:      c, // Preserve for Value() lookups
@@ -334,6 +351,17 @@ func (c *Context) Detach() *Context {
 	}
 }
 
+// NewContext creates a new Golly context with the given parent.
+// If parent is nil, it defaults to context.TODO().
+//
+// If the parent is a WebContext, it unwraps to the embedded Context
+// to prevent circular references.
+//
+// The new context inherits:
+//   - Application reference from Golly parents
+//   - Cancellation propagation from the parent's Done() channel
+//
+// Returns a new *Context ready for use.
 func NewContext(parent context.Context) *Context {
 	if parent == nil {
 		parent = context.TODO()
@@ -373,6 +401,12 @@ func NewContext(parent context.Context) *Context {
 	return ctx
 }
 
+// ToGollyContext converts a standard context.Context to a Golly *Context.
+// If ctx is already a *Context, it returns it directly.
+// If ctx is a *WebContext, it returns the embedded Context.
+// Otherwise, it wraps the context in a new *Context via NewContext.
+//
+// This is useful for integrating with libraries that use standard contexts.
 func ToGollyContext(ctx context.Context) *Context {
 	switch c := ctx.(type) {
 	case *Context:
@@ -385,7 +419,13 @@ func ToGollyContext(ctx context.Context) *Context {
 }
 
 // WithValue returns a new context with the given key-value pair.
-// Each call creates a new context (stdlib pattern).
+// It implements the stdlib context pattern where each call creates a new context.
+//
+// If parent is nil, it defaults to context.TODO().
+// If parent is a WebContext, it unwraps to prevent cycles.
+//
+// The new context inherits the application reference from Golly parents,
+// or uses the global app if available.
 func WithValue(parent context.Context, key, val interface{}) *Context {
 	if parent == nil {
 		parent = context.TODO()
