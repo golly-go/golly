@@ -78,7 +78,7 @@ func makeRequestID(buf []byte) string {
 }
 
 type WebContext struct {
-	Context // Embedded by value
+	*Context // Embedded by pointer for correctness
 
 	method   string
 	path     string
@@ -186,21 +186,24 @@ func NewWebContext(parent context.Context, r *http.Request, w http.ResponseWrite
 		writer:  NewWrapResponseWriter(w, r.ProtoMajor),
 	}
 
-	// Initialize embedded Context (inline NewContext logic to avoid alloc)
-	// Unroll parent if it's WebContext
-	if wc, ok := parent.(*WebContext); ok {
-		parent = &wc.Context
+	// Allocate the Context struct
+	ctx := Context{
+		parent: parent,
+		done:   make(chan struct{}),
 	}
-
-	wctx.Context.parent = parent
-	wctx.Context.done = make(chan struct{})
 
 	// Inherit application
-	if c, ok := parent.(*Context); ok && c != nil {
-		wctx.Context.application = c.application
-	} else if app != nil {
-		wctx.Context.application = app
+
+	switch p := parent.(type) {
+	case *Context:
+		ctx.application = p.application
+	case *WebContext:
+		ctx.application = p.Context.application
+	default:
+		ctx.application = app
 	}
+
+	wctx.Context = &ctx
 
 	// Propagate cancellation
 	if parent.Done() != nil {
@@ -211,9 +214,7 @@ func NewWebContext(parent context.Context, r *http.Request, w http.ResponseWrite
 			// do nothing
 		default:
 			// Capture wctx pointer for closure
-			context.AfterFunc(parent, func() {
-				wctx.Context.cancel(parent.Err())
-			})
+			context.AfterFunc(parent, func() { ctx.cancel(parent.Err()) })
 		}
 	}
 
@@ -309,9 +310,9 @@ func (w *WebContext) WithContext(ctx context.Context) *WebContext {
 	w.mu.Lock()
 	switch x := ctx.(type) {
 	case *WebContext:
-		w.Context = *NewContext(&x.Context)
+		w.Context = NewContext(x.Context)
 	default:
-		w.Context = *ToGollyContext(ctx)
+		w.Context = ToGollyContext(ctx)
 	}
 	w.mu.Unlock()
 

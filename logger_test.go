@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
-	"strings"
 	"testing"
 	"time"
 
@@ -26,12 +25,11 @@ func TestLoggerTextFormatter(t *testing.T) {
 	assert.NoError(t, err)
 
 	str := string(b)
-	assert.Contains(t, str, "time=\"2023-01-01T12:00:00Z\"")
-	assert.Contains(t, str, "level=info")
-	assert.Contains(t, str, "msg=\"test message\"")
+	assert.Contains(t, str, "INFO")
+	assert.Contains(t, str, "2023-01-01T12:00:00Z")
+	assert.Contains(t, str, "test message")
 	assert.Contains(t, str, "foo=baz")
 	assert.Contains(t, str, "bar=123")
-	assert.True(t, strings.HasSuffix(str, "\n"))
 }
 
 func TestLoggerJSONFormatter(t *testing.T) {
@@ -53,7 +51,7 @@ func TestLoggerJSONFormatter(t *testing.T) {
 	err = json.Unmarshal(b, &output)
 	assert.NoError(t, err)
 
-	assert.Equal(t, "info", output["level"])
+	assert.Equal(t, "INFO", output["level"])
 	assert.Equal(t, "test message", output["msg"])
 	assert.Equal(t, "2023-01-01T12:00:00Z", output["time"])
 	assert.Equal(t, "baz", output["foo"])

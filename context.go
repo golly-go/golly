@@ -7,13 +7,28 @@ import (
 	"unsafe"
 )
 
-// Use this dont use it, upto you - this gives you a complex type
-// for a context
+// ContextKey is a type-safe key for context values.
+// Use this to create strongly-typed context keys and avoid collisions.
 type ContextKey string
 
+// ContextFuncError is a function that operates on a Context and may return an error.
 type ContextFuncError func(*Context) error
+
+// ContextFunc is a function that operates on a Context.
 type ContextFunc func(*Context)
 
+// maxContextTreeWalk is the maximum depth when walking up the context parent chain
+// for Logger() and Application(). Prevents infinite loops from circular references.
+const maxContextTreeWalk = 12
+
+// Context is a custom context.Context implementation with Golly-specific features.
+// It implements the standard context.Context interface while adding:
+//   - Application reference for accessing the Golly app instance
+//   - Logger with automatic inheritance from parent contexts
+//   - DataLoader (cache) support
+//   - Detachable contexts for async operations
+//
+// Context is safe for concurrent use and follows stdlib context patterns.
 type Context struct {
 	application *Application
 
@@ -32,39 +47,69 @@ type Context struct {
 	isDetached bool // If true, cuts off cancellation propagation
 }
 
+// Logger returns the logger entry for this context.
+// It walks up the parent chain to find a cached logger, or creates a new default logger.
+// The returned logger is cached in the current context for future calls.
+//
+// Maximum tree walk depth is limited to maxContextTreeWalk to prevent infinite loops.
 func (c *Context) Logger() *Entry {
 	// Fast path: Check for an existing logger in the current context
 	if logger, ok := c.logger.Load().(*Entry); ok && logger != nil {
 		return logger
 	}
 
-	var logger *Entry
-
-	if c.parent != nil {
-		switch p := c.parent.(type) {
+	// Walk up parent chain iteratively (stdlib pattern - prevents stack overflow)
+	var current context.Context = c
+	for range maxContextTreeWalk {
+		if current == nil {
+			break
+		}
+		switch p := current.(type) {
 		case *Context:
-			logger = p.Logger()
+			if logger, ok := p.logger.Load().(*Entry); ok && logger != nil {
+				c.logger.Store(logger)
+				return logger
+			}
+			current = p.parent
 		case *WebContext:
-			logger = p.Logger()
+			if logger, ok := p.Context.logger.Load().(*Entry); ok && logger != nil {
+				c.logger.Store(logger)
+				return logger
+			}
+			current = p.Context.parent
+		default:
+			break
 		}
 	}
 
-	if logger == nil {
-		logger = defaultLogger.newEntry()
-	}
-
+	// No logger found, create default
+	logger := defaultLogger.newEntry()
 	c.logger.Store(logger)
 	return logger
 }
 
+// Cache returns the DataLoader (cache) for this context.
+// It checks the immediate parent only, then creates a new DataLoader if not found.
+// The returned DataLoader is cached in the current context for future calls.
+//
+// Note: Unlike Logger() and Application(), Cache() only checks one level up.
+// This is because caches are typically request-scoped and don't chain deeply.
 func (c *Context) Cache() *DataLoader {
 	if loader := c.loader.Load(); loader != nil {
 		return loader.(*DataLoader)
 	}
 
+	// Only check immediate parent, then create (caches rarely chain deep)
 	var loader *DataLoader
-	if parent, ok := c.parent.(*Context); ok && parent != nil {
-		loader = parent.Cache()
+	switch p := c.parent.(type) {
+	case *Context:
+		if l := p.loader.Load(); l != nil {
+			loader = l.(*DataLoader)
+		}
+	case *WebContext:
+		if l := p.Context.loader.Load(); l != nil {
+			loader = l.(*DataLoader)
+		}
 	}
 
 	if loader == nil {
@@ -75,18 +120,43 @@ func (c *Context) Cache() *DataLoader {
 	return loader
 }
 
-// Application returns a link to the application
-// buyer be wear this can be nil in test mode
+// Application returns a link to the Golly application instance.
+// It walks up the parent chain to find an application reference, or falls back to the global app.
+// The returned application is cached in the current context for future calls.
+//
+// Maximum tree walk depth is limited to maxContextTreeWalk to prevent infinite loops.
+// Note: This can return nil in test mode or when no application is configured.
 func (c *Context) Application() *Application {
 	if c.application != nil {
 		return c.application
 	}
 
-	if parent, ok := c.parent.(*Context); ok && parent != nil {
-		if parent.application != nil {
-			c.application = parent.application
+	// Walk up parent chain iteratively to find application
+	var current context.Context = c.parent
+	for range maxContextTreeWalk {
+		if current == nil {
+			break
 		}
-	} else if app != nil {
+		switch p := current.(type) {
+		case *Context:
+			if p.application != nil {
+				c.application = p.application
+				return c.application
+			}
+			current = p.parent
+		case *WebContext:
+			if p.Context.application != nil {
+				c.application = p.Context.application
+				return c.application
+			}
+			current = p.Context.parent
+		default:
+			break
+		}
+	}
+
+	// Fallback to global app
+	if app != nil {
 		c.application = app
 	}
 
@@ -146,21 +216,27 @@ func (c *Context) Err() error {
 
 func (c *Context) Value(key interface{}) interface{} {
 	var inf context.Context = c
+	// Without bruning the stack, or doing fancy
+	// cycle detection right now that will take a some heavy
+	// thought to make it optimzed just catch 1000 == we are busted
+	const maxValueDepth = 1000
 
-	for inf != nil {
+	for range maxValueDepth {
+		if inf == nil {
+			break
+		}
+
 		switch ctx := inf.(type) {
 		case *Context:
-			// Check single key
 			if ctx.key == key {
 				return ctx.val
 			}
-			inf = ctx.parent // Walk up chain
+			inf = ctx.parent
 		case *WebContext:
-			// do nothing
 			if ctx.key == key {
 				return ctx.val
 			}
-			inf = ctx.parent // Walk up chain
+			inf = ctx.parent
 		default:
 			return inf.Value(key)
 		}
@@ -265,7 +341,7 @@ func NewContext(parent context.Context) *Context {
 
 	// Unroll WebContext to prevent cycles
 	if wc, ok := parent.(*WebContext); ok {
-		parent = &wc.Context
+		parent = wc.Context
 	}
 
 	ctx := &Context{
@@ -302,7 +378,7 @@ func ToGollyContext(ctx context.Context) *Context {
 	case *Context:
 		return c
 	case *WebContext:
-		return &c.Context
+		return c.Context
 	}
 
 	return NewContext(ctx)
@@ -317,7 +393,7 @@ func WithValue(parent context.Context, key, val interface{}) *Context {
 
 	// Unroll WebContext to prevent cycles
 	if wc, ok := parent.(*WebContext); ok {
-		parent = &wc.Context
+		parent = wc.Context
 	}
 
 	ctx := &Context{
@@ -401,7 +477,7 @@ func WithLoggerFields(parent context.Context, fields map[string]interface{}) *Co
 	case *Context:
 		gctx.loader = p.loader
 	case *WebContext:
-		gctx.loader = p.Context.loader
+		gctx.loader = p.loader
 	}
 
 	return gctx

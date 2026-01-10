@@ -33,21 +33,21 @@ const (
 func (l Level) String() string {
 	switch l {
 	case LogLevelTrace:
-		return "trace"
+		return "TRACE"
 	case LogLevelDebug:
-		return "debug"
+		return "DEBUG"
 	case LogLevelInfo:
-		return "info"
+		return "INFO"
 	case LogLevelWarn:
-		return "warn"
+		return "WARN"
 	case LogLevelError:
-		return "error"
+		return "ERROR"
 	case LogLevelFatal:
-		return "fatal"
+		return "FATAL"
 	case LogLevelPanic:
-		return "panic"
+		return "PANIC"
 	}
-	return "unknown"
+	return "UNKNOWN"
 }
 
 // Fields represents a map of fields to be logged
@@ -133,13 +133,19 @@ type TextFormatter struct{}
 func (f *TextFormatter) Format(e *Entry) ([]byte, error) {
 	b := e.buffer
 
-	b.WriteString("time=\"")
-	b.WriteString(e.time.Format(time.RFC3339))
-	b.WriteString("\" level=")
 	b.WriteString(e.level.String())
-	b.WriteString(" msg=\"")
-	b.WriteString(e.message)
-	b.WriteByte('"')
+	b.WriteByte(' ')
+	b.WriteString(e.time.Format(time.RFC3339))
+	b.WriteByte(' ')
+	b.WriteByte(' ')
+
+	if e.message[len(e.message)-1] == '\n' {
+		b.WriteString(e.message[:len(e.message)-1])
+	} else {
+		b.WriteString(e.message)
+	}
+
+	b.WriteByte(' ')
 
 	for i, k := range e.keys {
 		// Filter out reserved keys if they happen to be in user fields
@@ -151,7 +157,7 @@ func (f *TextFormatter) Format(e *Entry) ([]byte, error) {
 		b.WriteByte('=')
 		fmt.Fprint(b, e.values[i])
 	}
-	b.WriteByte('\n')
+
 	return b.Bytes(), nil
 }
 
