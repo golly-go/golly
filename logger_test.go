@@ -16,7 +16,7 @@ func TestLoggerTextFormatter(t *testing.T) {
 		Keys:    []string{"foo", "bar"},
 		Values:  []interface{}{"baz", 123},
 		Time:    time.Date(2023, 1, 1, 12, 0, 0, 0, time.UTC),
-		Level:   InfoLevel,
+		Level:   LogLevelInfo,
 		Message: "test message",
 		Buffer:  &bytes.Buffer{},
 	}
@@ -40,7 +40,7 @@ func TestLoggerJSONFormatter(t *testing.T) {
 		Values:  []interface{}{"baz", 123},
 		TmpMap:  make(Fields),
 		Time:    time.Date(2023, 1, 1, 12, 0, 0, 0, time.UTC),
-		Level:   InfoLevel,
+		Level:   LogLevelInfo,
 		Message: "test message",
 		Buffer:  &bytes.Buffer{},
 	}
@@ -82,57 +82,42 @@ func TestEntryClone(t *testing.T) {
 
 func BenchmarkLoggerInfo(b *testing.B) {
 	logger := NewLogger()
-	logger.Out = &bytes.Buffer{} // Discard output but write to memory
-	// Or io.Discard?
+	logger.SetLevel(LogLevelInfo)
 	logger.Out = io.Discard
+	logger.Formatter = &JSONFormatter{}
 
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		logger.Info("benchmark message")
+		logger.Info("benchmark logging")
 	}
 }
 
 func BenchmarkLoggerWithFieldsInfo(b *testing.B) {
 	logger := NewLogger()
+	logger.SetLevel(LogLevelInfo)
 	logger.Out = io.Discard
-	entry := logger.WithFields(Fields{"foo": "bar", "baz": 123})
+	logger.Formatter = &JSONFormatter{}
 
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		entry.Info("benchmark message")
-	}
-}
-
-func BenchmarkJSONFormatter(b *testing.B) {
-	entry := &Entry{
-		Keys:    []string{"foo", "bar", "user_id", "request_id"},
-		Values:  []interface{}{"baz", 123, "u-123", "req-abc"},
-		TmpMap:  make(Fields),
-		Time:    time.Now(),
-		Level:   InfoLevel,
-		Message: "benchmark message",
-		Buffer:  &bytes.Buffer{},
-	}
-	formatter := &JSONFormatter{}
-
-	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		entry.Buffer.Reset()
-		_, _ = formatter.Format(entry)
+		logger.WithFields(Fields{
+			"string": "test",
+			"int":    123,
+			"bool":   true,
+		}).Info("benchmark logging")
 	}
 }
 
 func BenchmarkTextFormatter(b *testing.B) {
 	entry := &Entry{
-		Keys:    []string{"foo", "bar", "user_id", "request_id"},
-		Values:  []interface{}{"baz", 123, "u-123", "req-abc"},
-		Time:    time.Now(),
-		Level:   InfoLevel,
+		Level:   LogLevelInfo,
 		Message: "benchmark message",
-		Buffer:  &bytes.Buffer{},
+		Time:    time.Now(),
+		Keys:    []string{"key1", "key2"},
+		Values:  []interface{}{"value1", 123},
+		Buffer:  bytes.NewBuffer(make([]byte, 0, 1024)),
 	}
 	formatter := &TextFormatter{}
 
@@ -140,6 +125,32 @@ func BenchmarkTextFormatter(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		entry.Buffer.Reset()
-		_, _ = formatter.Format(entry)
+		formatter.Format(entry)
+	}
+}
+
+func TestLoggerLevels(t *testing.T) {
+	logger := NewLogger()
+	logger.Out = io.Discard
+
+	tests := []struct {
+		name  string
+		level string
+		want  Level
+	}{
+		{"Trace", "trace", LogLevelTrace},
+		{"Debug", "debug", LogLevelDebug},
+		{"Info", "info", LogLevelInfo},
+		{"Warn", "warn", LogLevelWarn},
+		{"Error", "error", LogLevelError},
+		{"Fatal", "fatal", LogLevelFatal},
+		{"Unknown", "unknown", LogLevelInfo},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := ParseLevel(tt.level)
+			assert.Equal(t, tt.want, got)
+		})
 	}
 }
