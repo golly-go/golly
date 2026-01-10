@@ -2,11 +2,12 @@ package golly
 
 import (
 	"bytes"
-	"encoding/json"
 	"encoding/xml"
 	"fmt"
 	"net/http"
 	"strings"
+
+	"github.com/segmentio/encoding/json"
 )
 
 type FormatOption uint

@@ -5,8 +5,6 @@ import (
 	"sync/atomic"
 	"time"
 	"unsafe"
-
-	"github.com/sirupsen/logrus"
 )
 
 // Use this dont use it, upto you - this gives you a complex type
@@ -34,13 +32,14 @@ type Context struct {
 	isDetached bool // If true, cuts off cancellation propagation
 }
 
-func (c *Context) Logger() *logrus.Entry {
+func (c *Context) Logger() *Entry {
 	// Fast path: Check for an existing logger in the current context
-	if logger, ok := c.logger.Load().(*logrus.Entry); ok && logger != nil {
+	if logger, ok := c.logger.Load().(*Entry); ok && logger != nil {
 		return logger
 	}
 
-	var logger *logrus.Entry
+	var logger *Entry
+
 	if c.parent != nil {
 		switch p := c.parent.(type) {
 		case *Context:
@@ -51,7 +50,7 @@ func (c *Context) Logger() *logrus.Entry {
 	}
 
 	if logger == nil {
-		logger = Logger().WithFields(logrus.Fields{})
+		logger = DefaultLogger.newEntry()
 	}
 
 	c.logger.Store(logger)
@@ -152,12 +151,6 @@ func (c *Context) Value(key interface{}) interface{} {
 		switch ctx := inf.(type) {
 		case *Context:
 			// Check single key
-			if ctx.key == key {
-				return ctx.val
-			}
-			inf = ctx.parent // Walk up chain
-		case WebContext:
-			// do nothing
 			if ctx.key == key {
 				return ctx.val
 			}
@@ -272,7 +265,7 @@ func NewContext(parent context.Context) *Context {
 
 	// Unroll WebContext to prevent cycles
 	if wc, ok := parent.(*WebContext); ok {
-		parent = wc.Context
+		parent = &wc.Context
 	}
 
 	ctx := &Context{
@@ -292,8 +285,6 @@ func NewContext(parent context.Context) *Context {
 		switch parent.(type) {
 		case *Context:
 			// do nothing
-		case WebContext:
-			// do nothing
 		case *WebContext:
 			// do nothing
 		default:
@@ -310,10 +301,8 @@ func ToGollyContext(ctx context.Context) *Context {
 	switch c := ctx.(type) {
 	case *Context:
 		return c
-	case WebContext:
-		return c.Context
 	case *WebContext:
-		return c.Context
+		return &c.Context
 	}
 
 	return NewContext(ctx)
@@ -328,7 +317,7 @@ func WithValue(parent context.Context, key, val interface{}) *Context {
 
 	// Unroll WebContext to prevent cycles
 	if wc, ok := parent.(*WebContext); ok {
-		parent = wc.Context
+		parent = &wc.Context
 	}
 
 	ctx := &Context{
@@ -340,8 +329,6 @@ func WithValue(parent context.Context, key, val interface{}) *Context {
 	// inherit application
 	switch p := parent.(type) {
 	case *Context:
-		ctx.application = p.application
-	case WebContext:
 		ctx.application = p.application
 	case *WebContext:
 		ctx.application = p.application
@@ -358,8 +345,6 @@ func WithCancel(parent context.Context) (*Context, context.CancelFunc) {
 
 	switch p := parent.(type) {
 	case *Context:
-		p.addChild(ctx)
-	case WebContext:
 		p.addChild(ctx)
 	case *WebContext:
 		p.addChild(ctx)
@@ -380,8 +365,6 @@ func WithDeadline(parent context.Context, d time.Time) (*Context, context.Cancel
 
 	switch p := parent.(type) {
 	case *Context:
-		p.addChild(ctx)
-	case WebContext:
 		p.addChild(ctx)
 	case *WebContext:
 		p.addChild(ctx)
@@ -419,8 +402,6 @@ func WithLoggerFields(parent context.Context, fields map[string]interface{}) *Co
 		gctx.loader = p.loader
 	case *WebContext:
 		gctx.loader = p.Context.loader
-	case WebContext:
-		gctx.loader = p.loader
 	}
 
 	return gctx

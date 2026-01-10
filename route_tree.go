@@ -449,14 +449,10 @@ func (re *Route) Route(path string, f func(r *Route)) *Route {
 func RouteRequest(a *Application, r *http.Request, w http.ResponseWriter) {
 	var method string
 
-	reID := makeRequestID()
+	// reID := makeRequestID(nil) // Handled internally now
 
-	wctx := WebContextWithRequestID(
-		NewContext(r.Context()),
-		reID,
-		r,
-		w,
-	)
+	// Create WebContext (handles request ID and Context creation internally)
+	wctx := NewWebContext(r.Context(), r, w)
 
 	// Route matching
 	re := FindRouteBySegments(a.routes, wctx.segments)

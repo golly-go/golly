@@ -138,7 +138,7 @@ func (pm *PluginManager) afterDeinitialize(app *Application) {
 		if p, ok := pm.plugins[pos].(PluginAfterDeinitialize); ok {
 			if err := p.AfterDeinitialize(app); err != nil {
 				// just log errors we are shutting down maybe cuase we are crashing
-				Logger().Error(err)
+				LogError(err)
 			}
 		}
 	}

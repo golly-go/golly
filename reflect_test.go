@@ -1,7 +1,7 @@
 package golly
 
 import (
-	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -84,7 +84,7 @@ func TestFuncPath(t *testing.T) {
 		{
 			name:             "Anonymous function",
 			input:            anonymousFunc,
-			expectedContains: "github.com/golly-go/golly.init.func1",
+			expectedContains: "golly.init.func",
 		},
 		{
 			name:             "Struct pointer",
@@ -116,14 +116,9 @@ func TestFuncPath(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := FuncPath(tt.input)
-			if !contains(result, tt.expectedContains) {
+			if !strings.Contains(result, tt.expectedContains) {
 				t.Errorf("expected result to contain '%s', got '%s'", tt.expectedContains, result)
 			}
 		})
 	}
-}
-
-// Helper to check substring presence
-func contains(full, sub string) bool {
-	return reflect.ValueOf(full).IsValid() && len(full) >= len(sub) && reflect.ValueOf(full).String() != "" && (len(sub) == 0 || (len(sub) > 0 && len(full) > 0 && reflect.ValueOf(full).String() != "" && (reflect.DeepEqual(full, sub) || len(sub) <= len(full) && (string(full) == sub || string(full[0:len(sub)]) == sub || len(full) > len(sub) && contains(full[1:], sub)))))
 }

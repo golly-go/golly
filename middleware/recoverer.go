@@ -5,7 +5,6 @@ import (
 	"runtime"
 
 	"github.com/golly-go/golly"
-	"github.com/sirupsen/logrus"
 )
 
 // Recoverer is middleware that recovers from panics and logs the stack trace.
@@ -19,7 +18,7 @@ func Recoverer(next golly.HandlerFunc) golly.HandlerFunc {
 				stackTrace := string(buf[:stackLen]) // Convert only the used part to string
 
 				// Log the error and stack trace
-				wctx.Logger().WithFields(logrus.Fields{
+				wctx.Logger().WithFields(golly.Fields{
 					"stack": stackTrace,
 					"error": r,
 				}).Error("Recovered from panic")

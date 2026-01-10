@@ -54,9 +54,9 @@ func BenchmarkParseHeaders(b *testing.B) {
 func BenchmarkIsOriginAllowed(b *testing.B) {
 	c := &cors{
 		allOrigins: false,
-		orgins: map[string]bool{
-			"https://allowed-origin.com": true,
-			"https://another-origin.com": true,
+		allowedOrigins: []string{
+			"https://allowed-origin.com",
+			"https://another-origin.com",
 		},
 		worigins: []string{"*.example.com"},
 	}
@@ -67,6 +67,7 @@ func BenchmarkIsOriginAllowed(b *testing.B) {
 	}{
 		{"Exact match", "https://allowed-origin.com"},
 		{"Wildcard match", "sub.example.com"},
+		{"Mixed Case Origin", "https://Allowed-Origin.com"},
 		{"Non-matching origin", "https://unauthorized.com"},
 	}
 

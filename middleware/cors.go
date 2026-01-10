@@ -45,17 +45,21 @@ type CorsOptions struct {
 }
 
 type cors struct {
+	exposeHeadersStr string
+	methodsStr       string
+
 	exposeHeaders []string
 	methods       []string
 	headers       []string
-	orgins        map[string]bool
 
-	worigins []string
+	allowedOrigins []string // Linear search with EqualFold (faster for typical small sets, zero alloc)
+	worigins       []string
 
 	allHeaders bool
 	allOrigins bool
 
 	credentials bool
+	credStr     string
 }
 
 // Init creates a cors record
@@ -63,10 +67,11 @@ func (c CorsOptions) init() cors {
 	co := cors{
 		exposeHeaders: golly.Convert(c.ExposeHeaders, http.CanonicalHeaderKey),
 		credentials:   c.AllowCredentials,
-		orgins:        make(map[string]bool),
+		credStr:       trueStr,
 	}
 
 	if c.AllowAllHeaders {
+		co.allHeaders = true
 		co.headers = defaultHeaders
 	} else {
 		co.headers = golly.Convert(append(c.AllowedHeaders, "Origin"), http.CanonicalHeaderKey)
@@ -81,14 +86,22 @@ func (c CorsOptions) init() cors {
 	if c.AllowAllOrigins {
 		co.allOrigins = true
 	} else {
-		co.orgins = make(map[string]bool, len(c.AllowedOrigins)) // Pre-allocate map size
+		// Separate wildcard and exact matches
 		for _, origin := range c.AllowedOrigins {
 			if golly.IsWildcardString(origin) {
 				co.worigins = append(co.worigins, origin)
 			} else {
-				co.orgins[strings.ToLower(origin)] = true
+				co.allowedOrigins = append(co.allowedOrigins, origin)
 			}
 		}
+	}
+
+	// Pre-compute joined strings for headers
+	if len(co.exposeHeaders) > 0 {
+		co.exposeHeadersStr = strings.Join(co.exposeHeaders, ",")
+	}
+	if len(co.methods) > 0 {
+		co.methodsStr = strings.Join(co.methods, ",")
 	}
 
 	return co
@@ -120,7 +133,7 @@ func (c cors) preflight(wctx *golly.WebContext) {
 		return
 	}
 
-	headers := wctx.Response().Header()
+	headers := wctx.ResponseHeaders()
 
 	headers.Add(Vary, originHeader)
 	headers.Add(Vary, acRequestMethodHeader)
@@ -142,9 +155,9 @@ func (c cors) preflight(wctx *golly.WebContext) {
 		return
 	}
 
-	rHeaders := parseHeaders(r.Header.Get(acRequestHeadersHeader))
-	if !c.areHeadersAllowed(rHeaders) {
-		wctx.Logger().Tracef("preflight: headers '%v' not allowed", rHeaders)
+	reqHeadersStr := r.Header.Get(acRequestHeadersHeader)
+	if !c.validateHeaders(reqHeadersStr) {
+		wctx.Logger().Tracef("preflight: headers '%s' not allowed", reqHeadersStr)
 		return
 	}
 
@@ -152,18 +165,18 @@ func (c cors) preflight(wctx *golly.WebContext) {
 		origin = star
 	}
 	headers.Set(acAllowOriginHeader, origin)
-	headers.Set(acAllowMethodHeader, method)
+	headers.Set(acAllowMethodHeader, c.methodsStr) // Use pre-computed string
 
-	if len(rHeaders) > 0 {
-		headers.Set(acAllowHeadersHeader, strings.Join(rHeaders, ","))
+	if reqHeadersStr != "" {
+		headers.Set(acAllowHeadersHeader, reqHeadersStr) // Echo back input string
 	}
 
-	if len(c.exposeHeaders) > 0 {
-		headers.Set(acExposeHeadersHeader, strings.Join(c.exposeHeaders, ","))
+	if c.exposeHeadersStr != "" {
+		headers.Set(acExposeHeadersHeader, c.exposeHeadersStr)
 	}
 
 	if c.credentials {
-		headers.Set(acAllowCredentialsHeader, "true")
+		headers.Set(acAllowCredentialsHeader, c.credStr)
 	}
 
 	wctx.Response().WriteHeader(http.StatusOK)
@@ -171,7 +184,7 @@ func (c cors) preflight(wctx *golly.WebContext) {
 
 func (c cors) request(wctx *golly.WebContext) {
 	r := wctx.Request()
-	headers := wctx.Response().Header()
+	headers := wctx.ResponseHeaders()
 
 	origin := r.Header.Get(originHeader)
 	if origin == "" {
@@ -183,6 +196,9 @@ func (c cors) request(wctx *golly.WebContext) {
 		return
 	}
 
+	// Method check (optional in actual request but good for strictness, but usually OPTIONS handles it)
+	// Spec says Origin check is sufficient.
+	// But staying consistent with previous implementation.
 	if !c.isMethodAllowed(r.Method) {
 		wctx.Logger().Tracef("request: method %s not allowed for cors", r.Method)
 		return
@@ -194,12 +210,12 @@ func (c cors) request(wctx *golly.WebContext) {
 
 	headers.Set(acAllowOriginHeader, origin)
 
-	if len(c.exposeHeaders) > 0 {
-		headers.Set(acExposeHeadersHeader, strings.Join(c.exposeHeaders, ","))
+	if c.exposeHeadersStr != "" {
+		headers.Set(acExposeHeadersHeader, c.exposeHeadersStr)
 	}
 
 	if c.credentials {
-		headers.Set(acAllowCredentialsHeader, trueStr)
+		headers.Set(acAllowCredentialsHeader, c.credStr)
 	}
 }
 
@@ -208,10 +224,11 @@ func (c *cors) isOriginAllowed(origin string) bool {
 		return true
 	}
 
-	origin = strings.ToLower(origin)
-
-	if _, exists := c.orgins[origin]; exists {
-		return true
+	// Linear scan with EqualFold (Zero Alloc)
+	for _, o := range c.allowedOrigins {
+		if strings.EqualFold(o, origin) {
+			return true
+		}
 	}
 
 	// Check wildcard origins in-place
@@ -229,22 +246,14 @@ func (c *cors) isMethodAllowed(method string) bool {
 		return false
 	}
 
-	method = strings.ToUpper(method)
-
 	if method == http.MethodOptions {
 		return true
 	}
 
-	return golly.Contains(c.methods, method)
-}
-
-func (c *cors) areHeadersAllowed(headers []string) bool {
-	if c.allHeaders || len(headers) == 0 {
-		return true
-	}
-
-	for pos := range headers {
-		if golly.Contains(c.headers, http.CanonicalHeaderKey(headers[pos])) {
+	// Usually method is short list, linear scan is fast
+	// Upper case check
+	for _, m := range c.methods {
+		if m == method || (len(m) == len(method) && strings.ToUpper(method) == m) {
 			return true
 		}
 	}
@@ -252,59 +261,137 @@ func (c *cors) areHeadersAllowed(headers []string) bool {
 	return false
 }
 
-func parseHeaders(list string) []string {
-	if list == "" {
-		return nil
+// validateHeaders checks if all headers in the comma-separated list are allowed.
+// Zero-allocation implementation.
+func (c *cors) validateHeaders(list string) bool {
+	if c.allHeaders || list == "" {
+		return true
 	}
 
-	count := strings.Count(list, ",") + 1
-	if count == 0 {
-		return []string{http.CanonicalHeaderKey(list)}
-	}
+	// Iterate over comma-separated headers
+	// Logic similar to parseHeaders but validation only
 
-	headers := make([]string, count)
+	start := 0
+	n := len(list)
 
-	i := 0
-	start, end := 0, 0
-
-	for i < count {
-		next := strings.Index(list, ",")
-		if next == -1 {
-			break
-		}
-
-		start = 0
-		for start < next && (list[start] == ' ' || list[start] == '\t') {
+	for start < n {
+		// Skip leading whitespace
+		for start < n && (list[start] == ' ' || list[start] == '\t') {
 			start++
 		}
 
-		end = next - 1
-		for end > start && (list[end] == ' ' || list[end] == '\t') {
-			end--
+		if start >= n {
+			break
 		}
 
-		if start <= end {
-			headers[i] = list[start : end+1]
-			i++
+		// Find end of token
+		end := start
+		for end < n && list[end] != ',' {
+			end++
 		}
-		list = list[next+1:]
+
+		// Token is list[start:end]
+		// Trim trailing whitespace
+		tokenEnd := end
+		for tokenEnd > start && (list[tokenEnd-1] == ' ' || list[tokenEnd-1] == '\t') {
+			tokenEnd--
+		}
+
+		if tokenEnd > start {
+			// Check if token allowed
+			// We avoid allocating string for token if possible?
+			// CanonicalHeaderKey requires string.
+			// But allowed headers are usually "Content-Type" etc.
+			// Case insensitive check against c.headers?
+			// c.headers are canonical.
+			// Input might be "content-type".
+			// We need to match.
+			// If we iterate c.headers and EqualFold?
+
+			header := list[start:tokenEnd] // Zero-copy slicing? No, in Go string slicing is zero-copy (shares backing array).
+
+			allowed := false
+			for _, h := range c.headers {
+				if strings.EqualFold(h, header) {
+					allowed = true
+					break
+				}
+			}
+			if !allowed {
+				return false
+			}
+		}
+
+		start = end + 1
 	}
 
-	// Process the final segment
-	start, end = 0, len(list)-1
-	for start < len(list) && (list[start] == ' ' || list[start] == '\t') {
-		start++
+	return true
+}
+
+func (c *cors) areHeadersAllowed(headers []string) bool {
+	// Keep for backward compatibility/testing if needed, or update tests
+	// Implementation using slice
+	if c.allHeaders || len(headers) == 0 {
+		return true
 	}
 
-	for end > start && (list[end] == ' ' || list[end] == '\t') {
-		end--
+	for _, h := range headers {
+		allowed := false
+		for _, allowedH := range c.headers {
+			if strings.EqualFold(allowedH, h) {
+				allowed = true
+				break
+			}
+		}
+		if !allowed {
+			return false
+		}
 	}
 
-	if start <= end {
-		headers[i] = list[start : end+1]
-		i++
-	}
+	return false
+}
 
-	// wish i could capitlize inplace
-	return golly.Convert(headers[:i], http.CanonicalHeaderKey)
+// Deprecated: Internal use replaced by validateHeaders
+func parseHeaders(list string) []string {
+	// Keep for tests?
+	if list == "" {
+		return nil
+	}
+	// ... (Implementation wrapped to reuse logic or just keep old one for tests?)
+	// Actually we can keep old implementation for tests checking correctness of parsing,
+	// but production code uses validateHeaders.
+	// Reverting to optimized parsing logic if we really need []string return?
+	// Benchmarks use this.
+
+	// Optimized version using strings.FieldsFunc logic manually
+	var headers []string
+
+	start := 0
+	n := len(list)
+
+	for start < n {
+		for start < n && (list[start] == ' ' || list[start] == '\t') {
+			start++
+		}
+		if start >= n {
+			break
+		}
+
+		end := start
+		for end < n && list[end] != ',' {
+			end++
+		}
+
+		tokenEnd := end
+		for tokenEnd > start && (list[tokenEnd-1] == ' ' || list[tokenEnd-1] == '\t') {
+			tokenEnd--
+		}
+
+		if tokenEnd > start {
+			headers = append(headers, http.CanonicalHeaderKey(list[start:tokenEnd]))
+		}
+
+		start = end + 1
+	}
+	return headers
 }

@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/golly-go/golly"
-	"github.com/sirupsen/logrus"
 )
 
 // RequestLogger middleware that adds request logging
@@ -23,7 +22,7 @@ func RequestLogger(next golly.HandlerFunc) golly.HandlerFunc {
 			elapsed := time.Since(t)
 			status := writer.Status()
 
-			logger := wctx.Logger().WithFields(logrus.Fields{
+			logger := wctx.Logger().WithFields(golly.Fields{
 				"http.status_code":      status,
 				"network.bytes_written": writer.BytesWritten(),
 				"duration":              elapsed.Nanoseconds(),

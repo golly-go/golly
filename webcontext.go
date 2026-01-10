@@ -25,34 +25,60 @@ var (
 	hostname, _ = os.Hostname()
 )
 
-func makeRequestID() string {
+func makeRequestID(buf []byte) string {
 	cnt := reqcount.Add(1)
 
-	var buf [128]byte
-	b := buf[:0]
+	// hostname + / + count
+	var b []byte
+	if cap(buf) > 0 {
+		b = buf[:0]
+	}
+
 	b = append(b, hostname...)
 	b = append(b, '/')
 
-	// Pre-calculate length for zero-padding
-	countStart := len(b)
+	// AppendInt
 	b = strconv.AppendInt(b, int64(cnt), 10)
-	countLen := len(b) - countStart
+
+	// Padding logic: length after hostname/
+	// hostname/123 -> padding check on "123"
+	// Current logic:
+	// countStart := len(b) - numberOfDigits?
+	// The original code was:
+	// countStart := len(hostname) + 1
+	// b = strconv.AppendInt(b, cnt, 10)
+	// countLen := len(b) - countStart
+
+	// Re-implementing logic clearly using buf
+	// hostname/...
+	prefixLen := len(hostname) + 1
+	countLen := len(b) - prefixLen
 
 	if countLen < 6 {
 		padLen := 6 - countLen
-		// Shift count to make room for padding
-		copy(buf[countStart+padLen:], buf[countStart:countStart+countLen])
+		// Make room: shift count right
+		// We need to re-slice b to fit padding
+		// but b cap matches buf cap? Check capacity.
+		// If buf is [64]byte, ample space.
+
+		// Extend b
+		b = b[:len(b)+padLen]
+
+		// Shift
+		copy(b[prefixLen+padLen:], b[prefixLen:prefixLen+countLen])
+
+		// Fill 0
 		for i := 0; i < padLen; i++ {
-			buf[countStart+i] = '0'
+			b[prefixLen+i] = '0'
 		}
-		b = buf[:countStart+padLen+countLen]
 	}
 
-	return string(b)
+	// Zero-alloc string conversion
+	return unsafeString(b)
 }
 
 type WebContext struct {
-	*Context
+	Context // Embedded by value
 
 	method   string
 	path     string
@@ -147,14 +173,53 @@ func (wctx *WebContext) Write(b []byte) (int, error) {
 }
 
 // NewWebContext returns a new web context
-func NewWebContext(gctx *Context, r *http.Request, w http.ResponseWriter) *WebContext {
+func NewWebContext(parent context.Context, r *http.Request, w http.ResponseWriter) *WebContext {
+	if parent == nil {
+		parent = context.TODO()
+	}
+
+	// Initialize WebContext struct
 	wctx := &WebContext{
 		path:    r.URL.Path,
 		method:  r.Method,
-		Context: gctx,
 		request: r,
 		writer:  NewWrapResponseWriter(w, r.ProtoMajor),
 	}
+
+	// Initialize embedded Context (inline NewContext logic to avoid alloc)
+	// Unroll parent if it's WebContext
+	if wc, ok := parent.(*WebContext); ok {
+		parent = &wc.Context
+	}
+
+	wctx.Context.parent = parent
+	wctx.Context.done = make(chan struct{})
+
+	// Inherit application
+	if c, ok := parent.(*Context); ok && c != nil {
+		wctx.Context.application = c.application
+	} else if app != nil {
+		wctx.Context.application = app
+	}
+
+	// Propagate cancellation
+	if parent.Done() != nil {
+		switch parent.(type) {
+		case *Context:
+			// do nothing
+		case *WebContext:
+			// do nothing
+		default:
+			// Capture wctx pointer for closure
+			context.AfterFunc(parent, func() {
+				wctx.Context.cancel(parent.Err())
+			})
+		}
+	}
+
+	// ID generation
+	wctx.requestID = makeRequestID(wctx.reqIDBuf[:])
+
 	wctx.segments = wctx.fillSegments(r.URL.Path)
 	return wctx
 }
@@ -203,9 +268,13 @@ func (wctx *WebContext) fillSegments(path string) []string {
 }
 
 func WebContextWithRequestID(gctx *Context, reqID string, r *http.Request, w http.ResponseWriter) *WebContext {
+	// Deprecated / Backwards compatibility logic
+	// But RouteRequest uses NewWebContext now.
+	// We can update this helper to just set ID?
 	wctx := NewWebContext(gctx, r, w)
-	wctx.requestID = reqID
-
+	if reqID != "" {
+		wctx.requestID = reqID
+	}
 	return wctx
 }
 
@@ -240,9 +309,9 @@ func (w *WebContext) WithContext(ctx context.Context) *WebContext {
 	w.mu.Lock()
 	switch x := ctx.(type) {
 	case *WebContext:
-		w.Context = NewContext(x.Context)
+		w.Context = *NewContext(&x.Context)
 	default:
-		w.Context = ToGollyContext(ctx)
+		w.Context = *ToGollyContext(ctx)
 	}
 	w.mu.Unlock()
 

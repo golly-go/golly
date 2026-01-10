@@ -3,10 +3,11 @@ package golly
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
+
+	"github.com/segmentio/encoding/json"
 )
 
 // TestHarness provides a structured way to test Golly applications

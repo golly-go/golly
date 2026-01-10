@@ -74,7 +74,7 @@ func TestGetPlugin(t *testing.T) {
 		gctx.application = app
 
 		wctx := &WebContext{
-			Context: gctx,
+			Context: *gctx,
 		}
 
 		result := GetPlugin[*testPlugin](wctx, "test-plugin")

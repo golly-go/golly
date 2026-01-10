@@ -6,7 +6,6 @@ import (
 	"sync"
 	"time"
 
-	log "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 )
 
@@ -67,7 +66,7 @@ type Application struct {
 
 	Env EnvName // Current environment (e.g., development, production).
 
-	logger *log.Logger // Right now we are leveraging Logrus (Why reinvent the wheel - hold a pointer to it)
+	logger *Logger // Right now we are leveraging Logrus (Why reinvent the wheel - hold a pointer to it)
 
 	events *EventManager
 	config *viper.Viper
@@ -101,7 +100,7 @@ func (a *Application) Config() *viper.Viper      { return a.config }
 func (a *Application) Routes() *Route            { return a.routes }
 func (a *Application) State() ApplicationState   { return a.state }
 func (a *Application) Events() *EventManager     { return a.events }
-func (a *Application) Logger() *log.Logger       { return a.logger }
+func (a *Application) Logger() *Logger           { return a.logger }
 func (a *Application) Plugins() *PluginManager   { return a.plugins }
 
 func (a *Application) Services() []Service {
