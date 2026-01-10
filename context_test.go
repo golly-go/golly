@@ -306,8 +306,8 @@ func TestContextLogger(t *testing.T) {
 		// Or we access Keys/Values if package-internal. context_test is package golly.
 		// So we can access Keys/Values.
 		found := false
-		for i, k := range logger.Keys {
-			if k == "root" && logger.Values[i] == "true" {
+		for i, k := range logger.keys {
+			if k == "root" && logger.values[i] == "true" {
 				found = true
 				break
 			}

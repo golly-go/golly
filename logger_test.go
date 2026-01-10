@@ -13,12 +13,12 @@ import (
 
 func TestLoggerTextFormatter(t *testing.T) {
 	entry := &Entry{
-		Keys:    []string{"foo", "bar"},
-		Values:  []interface{}{"baz", 123},
-		Time:    time.Date(2023, 1, 1, 12, 0, 0, 0, time.UTC),
-		Level:   LogLevelInfo,
-		Message: "test message",
-		Buffer:  &bytes.Buffer{},
+		keys:    []string{"foo", "bar"},
+		values:  []interface{}{"baz", 123},
+		time:    time.Date(2023, 1, 1, 12, 0, 0, 0, time.UTC),
+		level:   LogLevelInfo,
+		message: "test message",
+		buffer:  &bytes.Buffer{},
 	}
 
 	formatter := &TextFormatter{}
@@ -36,13 +36,13 @@ func TestLoggerTextFormatter(t *testing.T) {
 
 func TestLoggerJSONFormatter(t *testing.T) {
 	entry := &Entry{
-		Keys:    []string{"foo", "bar"},
-		Values:  []interface{}{"baz", 123},
-		TmpMap:  make(Fields),
-		Time:    time.Date(2023, 1, 1, 12, 0, 0, 0, time.UTC),
-		Level:   LogLevelInfo,
-		Message: "test message",
-		Buffer:  &bytes.Buffer{},
+		keys:    []string{"foo", "bar"},
+		values:  []interface{}{"baz", 123},
+		tmpMap:  make(Fields),
+		time:    time.Date(2023, 1, 1, 12, 0, 0, 0, time.UTC),
+		level:   LogLevelInfo,
+		message: "test message",
+		buffer:  &bytes.Buffer{},
 	}
 
 	formatter := &JSONFormatter{}
@@ -63,28 +63,28 @@ func TestLoggerJSONFormatter(t *testing.T) {
 func TestEntryClone(t *testing.T) {
 	logger := NewLogger()
 	entry := logger.newEntry()
-	entry.Keys = append(entry.Keys, "key1")
-	entry.Values = append(entry.Values, "val1")
+	entry.keys = append(entry.keys, "key1")
+	entry.values = append(entry.values, "val1")
 
 	cloned := entry.clone()
 	assert.NotEqual(t, entry, cloned) // Different pointers
-	assert.Equal(t, entry.Logger, cloned.Logger)
-	assert.Equal(t, entry.Keys, cloned.Keys)
-	assert.Equal(t, entry.Values, cloned.Values)
+	assert.Equal(t, entry.logger, cloned.logger)
+	assert.Equal(t, entry.keys, cloned.keys)
+	assert.Equal(t, entry.values, cloned.values)
 
 	// Modify cloned shouldn't affect original
-	cloned.Keys = append(cloned.Keys, "key2")
-	cloned.Values = append(cloned.Values, "val2")
+	cloned.keys = append(cloned.keys, "key2")
+	cloned.values = append(cloned.values, "val2")
 
-	assert.Len(t, entry.Keys, 1)
-	assert.Len(t, cloned.Keys, 2)
+	assert.Len(t, entry.keys, 1)
+	assert.Len(t, cloned.keys, 2)
 }
 
 func BenchmarkLoggerInfo(b *testing.B) {
 	logger := NewLogger()
 	logger.SetLevel(LogLevelInfo)
-	logger.Out = io.Discard
-	logger.Formatter = &JSONFormatter{}
+	logger.SetOutput(io.Discard)
+	logger.SetFormatter(&JSONFormatter{})
 
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -96,8 +96,8 @@ func BenchmarkLoggerInfo(b *testing.B) {
 func BenchmarkLoggerWithFieldsInfo(b *testing.B) {
 	logger := NewLogger()
 	logger.SetLevel(LogLevelInfo)
-	logger.Out = io.Discard
-	logger.Formatter = &JSONFormatter{}
+	logger.SetOutput(io.Discard)
+	logger.SetFormatter(&JSONFormatter{})
 
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -112,26 +112,26 @@ func BenchmarkLoggerWithFieldsInfo(b *testing.B) {
 
 func BenchmarkTextFormatter(b *testing.B) {
 	entry := &Entry{
-		Level:   LogLevelInfo,
-		Message: "benchmark message",
-		Time:    time.Now(),
-		Keys:    []string{"key1", "key2"},
-		Values:  []interface{}{"value1", 123},
-		Buffer:  bytes.NewBuffer(make([]byte, 0, 1024)),
+		level:   LogLevelInfo,
+		message: "benchmark message",
+		time:    time.Now(),
+		keys:    []string{"key1", "key2"},
+		values:  []interface{}{"value1", 123},
+		buffer:  bytes.NewBuffer(make([]byte, 0, 1024)),
 	}
 	formatter := &TextFormatter{}
 
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		entry.Buffer.Reset()
+		entry.buffer.Reset()
 		formatter.Format(entry)
 	}
 }
 
 func TestLoggerLevels(t *testing.T) {
 	logger := NewLogger()
-	logger.Out = io.Discard
+	logger.SetOutput(io.Discard)
 
 	tests := []struct {
 		name  string
