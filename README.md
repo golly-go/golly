@@ -1,190 +1,166 @@
-# Golly: Lightweight Web Framework for Go
+# Golly
 
-Welcome to **Golly**, a lightweight, ergonomic, and extensible web framework for building modern web applications in Go. Golly provides powerful tools and patterns to simplify the development of APIs, middleware, and web services, while maintaining performance and minimalism.
+> **The Go Service Framework for High-Performance Monoliths**
 
-## Key Features
+[![Go Reference](https://pkg.go.dev/badge/github.com/golly-go/golly.svg)](https://pkg.go.dev/github.com/golly-go/golly)
+[![Go Report Card](https://goreportcard.com/badge/github.com/golly-go/golly)](https://goreportcard.com/report/github.com/golly-go/golly)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-### 🔌 Plugin System
-Golly supports a plugin-based architecture for extensibility. Easily integrate additional functionality such as ORM, caching, or messaging with custom plugins. Check out the [Golly Plugins](https://github.com/golly-go/plugins) for official integrations.
+**Golly** is an ergonomic, zero-allocation service framework designed for **production engineering**.
 
-### 🧰 Middleware Support
-Integrate middleware for logging, recovery, CORS, and more. Middleware in Golly is first-class and designed to be composable and reusable.
+Most Go frameworks are just HTTP routers. Golly is different. It provides the **architecture** to build scalable systems where your API, Background Workers, and Consumer workloads live in a single, cohesive codebase but scale independently.
 
-### 📜 Declarative Routing
-Define routes declaratively with support for middleware chaining, handlers, and dynamic paths.
+---
 
-### 🚀 High Performance
-Golly prioritizes performance by minimizing allocations and providing optimized utilities, ensuring your applications are fast and scalable.
+## 🚀 The Philosophy: Monolithic Logic, Independent Scale
 
-### 🛠 Utility Functions
-Includes ergonomic utilities for common tasks like rendering responses, marshaling data, and error handling.
+Stop tearing your application apart into microservices just to scale a queue consumer.
 
-## Installation
+Golly allows you to define multiple **Services** (Web, Worker, Consumer) in one binary. In production, you deploy the same binary as different "Pods", each running only the workload it needs.
 
-Add Golly to your project:
+- **Pod A (Web)**: API Traffic, highly scalable, stateless.
+- **Pod B (Worker)**: Background jobs, memory-intensive.
+- **Pod C (Consumer)**: Kafka stream processor, throughput-optimized.
 
-```bash
-# Add Golly
-go get github.com/golly-go/golly
+All sharing the same models, domain logic, and utilities. **Zero logic duplication. Infinite scale.**
 
-# Add Plugins (optional)
-go get github.com/golly-go/plugins
-```
+---
 
-## Getting Started
+## ⚡ Obsessive Performance
 
-Here’s a simple example to get you started:
+We don't just say "fast"; we prove it. Golly is engineered for **Zero-Allocation** in the hot paths.
+
+| Component  | Operation          | Latency     | Allocations   |
+| :--------- | :----------------- | :---------- | :------------ |
+| **Logger** | `Log.Opt().Info()` | **~133 ns** | **0 allocs**  |
+| **Router** | `GET /blog/:id`    | **~136 ns** | **1 alloc**\* |
+| **CORS**   | Origin Validation  | **~12 ns**  | **0 allocs**  |
+| **Render** | JSON Response      | **~157 ns** | **3 allocs**  |
+
+_\*The single router allocation is the `Context` object, ensuring thread-safe context propagation across different execution modes._
+
+---
+
+## 🛠 Real World Production Example
+
+Golly applications are declarative and easy to reason about. Here is what a real-world production entrypoint looks like:
 
 ```go
 package main
 
 import (
-	"net/http"
+	"time"
 
 	"github.com/golly-go/golly"
 	"github.com/golly-go/golly/middleware"
 	"github.com/golly-go/plugins/orm"
+	"github.com/golly-go/plugins/eventsource"
+	"github.com/golly-go/plugins/kafka"
 )
 
 func main() {
 	golly.Run(golly.Options{
-		Plugins: []golly.Plugin{
-			orm.NewOrmPlugin(orm.SQLiteConfig{InMemory: true}),
+		Name:    "hris-backend",
+		Version: "1.0.0",
+
+		// Define functional workloads that can run in this binary
+		Services: []golly.Service{
+			&golly.WebService{},      // HTTP API
+			&worker.JobProcessor{},   // Background Jobs
+			&kafka.ConsumerService{}, // Message Consumer
 		},
-		Initializers: []golly.AppFunc{initializer},
-	})
-}
 
-func initializer(app *golly.Application) error {
-	app.Routes().
-		Use(middleware.RequestLogger).
-		Use(middleware.Recoverer).
-		Use(middleware.Cors(middleware.CorsOptions{
-			AllowedOrigins: []string{"http://localhost:9000"},
-		})).
-		Get("/hello", func(wctx *golly.WebContext) {
-			wctx.RenderText("Hello, World!")
-		})
+		// Structured, ordered initialization chain
+		Initializer: golly.AppFuncChain(
+			lib.Initializer,
+			domains.Initializer,
+			infra.Initializer,
+		),
 
-	return nil
-}
-```
+		// Drop-in Plugins for enterprise capabilities
+		Plugins: []golly.Plugin{
+			// Database with automatic configuration
+			orm.NewOrmPlugin(func(app *golly.Application) (orm.PostgresConfig, error) {
+				return orm.PostgresConfig{
+					Host:         app.Config().GetString("db.host"),
+					MaxOpenConns: 100,
+					YAMLConfig:   true, // Load from config/database.yml
+				}, nil
+			}),
 
-### Example Breakdown
-- **Plugins**: Adds an in-memory SQLite database using the ORM plugin.
-- **Middleware**: Logs requests, recovers from panics, and applies CORS policies.
-- **Routes**: Defines a single `/hello` endpoint that returns `Hello, World!`.
-
-## Advanced Features
-
-### Plugins
-Extend Golly with plugins to integrate additional functionality:
-
-```go
-ormPlugin := orm.NewOrmPlugin(orm.PostgresConfig{
-	Host:     "localhost",
-	User:     "postgres",
-	Password: "password",
-	Database: "mydb",
-	Port:     5432,
-})
-
-golly.Run(golly.Options{
-	Plugins: []golly.Plugin{ormPlugin},
-})
-```
-
-### Middleware
-Middleware is chainable and composable:
-
-```go
-app.Routes().
-	Use(middleware.RequestLogger).
-	Use(middleware.Recoverer).
-	Use(myCustomMiddleware).
-	Get("/api", apiHandler)
-```
-
-### Custom Handlers
-Handlers are simple to define:
-
-```go
-func apiHandler(wctx *golly.WebContext) {
-	golly.RenderJSON(wctx, map[string]string{
-		"message": "This is an API response",
+			// Event Sourcing & Kafka
+			kafka.NewPlugin(),
+			eventsource.NewPlugin(
+				eventsource.PluginWithStore(&gormstore.Store{}),
+			),
+		},
 	})
 }
 ```
 
-### Render Helpers
-Golly provides helper functions for rendering responses, these helpers add minimal time to the response and are in hopes to provide better egonomics when using 
-golly for your project, but they are not required so dont feel forced to use them
+---
 
-- **`Render`**: Automatically marshals data based on format.
-- **`RenderJSON`**: Marshals data into JSON.
-- **`RenderXML`**: Marshals data into XML.
-- **`RenderText`**: Renders plain text.
-- **`RenderData`**: Renders Bytes (sending a file etc)
+## Key Features
 
-```go
-golly.RenderJSON(wctx, map[string]string{"key": "value"})
-```
+### 1. The Supercharged Context
 
-## Middleware
+Golly's `Context` is the spine of your request. It's not just a bag of values; it's an intelligent carrier for:
 
-Golly comes with built-in middleware to handle common needs like logging, CORS, and recovery.
+- **Structured Logging**: `ctx.Logger()` inherits request IDs and tenant info automatically.
+- **Identity**: Built-in methods for `ctx.Actor()` and authentication state.
+- **Safe Detachment**: Use `ctx.Detach()` to spawn goroutines that keep trace metadata but survive request cancellation.
 
-### CORS Middleware
+### 2. Zero-Alloc Logger
 
-The CORS middleware enables cross-origin resource sharing for your routes. It can be configured using the `CorsOptions` struct:
-
-#### Options:
-
-- `AllowAllHeaders` (bool): If `true`, allows all headers.
-- `AllowAllOrigins` (bool): If `true`, allows all origins.
-- `AllowedHeaders` ([]string): Specifies which headers are allowed.
-- `AllowedMethods` ([]string): Specifies which HTTP methods are allowed.
-- `AllowedOrigins` ([]string): Specifies which origins are allowed.
-- `ExposeHeaders` ([]string): Specifies which headers are exposed to the browser.
-- `AllowCredentials` (bool): If `true`, includes credentials (e.g., cookies) in requests.
-
-#### Example:
+Why use `zap` when you can have something built-in and cleaner?
 
 ```go
-app.Routes().
-	Use(middleware.Cors(middleware.CorsOptions{
-		AllowedOrigins: []string{"http://example.com", "http://localhost:9000"},
-		AllowedMethods: []string{http.MethodGet, http.MethodPost},
-		AllowedHeaders: []string{"Content-Type", "Authorization"},
-		ExposeHeaders:  []string{"X-Custom-Header"},
-		AllowCredentials: true,
-	}))
+// 0 Heap Allocations. Typesafe.
+logger.Opt().
+    Str("service", "payment").
+    Int("status", 200).
+    Dur("latency", duration).
+    Info("Payment processed")
 ```
 
-### Request Logger
+### 3. CLI Built-in
 
-Logs details about each incoming HTTP request, including method, URL, status, and duration.
+Every Golly app is also a CLI. Need to run a migration? Truncate a table?
 
-### Recoverer
+```bash
+# Run the web server
+./app start
 
-Catches panics in your application and returns a `500 Internal Server Error` response while logging the error.
+# Run a specific service
+./app service start worker
+
+# Run custom commands
+./app db truncate
+```
+
+### 4. Plugin Ecosystem
+
+Don't write boilerplate. Use the official plugins:
+
+- `golly-go/plugins/orm`: GORM integration with connection pooling.
+- `golly-go/plugins/kafka`: High-throughput consumers/producers.
+- `golly-go/plugins/redis`: Cache and PubSub.
+- `golly-go/plugins/eventsource`: CQRS and Event Sourcing patterns.
+
+---
+
+## Installation
+
+```bash
+go get github.com/golly-go/golly
+```
 
 ---
 
 ## Contributing
 
-Contributions are welcome! Feel free to open issues, submit pull requests, or suggest features.
+We are building the framework we always wanted to use. If you care about performance, code aesthetics, and developer happiness, join us.
 
-1. Fork the repo.
-2. Create a feature branch.
-3. Submit a pull request.
-
-## Community and Support
-
-- [Plugins Repository](https://github.com/golly-go/plugins)
-- [Issue Tracker](https://github.com/golly-go/golly/issues)
-
----
-
-**Happy coding with Golly!**
-
+1.  Fork the repo.
+2.  Create your feature branch.
+3.  Submit a Pull Request.

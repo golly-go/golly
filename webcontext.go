@@ -116,6 +116,7 @@ func (wctx *WebContext) GollyContext() *Context        { return wctx.ctx }
 func (wctx *WebContext) Query(key string) url.Values   { return wctx.request.URL.Query() }
 
 // Proxies for Golly Context features (but NOT satisfying context.Context interface)
+func (wctx *WebContext) Cache() *DataLoader        { return wctx.ctx.Cache() }
 func (wctx *WebContext) Logger() *Entry            { return wctx.ctx.Logger() }
 func (wctx *WebContext) Application() *Application { return wctx.ctx.Application() }
 
