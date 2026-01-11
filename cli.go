@@ -191,7 +191,7 @@ func Prompt(prompt string, hidden bool) (string, error) {
 //
 //	continue := PromptForBoolean("Do you want to continue?", true)
 func PromptForBoolean(prompt string, deflt bool) bool {
-	options := "[Y/N]"
+	var options string
 	if deflt {
 		options = "[Y/N] (default: Y)"
 	} else {

@@ -22,7 +22,7 @@ type ContextFunc func(*Context)
 // for Logger() and Application(). Prevents infinite loops from circular references.
 const maxContextTreeWalk = 12
 
-// Without bruning the stack, or doing fancy
+// Without burning the stack, or doing fancy
 // cycle detection right now that will take a some heavy
 // thought to make it optimzed just catch 1000 == we are busted
 const maxValueDepth = 1000

@@ -30,7 +30,7 @@ func TestWildcardStringMatch(t *testing.T) {
 		{"Partial prefix mismatch", "h*o*", "abc", false},
 		{"Wildcard but empty input", "*", "", true},
 		{"Empty Pattern", "", "asdfas", false},
-		{"Rediculous Wildcards", "*s*****", "asdfas", true},
+		{"Ridiculous Wildcards", "*s*****", "asdfas", true},
 	}
 
 	for _, tt := range tests {

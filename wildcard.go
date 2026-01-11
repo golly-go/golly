@@ -5,7 +5,7 @@ const (
 	question = '?'
 )
 
-// WildcardMatch searchs for standard wildcards and matches a string to them
+// WildcardMatch searches for standard wildcards and matches a string to them
 // generally used as a * but can support ?'s too
 // example localhost:* or http://*.domain.com
 // mi*ch

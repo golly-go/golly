@@ -13,7 +13,7 @@ func TestFind(t *testing.T) {
 	assert.True(t, found)
 	assert.Equal(t, 4, result)
 
-	result, found = Find(numbers, func(n int) bool { return n > 10 })
+	_, found = Find(numbers, func(n int) bool { return n > 10 })
 	assert.False(t, found)
 }
 
