@@ -6,9 +6,12 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"math"
 
 	"github.com/segmentio/encoding/json"
 )
@@ -66,20 +69,49 @@ var (
 	entryPool = sync.Pool{
 		New: func() interface{} {
 			return &Entry{
-				keys:   make([]string, 0, 16),
-				values: make([]interface{}, 0, 16),
-				tmpMap: make(Fields, 16),
+				fields:  make([]Field, 0, 16),
+				tmpMap:  make(Fields, 16),
+				scratch: make([]byte, 0, 64),
 			}
 		},
 	}
 )
 
+type LogType uint8
+
+const (
+	LogTypeAny LogType = iota
+	LogTypeString
+	LogTypeInt64
+	LogTypeUint64
+	LogTypeBool
+	LogTypeFloat64
+	LogTypeError
+	LogTypeDuration
+)
+
+type Field struct {
+	Key       string
+	Type      LogType
+	Int64     int64
+	StringVal string
+	Interface interface{}
+}
+
 // Logger is the main logger structure
 type Logger struct {
-	out       io.Writer
+	out       atomic.Value // stores outputHolder
 	level     Level
-	formatter Formatter
+	formatter atomic.Value // stores formatterHolder
 	mu        sync.Mutex
+}
+
+type outputHolder struct {
+	w io.Writer
+}
+
+type formatterHolder struct {
+	f Formatter
 }
 
 // Level returns the current logging level
@@ -88,32 +120,51 @@ func (l *Logger) Level() Level {
 }
 
 // SetOutput sets the output writer for the logger
+// Thread-safe via atomic.Value
+// SetOutput sets the output writer for the logger
+// Thread-safe via atomic.Value
 func (l *Logger) SetOutput(out io.Writer) {
-	l.mu.Lock()
-	l.out = out
-	l.mu.Unlock()
+	l.out.Store(&outputHolder{w: out})
 }
 
 // SetFormatter sets the formatter for the logger
+// Thread-safe via atomic.Value
 func (l *Logger) SetFormatter(f Formatter) {
-	l.mu.Lock()
-	l.formatter = f
-	l.mu.Unlock()
+	l.formatter.Store(&formatterHolder{f: f})
 }
 
 // Formatter interface for log formatting
 type Formatter interface {
-	Format(*Entry) ([]byte, error)
+	FormatInto(*Entry) error
 }
 
 // JSONFormatter formats logs as JSON
 type JSONFormatter struct{}
 
-func (f *JSONFormatter) Format(e *Entry) ([]byte, error) {
+func (f *JSONFormatter) FormatInto(e *Entry) error {
 	// Reconstruct map for JSON encoding
 	// We use the pooled tmpMap
-	for i, k := range e.keys {
-		e.tmpMap[k] = e.values[i]
+	for _, field := range e.fields {
+		var val interface{}
+		switch field.Type {
+		case LogTypeString:
+			val = field.StringVal
+		case LogTypeInt64:
+			val = field.Int64
+		case LogTypeUint64:
+			val = uint64(field.Int64)
+		case LogTypeFloat64:
+			val = math.Float64frombits(uint64(field.Int64))
+		case LogTypeBool:
+			val = field.Int64 == 1
+		case LogTypeError, LogTypeAny:
+			val = field.Interface
+		case LogTypeDuration:
+			val = field.Interface // or time.Duration(field.Int64).String()
+		default:
+			val = field.Interface
+		}
+		e.tmpMap[field.Key] = val
 	}
 
 	e.tmpMap[LevelKey] = e.level.String()
@@ -121,10 +172,7 @@ func (f *JSONFormatter) Format(e *Entry) ([]byte, error) {
 	e.tmpMap[TimeKey] = e.time.Format(time.RFC3339)
 
 	// Encode directly to the Entry's buffer
-	if err := json.NewEncoder(e.buffer).Encode(e.tmpMap); err != nil {
-		return nil, err
-	}
-	return e.buffer.Bytes(), nil
+	return json.NewEncoder(e.buffer).Encode(e.tmpMap)
 }
 
 // const (
@@ -166,14 +214,17 @@ type TextFormatter struct {
 	DisableColors bool
 }
 
-func (f *TextFormatter) Format(e *Entry) ([]byte, error) {
+func (f *TextFormatter) FormatInto(e *Entry) error {
 	b := e.buffer
 
-	// Write colored timestamp
+	// Write colored timestamp (avoid allocation if possible, but Format does alloc)
 	if !f.DisableColors {
 		b.WriteString(colorTimestamp)
 	}
-	b.WriteString(e.time.Format(time.RFC3339))
+	// Use AppendFormat to avoid string allocation
+	e.scratch = e.time.AppendFormat(e.scratch[:0], time.RFC3339)
+	b.Write(e.scratch)
+
 	if !f.DisableColors {
 		b.WriteString(colorReset)
 	}
@@ -191,37 +242,103 @@ func (f *TextFormatter) Format(e *Entry) ([]byte, error) {
 	b.WriteByte(' ')
 	b.WriteByte(' ')
 
-	if e.message[len(e.message)-1] == '\n' {
-		b.WriteString(e.message[:len(e.message)-1])
+	// Safe trim of newline
+	if n := len(e.message); n > 0 && e.message[n-1] == '\n' {
+		b.WriteString(e.message[:n-1])
 	} else {
 		b.WriteString(e.message)
 	}
 
-	b.WriteByte(' ')
-
-	for i, k := range e.keys {
-		// Filter out reserved keys if they happen to be in user fields
-		if k == "level" || k == "msg" || k == "time" {
-			continue
-		}
+	// Loop fields
+	if len(e.fields) > 0 {
 		b.WriteByte(' ')
+	}
+
+	for i, field := range e.fields {
+		if i > 0 {
+			b.WriteByte(' ')
+		}
 
 		// Color the field key with the same color as the level
 		if !f.DisableColors {
 			b.WriteString(f.getLevelColor(e.level))
 		}
 
-		b.WriteString(k)
+		b.WriteString(field.Key)
 		b.WriteByte('=')
 		if !f.DisableColors {
 			b.WriteString(colorReset)
 		}
 
-		// Write the value (uncolored)
-		fmt.Fprint(b, e.values[i])
+		// Write the value (optimized)
+		e.appendField(b, field)
 	}
 
-	return b.Bytes(), nil
+	// Ensure newline at the end
+	b.WriteByte('\n')
+
+	return nil
+}
+
+func (e *Entry) appendField(b *bytes.Buffer, field Field) {
+	switch field.Type {
+	case LogTypeString:
+		b.WriteString(field.StringVal)
+	case LogTypeInt64:
+		e.scratch = strconv.AppendInt(e.scratch[:0], field.Int64, 10)
+		b.Write(e.scratch)
+	case LogTypeUint64:
+		e.scratch = strconv.AppendUint(e.scratch[:0], uint64(field.Int64), 10)
+		b.Write(e.scratch)
+	case LogTypeBool:
+		e.scratch = strconv.AppendBool(e.scratch[:0], field.Int64 == 1)
+		b.Write(e.scratch)
+	case LogTypeFloat64:
+		e.scratch = strconv.AppendFloat(e.scratch[:0], math.Float64frombits(uint64(field.Int64)), 'f', -1, 64)
+		b.Write(e.scratch)
+	case LogTypeError:
+		if err, ok := field.Interface.(error); ok {
+			b.WriteString(err.Error())
+		} else {
+			b.WriteString("nil")
+		}
+	case LogTypeAny:
+		e.appendValue(b, field.Interface)
+	default:
+		e.appendValue(b, field.Interface)
+	}
+}
+
+func (e *Entry) appendValue(b *bytes.Buffer, v interface{}) {
+	switch x := v.(type) {
+	case string:
+		b.WriteString(x)
+	case []byte:
+		b.Write(x)
+	case int:
+		e.scratch = strconv.AppendInt(e.scratch[:0], int64(x), 10)
+		b.Write(e.scratch)
+	case int64:
+		e.scratch = strconv.AppendInt(e.scratch[:0], x, 10)
+		b.Write(e.scratch)
+	case uint64:
+		e.scratch = strconv.AppendUint(e.scratch[:0], x, 10)
+		b.Write(e.scratch)
+	case float64:
+		e.scratch = strconv.AppendFloat(e.scratch[:0], x, 'f', -1, 64)
+		b.Write(e.scratch)
+	case bool:
+		e.scratch = strconv.AppendBool(e.scratch[:0], x)
+		b.Write(e.scratch)
+	case error:
+		b.WriteString(x.Error())
+	case time.Duration:
+		e.scratch = strconv.AppendInt(e.scratch[:0], int64(x), 10)
+		b.Write(e.scratch)
+		b.WriteString("ns") // Approximate for now, or use x.String() if alloc is acceptable
+	default:
+		fmt.Fprint(b, x)
+	}
 }
 
 // getLevelColor returns the ANSI color code for the given log level
@@ -256,11 +373,12 @@ func NewLogger() *Logger {
 		formatter = &TextFormatter{}
 	}
 
-	return &Logger{
-		out:       os.Stderr,
-		level:     level,
-		formatter: formatter,
+	l := &Logger{
+		level: level,
 	}
+	l.out.Store(&outputHolder{w: os.Stderr})
+	l.formatter.Store(&formatterHolder{f: formatter})
+	return l
 }
 
 func ParseLevel(lvl string) Level {
@@ -291,17 +409,28 @@ func ParseLevel(lvl string) Level {
 type Entry struct {
 	logger *Logger
 
-	keys   []string
-	values []interface{}
+	fields []Field
 
 	// tmpMap is a reused map for formatting (JSON), not for storage.
 	tmpMap Fields
 
-	time    time.Time
-	level   Level
+	// scratch is a reused byte buffer for zero-allocation formatting
+	scratch []byte
+
+	// time is the timestamp of the entry
+	time time.Time
+
+	// level is the log level of the entry
+	level Level
+
+	// message is the log message
 	message string
 
+	// buffer is the byte buffer for the formatted log entry
 	buffer *bytes.Buffer
+
+	// retain indicates if the entry should be cloned before logging (to preserve original)
+	retain bool
 }
 
 // Level returns the entry's log level.
@@ -319,9 +448,29 @@ func (e *Entry) Time() time.Time { return e.time }
 // Fields returns a copy of the fields in the entry.
 // This allocates a new map, so use sparingly.
 func (e *Entry) Fields() Fields {
-	f := make(Fields, len(e.keys))
-	for i, k := range e.keys {
-		f[k] = e.values[i]
+	f := make(Fields, len(e.fields))
+	for _, field := range e.fields {
+		// Reconstruct value based on type
+		var val interface{}
+		switch field.Type {
+		case LogTypeString:
+			val = field.StringVal
+		case LogTypeInt64:
+			val = field.Int64
+		case LogTypeUint64:
+			val = uint64(field.Int64)
+		case LogTypeFloat64:
+			val = math.Float64frombits(uint64(field.Int64))
+		case LogTypeBool:
+			val = field.Int64 == 1
+		case LogTypeError, LogTypeAny:
+			val = field.Interface
+		case LogTypeDuration:
+			val = field.Interface
+		default:
+			val = field.Interface
+		}
+		f[field.Key] = val
 	}
 	return f
 }
@@ -333,13 +482,21 @@ func (l *Logger) newEntry() *Entry {
 	entry.buffer = bufferPool.Get().(*bytes.Buffer)
 	entry.buffer.Reset()
 
-	// Reset slices (keep capacity)
-	entry.keys = entry.keys[:0]
-	entry.values = entry.values[:0]
+	// Reset slices (keep capacity) but clear references to avoid GC leaks
+	for i := range entry.fields {
+		entry.fields[i].Interface = nil
+		entry.fields[i].StringVal = ""
+	}
+	entry.fields = entry.fields[:0]
+	entry.retain = false
 
-	// Reset tmpMap
-	for k := range entry.tmpMap {
-		delete(entry.tmpMap, k)
+	// Reset tmpMap optimization (avoid O(n) delete for large maps)
+	if len(entry.tmpMap) > 64 {
+		entry.tmpMap = make(Fields, 16)
+	} else {
+		for k := range entry.tmpMap {
+			delete(entry.tmpMap, k)
+		}
 	}
 
 	return entry
@@ -347,9 +504,21 @@ func (l *Logger) newEntry() *Entry {
 
 func (e *Entry) Release() {
 	e.logger = nil
-	e.buffer.Reset()
-	bufferPool.Put(e.buffer)
-	e.buffer = nil
+
+	// Pool hygiene: Don't put huge buffers back
+	if e.buffer.Cap() > 64*1024 { // 64KB
+		e.buffer = nil // Let GC take it, next newEntry will alloc new small buffer
+	} else {
+		e.buffer.Reset()
+		bufferPool.Put(e.buffer)
+		e.buffer = nil
+	}
+
+	// Pool hygiene: Don't put huge scratch buffers back
+	if cap(e.scratch) > 4096 {
+		e.scratch = nil
+	}
+
 	entryPool.Put(e)
 }
 
@@ -382,20 +551,24 @@ func (l *Logger) Logf(level Level, format string, args ...interface{}) {
 }
 
 func (l *Logger) writeEntry(e *Entry) {
-	defer e.Release()
+	// Load atomic configuration (thread-safe, lock-free read)
+	formatter := l.formatter.Load().(*formatterHolder).f
+	out := l.out.Load().(*outputHolder).w
 
-	// Format
-	b, err := l.formatter.Format(e)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to format log: %v\n", err)
+	// Format into e.buffer
+	if err := formatter.FormatInto(e); err != nil {
+		l.mu.Lock()
+		fmt.Fprintf(out, "Failed to format log: %v\n", err)
+		l.mu.Unlock()
+		e.Release()
 		return
 	}
 
-	// Write (using mutex only for writer)
 	l.mu.Lock()
-	l.out.Write(b)
-	l.out.Write([]byte{'\n'})
+	out.Write(e.buffer.Bytes())
 	l.mu.Unlock()
+
+	e.Release()
 }
 
 // Helper methods on Logger
@@ -447,15 +620,31 @@ func (l *Logger) Debug(args ...interface{}) { l.Log(LogLevelDebug, args...) }
 // Debugf logs a formatted message at Debug level.
 func (l *Logger) Debugf(format string, args ...interface{}) { l.Logf(LogLevelDebug, format, args...) }
 
+// Opt returns a new Entry for zero-allocation, mutable chaining.
+//
+// Usage:
+//
+//	logger.Opt().
+//		Str("key", "val").
+//		Int("count", 1).
+//		Info("message")
+//
+// Unlike WithField, this modifies the Entry in-place.
+func (l *Logger) Opt() *Entry {
+	return l.newEntry()
+}
+
 // Entry helpers for chaining
 
 // WithFields creates a new Entry with the given fields.
 // This is the primary way to add structured context to logs.
+// WithFields creates a new Entry with the given fields.
+// This is the primary way to add structured context to logs.
 func (l *Logger) WithFields(fields Fields) *Entry {
 	entry := l.newEntry()
+	entry.retain = true
 	for k, v := range fields {
-		entry.keys = append(entry.keys, k)
-		entry.values = append(entry.values, v)
+		entry.fields = append(entry.fields, Field{Key: k, Type: LogTypeAny, Interface: v})
 	}
 	return entry
 }
@@ -464,15 +653,18 @@ func (l *Logger) WithFields(fields Fields) *Entry {
 // This is more efficient than WithFields for a single field.
 func (l *Logger) WithField(key string, value interface{}) *Entry {
 	entry := l.newEntry()
-	entry.keys = append(entry.keys, key)
-	entry.values = append(entry.values, value)
+	entry.retain = true
+	entry.fields = append(entry.fields, Field{Key: key, Type: LogTypeAny, Interface: value})
 	return entry
 }
 
 // WithError creates a new Entry with an error field.
 // This is a convenience method equivalent to WithField("error", err).
 func (l *Logger) WithError(err error) *Entry {
-	return l.WithField("error", err)
+	entry := l.newEntry()
+	entry.retain = true
+	entry.fields = append(entry.fields, Field{Key: "error", Type: LogTypeError, Interface: err})
+	return entry
 }
 
 // WithContext returns a new Entry for context-aware logging.
@@ -480,7 +672,10 @@ func (l *Logger) WithError(err error) *Entry {
 // (like trace IDs, request IDs) using WithField if you want to log them.
 // This method exists for Logrus compatibility.
 func (l *Logger) WithContext(ctx context.Context) *Entry {
-	return l.newEntry()
+	// golly.Context integration could go here
+	entry := l.newEntry()
+	entry.retain = true
+	return entry
 }
 
 func (l *Logger) Trace(args ...interface{})                 { l.Log(LogLevelTrace, args...) }
@@ -507,9 +702,8 @@ func (l *Logger) Panicf(format string, args ...interface{}) {
 // Entry methods to log final message
 func (e *Entry) clone() *Entry {
 	ne := e.logger.newEntry()
-	// Copy slices (efficient memory copy)
-	ne.keys = append(ne.keys, e.keys...)
-	ne.values = append(ne.values, e.values...)
+	// Copy fields (efficient memory copy)
+	ne.fields = append(ne.fields, e.fields...)
 	return ne
 }
 
@@ -526,220 +720,223 @@ func (e *Entry) setMessage(args []interface{}) {
 	e.message = fmt.Sprint(args...)
 }
 
-// Info logs the entry at Info level.
-func (e *Entry) Info(args ...interface{}) {
-	if atomic.LoadInt32((*int32)(&e.logger.level)) > int32(LogLevelInfo) {
+// finalize logs the entry with the given level and message.
+// It handles cloning if retain is true.
+func (e *Entry) finalize(level Level, args ...interface{}) {
+	if atomic.LoadInt32((*int32)(&e.logger.level)) > int32(level) {
 		return
 	}
-	entry := e.clone()
-	entry.level = LogLevelInfo
+	var entry *Entry
+	if e.retain {
+		entry = e.clone()
+	} else {
+		entry = e
+	}
+	entry.level = level
 	entry.setMessage(args)
 	e.logger.writeEntry(entry)
 }
 
-// Infof logs the entry at Info level with formatting.
-func (e *Entry) Infof(format string, args ...interface{}) {
-	if atomic.LoadInt32((*int32)(&e.logger.level)) > int32(LogLevelInfo) {
+// finalizef logs the entry with the given level and formatted message.
+// It handles cloning if retain is true.
+func (e *Entry) finalizef(level Level, format string, args ...interface{}) {
+	if atomic.LoadInt32((*int32)(&e.logger.level)) > int32(level) {
 		return
 	}
-	entry := e.clone()
-	entry.level = LogLevelInfo
-	entry.setMessage(args)
-
+	var entry *Entry
+	if e.retain {
+		entry = e.clone()
+	} else {
+		entry = e
+	}
+	entry.level = level
+	entry.setMessagef(format, args...)
 	e.logger.writeEntry(entry)
 }
 
-// Print logs the entry at Info level (alias for compatibility).
-func (e *Entry) Print(args ...interface{}) {
-	if atomic.LoadInt32((*int32)(&e.logger.level)) > int32(LogLevelInfo) {
-		return
+// setMessagef sets the message with formatting
+func (e *Entry) setMessagef(format string, args ...interface{}) {
+	if len(args) > 0 {
+		e.message = fmt.Sprintf(format, args...)
+	} else {
+		e.message = format
 	}
-	entry := e.clone()
-	entry.level = LogLevelInfo
-	entry.setMessage(args)
-	e.logger.writeEntry(entry)
 }
 
-// Printf logs the entry at Info level with formatting (alias for compatibility).
-func (e *Entry) Printf(format string, args ...interface{}) {
-	if atomic.LoadInt32((*int32)(&e.logger.level)) > int32(LogLevelInfo) {
-		return
-	}
-	entry := e.clone()
-	entry.level = LogLevelInfo
-	entry.message = fmt.Sprintf(format, args...)
-	e.logger.writeEntry(entry)
-}
-
-// Println logs the entry at Info level (alias for compatibility).
-func (e *Entry) Println(args ...interface{}) {
-	if atomic.LoadInt32((*int32)(&e.logger.level)) > int32(LogLevelInfo) {
-		return
-	}
-	entry := e.clone()
-	entry.level = LogLevelInfo
-	entry.setMessage(args)
-	e.logger.writeEntry(entry)
-}
-
-// Error logs the entry at Error level.
-func (e *Entry) Error(args ...interface{}) {
-	if atomic.LoadInt32((*int32)(&e.logger.level)) > int32(LogLevelError) {
-		return
-	}
-	entry := e.clone()
-	entry.level = LogLevelError
-	entry.setMessage(args)
-	e.logger.writeEntry(entry)
-}
-
-// Errorf logs the entry at Error level with formatting.
-func (e *Entry) Errorf(format string, args ...interface{}) {
-	if atomic.LoadInt32((*int32)(&e.logger.level)) > int32(LogLevelError) {
-		return
-	}
-	entry := e.clone()
-	entry.level = LogLevelError
-	entry.setMessage(args)
-	e.logger.writeEntry(entry)
+// Log logs the entry at the specified level.
+func (e *Entry) Log(level Level, args ...interface{}) {
+	e.finalize(level, args...)
 }
 
 // Debug logs the entry at Debug level.
 func (e *Entry) Debug(args ...interface{}) {
-	if atomic.LoadInt32((*int32)(&e.logger.level)) > int32(LogLevelDebug) {
-		return
-	}
-	entry := e.clone()
-	entry.level = LogLevelDebug
-	entry.setMessage(args)
-	e.logger.writeEntry(entry)
+	e.finalize(LogLevelDebug, args...)
 }
 
 // Debugf logs the entry at Debug level with formatting.
 func (e *Entry) Debugf(format string, args ...interface{}) {
-	if atomic.LoadInt32((*int32)(&e.logger.level)) > int32(LogLevelDebug) {
-		return
-	}
-	entry := e.clone()
-	entry.level = LogLevelDebug
-	entry.setMessage(args)
-	e.logger.writeEntry(entry)
+	e.finalizef(LogLevelDebug, format, args...)
+}
+
+// Info logs the entry at Info level.
+func (e *Entry) Info(args ...interface{}) {
+	e.finalize(LogLevelInfo, args...)
+}
+
+// Infof logs the entry at Info level with formatting.
+func (e *Entry) Infof(format string, args ...interface{}) {
+	e.finalizef(LogLevelInfo, format, args...)
 }
 
 // Trace logs the entry at Trace level.
 func (e *Entry) Trace(args ...interface{}) {
-	if atomic.LoadInt32((*int32)(&e.logger.level)) > int32(LogLevelTrace) {
-		return
-	}
-	entry := e.clone()
-	entry.level = LogLevelTrace
-	entry.setMessage(args)
-	e.logger.writeEntry(entry)
+	e.finalize(LogLevelTrace, args...)
 }
 
 // Tracef logs the entry at Trace level with formatting.
 func (e *Entry) Tracef(format string, args ...interface{}) {
-	if atomic.LoadInt32((*int32)(&e.logger.level)) > int32(LogLevelTrace) {
-		return
-	}
-	entry := e.clone()
-	entry.level = LogLevelTrace
-	entry.setMessage(args)
-	e.logger.writeEntry(entry)
+	e.finalizef(LogLevelTrace, format, args...)
 }
 
 // Warn logs the entry at Warn level.
 func (e *Entry) Warn(args ...interface{}) {
-	if atomic.LoadInt32((*int32)(&e.logger.level)) > int32(LogLevelWarn) {
-		return
-	}
-	entry := e.clone()
-	entry.level = LogLevelWarn
-	entry.setMessage(args)
-	e.logger.writeEntry(entry)
+	e.finalize(LogLevelWarn, args...)
 }
 
 // Warnf logs the entry at Warn level with formatting.
 func (e *Entry) Warnf(format string, args ...interface{}) {
-	if atomic.LoadInt32((*int32)(&e.logger.level)) > int32(LogLevelWarn) {
-		return
-	}
-	entry := e.clone()
-	entry.level = LogLevelWarn
-	entry.setMessage(args)
-	e.logger.writeEntry(entry)
+	e.finalizef(LogLevelWarn, format, args...)
+}
+
+// Error logs the entry at Error level.
+func (e *Entry) Error(args ...interface{}) {
+	e.finalize(LogLevelError, args...)
+}
+
+// Errorf logs the entry at Error level with formatting.
+func (e *Entry) Errorf(format string, args ...interface{}) {
+	e.finalizef(LogLevelError, format, args...)
 }
 
 // Fatal logs the entry at Fatal level and exits the program with os.Exit(1).
 func (e *Entry) Fatal(args ...interface{}) {
-	if atomic.LoadInt32((*int32)(&e.logger.level)) > int32(LogLevelFatal) {
-		return
-	}
-	entry := e.clone()
-	entry.level = LogLevelFatal
-	entry.setMessage(args)
-	e.logger.writeEntry(entry)
+	e.finalize(LogLevelFatal, args...)
 	os.Exit(1)
 }
 
-// Fatalf logs the entry at Fatal level with formatting and exits the program with os.Exit(1).
+// Fatalf logs the entry at Fatal level with formatting and exits.
 func (e *Entry) Fatalf(format string, args ...interface{}) {
-	if atomic.LoadInt32((*int32)(&e.logger.level)) > int32(LogLevelFatal) {
-		return
-	}
-	entry := e.clone()
-	entry.level = LogLevelFatal
-	entry.setMessage(args)
-	e.logger.writeEntry(entry)
+	e.finalizef(LogLevelFatal, format, args...)
 	os.Exit(1)
 }
 
 // Panic logs the entry at Panic level and panics.
 func (e *Entry) Panic(args ...interface{}) {
-	if atomic.LoadInt32((*int32)(&e.logger.level)) > int32(LogLevelPanic) {
-		return
-	}
-	entry := e.clone()
-	entry.level = LogLevelPanic
-	entry.setMessage(args)
-	e.logger.writeEntry(entry)
-	panic(entry.message)
+	e.finalize(LogLevelPanic, args...)
+	panic(e.message)
 }
 
 // Panicf logs the entry at Panic level with formatting and panics.
 func (e *Entry) Panicf(format string, args ...interface{}) {
-	if atomic.LoadInt32((*int32)(&e.logger.level)) > int32(LogLevelPanic) {
-		return
-	}
-	entry := e.clone()
-	entry.level = LogLevelPanic
-	entry.setMessage(args)
-	e.logger.writeEntry(entry)
-	panic(entry.message)
+	e.finalizef(LogLevelPanic, format, args...)
+	panic(e.message)
 }
 
 // WithFields adds multiple key-value pairs to the entry and returns a new Entry.
+// If a key already exists, its value is replaced.
 func (e *Entry) WithFields(fields Fields) *Entry {
-	entry := e.clone()
+	ne := e.clone()
+	ne.retain = true
 	for k, v := range fields {
-		entry.keys = append(entry.keys, k)
-		entry.values = append(entry.values, v)
+		ne.addField(k, v)
 	}
-	return entry
+	return ne
+}
+
+func (e *Entry) addField(key string, value any) {
+	// Create typed field
+	var f Field
+	f.Key = key
+
+	switch v := value.(type) {
+	case string:
+		f.Type = LogTypeString
+		f.StringVal = v
+	case int:
+		f.Type = LogTypeInt64
+		f.Int64 = int64(v)
+	case int64:
+		f.Type = LogTypeInt64
+		f.Int64 = v
+	case uint64:
+		f.Type = LogTypeUint64
+		f.Int64 = int64(v) // Store as int64 bits if needed, or separate field
+	case bool:
+		f.Type = LogTypeBool
+		if v {
+			f.Int64 = 1
+		}
+	case float64:
+		f.Type = LogTypeFloat64
+		f.Int64 = int64(math.Float64bits(v))
+	case error:
+		f.Type = LogTypeError
+		f.Interface = v
+	default:
+		f.Type = LogTypeAny
+		f.Interface = v
+	}
+
+	n := len(e.fields)
+	// Check last field (fast path for append-like patterns)
+	if n > 0 && e.fields[n-1].Key == key {
+		e.fields[n-1] = f
+		return
+	}
+
+	// Scan for existing key to deduplicate
+	for i, j := 0, n-1; i <= j; i, j = i+1, j-1 {
+		if e.fields[i].Key == key {
+			e.fields[i] = f
+			return
+		}
+		if i != j && e.fields[j].Key == key {
+			e.fields[j] = f
+			return
+		}
+	}
+
+	e.fields = append(e.fields, f)
+}
+
+func (e *Entry) debugGuard() {
+	if e.logger == nil {
+		panic("golly: Entry used after Release() (or not initialized)")
+	}
 }
 
 // WithField adds a single key-value pair to the entry and returns a new Entry.
+// If the key already exists, its value is replaced.
 func (e *Entry) WithField(key string, value interface{}) *Entry {
-	entry := e.clone()
-	entry.keys = append(entry.keys, key)
-	entry.values = append(entry.values, value)
-	return entry
+	ne := e.clone()
+	ne.retain = true
+	ne.addField(key, value)
+	return ne
 }
 
 // WithError adds an error field to the entry and returns a new Entry.
 // This is a convenience method equivalent to WithField("error", err).
 func (e *Entry) WithError(err error) *Entry {
-	return e.WithField("error", err)
+	ne := e.clone()
+	ne.retain = true
+	ne.addField("error", err) // We use addField to handle typed/untyped logic
+	// Optimization: explicitly use typed field logic here if we exposed it or use addField which uses LogTypeAny
+	// For Entry.WithError (immutable), we can just use addField logic which is generic.
+	// Or better:
+	// We skip dedup for speed or implement dedup manually? addField handles dedup.
+	// Let's stick to addField for simplicity as this is less perf critical than Opt().
+	// Actually, let's just call WithField logic.
+	return ne
 }
 
 // WithContext returns a new Entry for context-aware logging.
@@ -773,6 +970,85 @@ func Warnf(format string, args ...interface{})  { defaultLogger.Logf(LogLevelWar
 func LogError(args ...interface{})              { defaultLogger.Log(LogLevelError, args...) }
 func LogErrorf(format string, args ...interface{}) {
 	defaultLogger.Logf(LogLevelError, format, args...)
+}
+
+// Set adds a key-value pair to the entry, mutating it in place.
+// Returns the Entry for chaining. Use this with Opt() for high performance.
+func (e *Entry) Set(key string, value interface{}) *Entry {
+	e.debugGuard()
+	e.addField(key, value)
+	return e
+}
+
+// Str adds a string field, mutating the entry.
+func (e *Entry) Str(key, value string) *Entry {
+	e.debugGuard()
+	if n := len(e.fields); n > 0 && e.fields[n-1].Key == key {
+		e.fields[n-1] = Field{Key: key, Type: LogTypeString, StringVal: value}
+		return e
+	}
+	e.fields = append(e.fields, Field{Key: key, Type: LogTypeString, StringVal: value})
+	return e
+}
+
+// Int adds an int field, mutating the entry.
+func (e *Entry) Int(key string, value int) *Entry {
+	e.debugGuard()
+	if n := len(e.fields); n > 0 && e.fields[n-1].Key == key {
+		e.fields[n-1] = Field{Key: key, Type: LogTypeInt64, Int64: int64(value)}
+		return e
+	}
+	e.fields = append(e.fields, Field{Key: key, Type: LogTypeInt64, Int64: int64(value)})
+	return e
+}
+
+// Int64 adds an int64 field, mutating the entry.
+func (e *Entry) Int64(key string, value int64) *Entry {
+	e.debugGuard()
+	if n := len(e.fields); n > 0 && e.fields[n-1].Key == key {
+		e.fields[n-1] = Field{Key: key, Type: LogTypeInt64, Int64: value}
+		return e
+	}
+	e.fields = append(e.fields, Field{Key: key, Type: LogTypeInt64, Int64: value})
+	return e
+}
+
+// Float64 adds a float64 field, mutating the entry.
+func (e *Entry) Float64(key string, value float64) *Entry {
+	e.debugGuard()
+	bits := int64(math.Float64bits(value))
+	if n := len(e.fields); n > 0 && e.fields[n-1].Key == key {
+		e.fields[n-1] = Field{Key: key, Type: LogTypeFloat64, Int64: bits}
+		return e
+	}
+	e.fields = append(e.fields, Field{Key: key, Type: LogTypeFloat64, Int64: bits})
+	return e
+}
+
+// Bool adds a bool field, mutating the entry.
+func (e *Entry) Bool(key string, value bool) *Entry {
+	e.debugGuard()
+	var v int64
+	if value {
+		v = 1
+	}
+	if n := len(e.fields); n > 0 && e.fields[n-1].Key == key {
+		e.fields[n-1] = Field{Key: key, Type: LogTypeBool, Int64: v}
+		return e
+	}
+	e.fields = append(e.fields, Field{Key: key, Type: LogTypeBool, Int64: v})
+	return e
+}
+
+// Err adds an error field, mutating the entry.
+func (e *Entry) Err(err error) *Entry {
+	e.debugGuard()
+	if n := len(e.fields); n > 0 && e.fields[n-1].Key == "error" {
+		e.fields[n-1] = Field{Key: "error", Type: LogTypeError, Interface: err}
+		return e
+	}
+	e.fields = append(e.fields, Field{Key: "error", Type: LogTypeError, Interface: err})
+	return e
 }
 
 func Fatal(args ...interface{}) {

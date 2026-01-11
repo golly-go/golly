@@ -2,6 +2,8 @@ package golly
 
 import (
 	"context"
+	"net/http"
+	"net/url"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -73,9 +75,9 @@ func TestGetPlugin(t *testing.T) {
 		gctx := NewContext(context.Background())
 		gctx.application = app
 
-		wctx := &WebContext{
-			Context: gctx,
-		}
+		req := &http.Request{URL: &url.URL{Path: "/"}}
+		wctx := NewTestWebContext(req, nil)
+		wctx.ctx = gctx // Inject the app-aware context
 
 		result := GetPlugin[*testPlugin](wctx, "test-plugin")
 		assert.NotNil(t, result)

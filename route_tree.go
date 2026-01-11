@@ -2,54 +2,53 @@ package golly
 
 import (
 	"fmt"
-	"maps"
+	"math/bits"
 	"net/http"
 	"sort"
 	"strings"
 )
 
-// RouteVars holds route path variables using zero-alloc SoA with byte slices.
+// RouteVars holds route path variables using zero-alloc SoA with string views.
 // Uses fixed-size stack buffer for common case (≤8 vars), with heap overflow for rare deep routes.
 type RouteVars struct {
-	keys      [8][]byte // Stack-allocated slice headers
-	values    [8][]byte // Stack-allocated slice headers
-	kOverflow [][]byte  // Heap overflow (rare)
-	vOverflow [][]byte  // Heap overflow (rare)
+	keys      [8]string // Stack-allocated
+	values    [8]string // Stack-allocated
+	kOverflow []string  // Heap overflow (rare)
+	vOverflow []string  // Heap overflow (rare)
 	count     int
 }
 
 // Get returns the value for the given key, or empty string if not found.
-// Only allocates string on successful lookup (materializes from []byte).
+// Fully zero-alloc using string views and ASCIICompair.
 func (rv *RouteVars) Get(key string) string {
 	if rv == nil {
 		return ""
 	}
-
-	keyBytes := []byte(key)
 
 	// Fast path: check fixed buffer
 	n := rv.count
 	if n > 8 {
 		n = 8
 	}
+
 	for i := 0; i < n; i++ {
-		if bytesEqual(rv.keys[i], keyBytes) {
-			return unsafeString(rv.values[i])
+		if ASCIICompair(rv.keys[i], key) {
+			return rv.values[i]
 		}
 	}
 
 	// Slow path: check overflow (rare)
 	for i := 0; i < len(rv.kOverflow); i++ {
-		if bytesEqual(rv.kOverflow[i], keyBytes) {
-			return unsafeString(rv.vOverflow[i])
+		if ASCIICompair(rv.kOverflow[i], key) {
+			return rv.vOverflow[i]
 		}
 	}
 
 	return ""
 }
 
-// set adds a key-value pair (internal, uses []byte).
-func (rv *RouteVars) set(key, value []byte) {
+// set adds a key-value pair (internal, uses string views).
+func (rv *RouteVars) set(key, value string) {
 	if rv.count < 8 {
 		// Fast path: use stack buffer (zero alloc)
 		rv.keys[rv.count] = key
@@ -68,19 +67,6 @@ func (rv *RouteVars) Len() int {
 		return 0
 	}
 	return rv.count
-}
-
-// bytesEqual compares two byte slices for equality (inline candidate).
-func bytesEqual(a, b []byte) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
 }
 
 type methodType uint
@@ -118,13 +104,12 @@ var (
 	}
 )
 
-func routeVariables(re *Route, segments []string) *RouteVars {
+func fillRouteVariables(rv *RouteVars, re *Route, segments []string) {
 	if re == nil || len(segments) == 0 {
-		return nil
+		return
 	}
 
 	// First pass: check if there are ANY dynamic tokens
-	// This avoids allocation for routes with no variables
 	hasDynamic := false
 	p := re
 	for p != nil {
@@ -136,18 +121,17 @@ func routeVariables(re *Route, segments []string) *RouteVars {
 	}
 
 	if !hasDynamic {
-		return nil
+		return
 	}
 
-	// Second pass: extract variable values using zero-alloc RouteVars
-	ret := &RouteVars{}
+	// Second pass: extract variable values
 	p = re
 
 	// Walk backwards through the segments
 	for i := len(segments) - 1; i >= 0; i-- {
 		if p.token != nil && p.token.isDynamic {
-			// Use byte slices to avoid string allocation
-			ret.set([]byte(p.token.value), []byte(segments[i]))
+			// Zero-alloc: store string views directly
+			rv.set(p.token.value, segments[i])
 		}
 
 		if p.parent == nil {
@@ -156,7 +140,14 @@ func routeVariables(re *Route, segments []string) *RouteVars {
 
 		p = p.parent
 	}
+}
 
+func routeVariables(re *Route, segments []string) *RouteVars {
+	ret := &RouteVars{}
+	fillRouteVariables(ret, re, segments)
+	if ret.count == 0 {
+		return nil
+	}
 	return ret
 }
 
@@ -170,13 +161,18 @@ type MiddlewareFunc func(HandlerFunc) HandlerFunc
 type Route struct {
 	token *RouteToken
 
-	handlers map[methodType]HandlerFunc
-	chained  map[methodType]HandlerFunc
+	// Optimized dispatch: fixed arrays instead of maps.
+	// Index 0-9: STUB..TRACE
+	// Index 10: ALL
+	handlers [11]HandlerFunc
+	chained  [11]HandlerFunc
 
 	children   []*Route
 	middleware []MiddlewareFunc //TBD
 
 	allowed methodType
+
+	allowHeader string // Precomputed Allow header
 
 	// Keep these here for runtime performance so we do not need to chain
 	// while running (need to think about how to handle this long term)
@@ -186,8 +182,6 @@ type Route struct {
 	parent *Route
 	root   *Route
 }
-
-var routeRoot Route
 
 // FindChildByToken find a child given a route token
 func (re Route) FindChildByToken(token *RouteToken) *Route {
@@ -202,11 +196,17 @@ func (re Route) FindChildByToken(token *RouteToken) *Route {
 func (re Route) Allow() []string {
 	ret := []string{}
 
-	for name := range maps.Keys(methods) {
-		if re.IsAllowed(name) {
+	if re.allowed == 0 {
+		return ret
+	}
+
+	// Use stable ordering for cleanliness, though precomputed string is preferred now
+	for name, mt := range methods {
+		if re.allowed&mt != 0 {
 			ret = append(ret, name)
 		}
 	}
+	sort.Strings(ret)
 	return ret
 }
 
@@ -216,6 +216,13 @@ func (re Route) IsAllowed(method string) bool {
 		return re.allowed&mt != 0
 	}
 	return false
+}
+
+func methodIndex(m methodType) int {
+	if m == ALL {
+		return 10
+	}
+	return bits.TrailingZeros(uint(m))
 }
 
 func FindRouteBySegments(root *Route, segments []string) *Route {
@@ -283,8 +290,6 @@ func NewRouteRoot() *Route {
 
 func NewRoute(root *Route) *Route {
 	return &Route{
-		handlers:                map[methodType]HandlerFunc{},
-		chained:                 map[methodType]HandlerFunc{},
 		middleware:              []MiddlewareFunc{},
 		root:                    root,
 		methodNotAllowedHandler: notAllowedHandler,
@@ -296,15 +301,26 @@ func (re *Route) updateHandlers() {
 	// Resolve middleware once and apply to all handlers
 	middleware := re.resolveMiddleware()
 
-	for method, handler := range re.handlers {
-		if method == ALL {
-			for _, mType := range methods {
-				if _, exists := re.chained[mType]; !exists {
-					re.chained[mType] = chain(middleware, handler)
-				}
+	// Update chained handlers
+	for i := 0; i < 11; i++ {
+		h := re.handlers[i]
+		if h != nil {
+			re.chained[i] = chain(middleware, h)
+		}
+	}
+
+	// Propagate ALL handler to others if they are empty?
+	// The original logic was: "Propagate ALL handler to ALL methods if they are empty"
+	// "if method == ALL { for _, mType := range methods ... }"
+	if allH := re.handlers[10]; allH != nil {
+		chainedAll := chain(middleware, allH)
+		re.chained[10] = chainedAll
+
+		for _, mType := range methods {
+			idx := methodIndex(mType)
+			if re.chained[idx] == nil {
+				re.chained[idx] = chainedAll
 			}
-		} else {
-			re.chained[method] = chain(middleware, handler)
 		}
 	}
 
@@ -314,6 +330,9 @@ func (re *Route) updateHandlers() {
 
 	re.methodNotAllowedHandler = chain(middleware, notAllowedHandler)
 	re.noOp = chain(middleware, noOpHandler)
+
+	// Precompute Allow header
+	re.allowHeader = strings.Join(re.Allow(), ",")
 }
 
 func (re *Route) resolveMiddleware() []MiddlewareFunc {
@@ -372,8 +391,12 @@ func (re *Route) add(path string, handler HandlerFunc, httpMethods methodType) *
 
 		// Attach handler at the last token
 		if pos == len(tokens)-1 && handler != nil {
-			if r.handlers[ALL] == nil && r.handlers[httpMethods] == nil {
-				r.handlers[httpMethods] = handler
+			idx := methodIndex(httpMethods)
+			allIdx := 10
+
+			if r.handlers[allIdx] == nil && r.handlers[idx] == nil {
+				// Store in array
+				r.handlers[idx] = handler
 				r.allowed |= httpMethods
 				r.updateHandlers()
 			}
@@ -452,7 +475,10 @@ func RouteRequest(a *Application, r *http.Request, w http.ResponseWriter) {
 	// reID := makeRequestID(nil) // Handled internally now
 
 	// Create WebContext (handles request ID and Context creation internally)
-	wctx := NewWebContext(r.Context(), r, w)
+	wctx := a.wctxPool.Get().(*WebContext)
+	// Reset reuses the struct but allocates new Context/Channel
+	wctx.Reset(r.Context(), r, w)
+	defer a.wctxPool.Put(wctx)
 
 	// Route matching
 	re := FindRouteBySegments(a.routes, wctx.segments)
@@ -461,6 +487,8 @@ func RouteRequest(a *Application, r *http.Request, w http.ResponseWriter) {
 	}
 
 	wctx.route = re
+	fillRouteVariables(&wctx.vars, re, wctx.segments)
+	wctx.varsLoaded = true
 
 	if re.allowed == 0 {
 		goto notAllowed
@@ -472,14 +500,16 @@ func RouteRequest(a *Application, r *http.Request, w http.ResponseWriter) {
 		method = r.Method
 	}
 
-	if handler, ok := re.chained[methods[method]]; ok {
-		if method == r.Method {
-			handler(wctx)
+	if mt, ok := methods[method]; ok {
+		idx := methodIndex(mt)
+		if handler := re.chained[idx]; handler != nil {
+			if method == r.Method {
+				handler(wctx)
+				return
+			}
+			re.noOp(wctx)
 			return
 		}
-
-		re.noOp(wctx)
-		return
 	}
 
 	goto notAllowed
@@ -566,52 +596,9 @@ func buildPath(route *Route, prefix string) []string {
 	return ret
 }
 
-// func debugTree(route *Route, tabDepth int) []string {
-
-// 	ret := []string{}
-
-// 	var prefix = ""
-
-// 	// Handle root path explicitly by ensuring prefix starts at "/"
-// 	if route.token != nil {
-// 		if route.token.value == "/" {
-// 			prefix = "/"
-// 		} else {
-// 			if route.token.isDynamic {
-// 				pattern := ""
-// 				if m := route.token.matcher; m != "" {
-// 					pattern = ":" + m
-// 				}
-
-// 				prefix =
-// 					fmt.Sprintf(" {%s%s}\n", route.token.value, pattern)
-
-// 			} else {
-// 				prefix = route.token.value
-// 			}
-// 		}
-// 	} else if route.root == nil {
-// 		prefix = "[root]"
-// 	}
-
-// 	ret = append(ret, strings.Repeat("\t", tabDepth)+"d:"+strconv.Itoa(tabDepth)+" "+prefix)
-
-// 	// Recursively build paths for children
-// 	for _, child := range route.children {
-// 		ret = append(ret, debugTree(child, tabDepth+1)...)
-// 	}
-
-// 	return ret
-// }
-
-/*
-  root->child->grandchild->ggchild
-   ""   test      1         payments
-*/
-
 func noOpHandler(*WebContext)          {}
 func notFoundHandler(wctx *WebContext) { wctx.Response().WriteHeader(http.StatusNotFound) }
 func notAllowedHandler(wctx *WebContext) {
-	wctx.writer.Header().Set("Allow", strings.Join(wctx.route.Allow(), ","))
+	wctx.writer.Header().Set("Allow", wctx.route.allowHeader)
 	wctx.writer.WriteHeader(http.StatusMethodNotAllowed)
 }

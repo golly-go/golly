@@ -2,6 +2,7 @@ package golly
 
 import (
 	"context"
+	"slices"
 	"sync/atomic"
 	"time"
 	"unsafe"
@@ -21,6 +22,11 @@ type ContextFunc func(*Context)
 // for Logger() and Application(). Prevents infinite loops from circular references.
 const maxContextTreeWalk = 12
 
+// Without bruning the stack, or doing fancy
+// cycle detection right now that will take a some heavy
+// thought to make it optimzed just catch 1000 == we are busted
+const maxValueDepth = 1000
+
 // Context is a custom context.Context implementation with Golly-specific features.
 // It implements the standard context.Context interface while adding:
 //   - Application reference for accessing the Golly app instance
@@ -32,16 +38,18 @@ const maxContextTreeWalk = 12
 type Context struct {
 	application *Application
 
-	loader atomic.Value // Stores *Dataloader
-	logger atomic.Value // Stores *logrus.Entry
+	loader atomic.Pointer[DataLoader]
+	// logger removed (fields stored directly)
 
 	// context.Context implementation (stdlib pattern)
 	parent   context.Context
 	key      interface{} // Single key-value pair (creates new context per WithValue)
 	val      interface{}
 	deadline atomic.Value
-	done     chan struct{}
+	done     atomic.Value
 	err      atomic.Value
+
+	fields []Field // Logger fields accumulated in this context
 
 	children   unsafe.Pointer
 	isDetached bool // If true, cuts off cancellation propagation
@@ -52,40 +60,70 @@ type Context struct {
 // The returned logger is cached in the current context for future calls.
 //
 // Maximum tree walk depth is limited to maxContextTreeWalk to prevent infinite loops.
+// Logger returns the logger entry for this context.
+// It reconstructs the logger by collecting fields from the context chain.
 func (c *Context) Logger() *Entry {
-	// Fast path: Check for an existing logger in the current context
-	if logger, ok := c.logger.Load().(*Entry); ok && logger != nil {
-		return logger
-	}
+	// Collect fields from parent chain
+	fields := c.collectFields(nil)
 
-	// Walk up parent chain iteratively (stdlib pattern - prevents stack overflow)
-	var current context.Context = c
+	// Create new entry
+	e := defaultLogger.newEntry()
+	if len(fields) > 0 {
+		e.fields = append(e.fields, fields...)
+	}
+	return e
+}
+
+func (c *Context) collectFields(acc []Field) []Field {
+	var inf any = c
+
+	// Pass 1: count how many fields we’ll append (bounded walk)
+	needed := 0
 	for range maxContextTreeWalk {
-		if current == nil {
+		if inf == nil {
 			break
 		}
-		switch p := current.(type) {
-		case *Context:
-			if logger, ok := p.logger.Load().(*Entry); ok && logger != nil {
-				c.logger.Store(logger)
-				return logger
-			}
-			current = p.parent
-		case *WebContext:
-			if logger, ok := p.Context.logger.Load().(*Entry); ok && logger != nil {
-				c.logger.Store(logger)
-				return logger
-			}
-			current = p.Context.parent
-		default:
-			break
+
+		ctx, ok := inf.(*Context)
+		if !ok {
+			break // hit a stdlib context (or other), stop walking
 		}
+
+		needed += len(ctx.fields)
+		inf = ctx.parent
 	}
 
-	// No logger found, create default
-	logger := defaultLogger.newEntry()
-	c.logger.Store(logger)
-	return logger
+	if needed == 0 {
+		return acc
+	}
+
+	// Ensure capacity once (Go 1.21+)
+	if acc == nil {
+		acc = make([]Field, 0, needed+4) // small headroom is optional
+	} else {
+		acc = slices.Grow(acc, needed)
+	}
+
+	// Pass 2: append fields in the same order as the walk (leaf -> root)
+	inf = c
+	for range maxContextTreeWalk {
+		if inf == nil {
+			break
+		}
+
+		ctx, ok := inf.(*Context)
+		if !ok {
+			break
+		}
+
+		if len(ctx.fields) > 0 {
+			acc = append(acc, ctx.fields...)
+		}
+
+		inf = ctx.parent
+	}
+
+	return acc
 }
 
 // Cache returns the DataLoader (cache) for this context.
@@ -96,7 +134,7 @@ func (c *Context) Logger() *Entry {
 // This is because caches are typically request-scoped and don't chain deeply.
 func (c *Context) Cache() *DataLoader {
 	if loader := c.loader.Load(); loader != nil {
-		return loader.(*DataLoader)
+		return loader
 	}
 
 	// Only check immediate parent, then create (caches rarely chain deep)
@@ -104,11 +142,7 @@ func (c *Context) Cache() *DataLoader {
 	switch p := c.parent.(type) {
 	case *Context:
 		if l := p.loader.Load(); l != nil {
-			loader = l.(*DataLoader)
-		}
-	case *WebContext:
-		if l := p.Context.loader.Load(); l != nil {
-			loader = l.(*DataLoader)
+			loader = l
 		}
 	}
 
@@ -133,6 +167,7 @@ func (c *Context) Application() *Application {
 
 	// Walk up parent chain iteratively to find application
 	var current context.Context = c.parent
+walk:
 	for range maxContextTreeWalk {
 		if current == nil {
 			break
@@ -144,14 +179,8 @@ func (c *Context) Application() *Application {
 				return c.application
 			}
 			current = p.parent
-		case *WebContext:
-			if p.Context.application != nil {
-				c.application = p.Context.application
-				return c.application
-			}
-			current = p.Context.parent
 		default:
-			break
+			break walk
 		}
 	}
 
@@ -194,13 +223,29 @@ func (c *Context) Done() <-chan struct{} {
 	if c.isDetached {
 		return nil
 	}
-	if c.done != nil {
-		return c.done
+
+	// Fast path
+	if d := c.done.Load(); d != nil {
+		return d.(chan struct{})
 	}
+
 	if c.parent != nil {
-		return c.parent.Done()
+		switch p := c.parent.(type) {
+		case *Context:
+			if d, ok := p.done.Load().(chan struct{}); ok {
+				return d
+			}
+		}
 	}
-	return nil
+
+	// Slow path: try to init
+	newDone := make(chan struct{})
+	if c.done.CompareAndSwap(nil, newDone) {
+		return newDone
+	}
+
+	// Lost race, load winner
+	return c.done.Load().(chan struct{})
 }
 
 // Err returns the error that caused this context to be canceled.
@@ -232,10 +277,6 @@ func (c *Context) Err() error {
 // Returns nil if the key is not found or if max depth is reached.
 func (c *Context) Value(key interface{}) interface{} {
 	var inf context.Context = c
-	// Without bruning the stack, or doing fancy
-	// cycle detection right now that will take a some heavy
-	// thought to make it optimzed just catch 1000 == we are busted
-	const maxValueDepth = 1000
 
 	for range maxValueDepth {
 		if inf == nil {
@@ -248,11 +289,6 @@ func (c *Context) Value(key interface{}) interface{} {
 				return ctx.val
 			}
 			inf = ctx.parent
-		case *WebContext:
-			if ctx.key == key {
-				return ctx.val
-			}
-			inf = ctx.parent
 		default:
 			return inf.Value(key)
 		}
@@ -261,14 +297,29 @@ func (c *Context) Value(key interface{}) interface{} {
 }
 
 func (c *Context) cancel(err error) {
-	if c.done == nil {
-		return // Not a cancellable context
+	// Ensure done channel exists so we can close it
+	d := c.done.Load()
+	if d == nil {
+		newDone := make(chan struct{})
+		if c.done.CompareAndSwap(nil, newDone) {
+			d = newDone
+		} else {
+			d = c.done.Load()
+		}
 	}
+
+	ch := d.(chan struct{})
+	select {
+	case <-ch:
+		return // already closed
+	default:
+	}
+
 	if !c.err.CompareAndSwap(nil, err) {
 		return
 	}
 
-	close(c.done)
+	close(ch)
 
 	if p, ok := c.parent.(*Context); ok {
 		p.removeChild(c)
@@ -367,14 +418,9 @@ func NewContext(parent context.Context) *Context {
 		parent = context.TODO()
 	}
 
-	// Unroll WebContext to prevent cycles
-	if wc, ok := parent.(*WebContext); ok {
-		parent = wc.Context
-	}
-
 	ctx := &Context{
 		parent: parent,
-		done:   make(chan struct{}),
+		// done is lazy
 	}
 
 	// Inherit application
@@ -388,8 +434,6 @@ func NewContext(parent context.Context) *Context {
 	if parent.Done() != nil {
 		switch parent.(type) {
 		case *Context:
-			// do nothing
-		case *WebContext:
 			// do nothing
 		default:
 			context.AfterFunc(parent, func() {
@@ -411,8 +455,6 @@ func ToGollyContext(ctx context.Context) *Context {
 	switch c := ctx.(type) {
 	case *Context:
 		return c
-	case *WebContext:
-		return c.Context
 	}
 
 	return NewContext(ctx)
@@ -431,11 +473,6 @@ func WithValue(parent context.Context, key, val interface{}) *Context {
 		parent = context.TODO()
 	}
 
-	// Unroll WebContext to prevent cycles
-	if wc, ok := parent.(*WebContext); ok {
-		parent = wc.Context
-	}
-
 	ctx := &Context{
 		parent: parent,
 		key:    key,
@@ -445,8 +482,6 @@ func WithValue(parent context.Context, key, val interface{}) *Context {
 	// inherit application
 	switch p := parent.(type) {
 	case *Context:
-		ctx.application = p.application
-	case *WebContext:
 		ctx.application = p.application
 	default:
 		ctx.application = app
@@ -461,8 +496,6 @@ func WithCancel(parent context.Context) (*Context, context.CancelFunc) {
 
 	switch p := parent.(type) {
 	case *Context:
-		p.addChild(ctx)
-	case *WebContext:
 		p.addChild(ctx)
 	}
 
@@ -482,8 +515,6 @@ func WithDeadline(parent context.Context, d time.Time) (*Context, context.Cancel
 	switch p := parent.(type) {
 	case *Context:
 		p.addChild(ctx)
-	case *WebContext:
-		p.addChild(ctx)
 	}
 
 	cancel := func() {
@@ -496,7 +527,7 @@ func WithDeadline(parent context.Context, d time.Time) (*Context, context.Cancel
 			ctx.cancel(parent.Err())
 		case <-time.After(time.Until(d)):
 			cancel()
-		case <-ctx.done:
+		case <-ctx.Done():
 		}
 	}()
 	return ctx, cancel
@@ -509,25 +540,35 @@ func WithApplication(parent context.Context, app *Application) *Context {
 }
 
 func WithLoggerFields(parent context.Context, fields map[string]interface{}) *Context {
-	gctx := ToGollyContext(parent)
+	gctx := NewContext(parent)
 
-	gctx.logger.Store(gctx.Logger().WithFields(fields))
+	// Convert map to []Field
+	gctx.fields = make([]Field, 0, len(fields))
+	for k, v := range fields {
+		// Use helper to detect type? Or manual check?
+		// We probably want a helper in logger to "makeField"
+		// For now simple generic mapping
+		gctx.fields = append(gctx.fields, Field{Key: k, Interface: v, Type: LogTypeAny})
+	}
 
+	// Check parent cache loader
 	switch p := parent.(type) {
 	case *Context:
-		gctx.loader = p.loader
-	case *WebContext:
-		gctx.loader = p.loader
+		gctx.loader.Store(p.loader.Load())
 	}
 
 	return gctx
 }
 
-// WithLoggerField adds a single field to the logger (lightweight, avoids map allocation).
 func WithLoggerField(parent context.Context, key string, value interface{}) *Context {
-	gctx := ToGollyContext(parent)
+	gctx := NewContext(parent)
 
-	gctx.logger.Store(gctx.Logger().WithField(key, value))
+	gctx.fields = []Field{{Key: key, Interface: value, Type: LogTypeAny}}
+
+	switch p := parent.(type) {
+	case *Context:
+		gctx.loader.Store(p.loader.Load())
+	}
 
 	return gctx
 }

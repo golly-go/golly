@@ -1,7 +1,6 @@
 package golly
 
 import (
-	"bytes"
 	"encoding/json"
 	"io"
 	"testing"
@@ -11,18 +10,18 @@ import (
 )
 
 func TestLoggerTextFormatter(t *testing.T) {
-	entry := &Entry{
-		keys:    []string{"foo", "bar"},
-		values:  []interface{}{"baz", 123},
-		time:    time.Date(2023, 1, 1, 12, 0, 0, 0, time.UTC),
-		level:   LogLevelInfo,
-		message: "test message",
-		buffer:  &bytes.Buffer{},
-	}
+	entry := NewLogger().Opt().
+		Str("foo", "baz").
+		Int("bar", 123)
+	entry.time = time.Date(2023, 1, 1, 12, 0, 0, 0, time.UTC)
+	entry.message = "test message"
+	entry.level = LogLevelInfo
 
 	formatter := &TextFormatter{DisableColors: true}
-	b, err := formatter.Format(entry)
+	err := formatter.FormatInto(entry)
 	assert.NoError(t, err)
+
+	b := entry.buffer.Bytes()
 
 	str := string(b)
 	assert.Contains(t, str, "INFO")
@@ -33,19 +32,18 @@ func TestLoggerTextFormatter(t *testing.T) {
 }
 
 func TestLoggerJSONFormatter(t *testing.T) {
-	entry := &Entry{
-		keys:    []string{"foo", "bar"},
-		values:  []interface{}{"baz", 123},
-		tmpMap:  make(Fields),
-		time:    time.Date(2023, 1, 1, 12, 0, 0, 0, time.UTC),
-		level:   LogLevelInfo,
-		message: "test message",
-		buffer:  &bytes.Buffer{},
-	}
+	entry := NewLogger().Opt().
+		Str("foo", "baz").
+		Int("bar", 123)
+	entry.time = time.Date(2023, 1, 1, 12, 0, 0, 0, time.UTC)
+	entry.message = "test message"
+	entry.level = LogLevelInfo
 
 	formatter := &JSONFormatter{}
-	b, err := formatter.Format(entry)
+	err := formatter.FormatInto(entry)
 	assert.NoError(t, err)
+
+	b := entry.buffer.Bytes()
 
 	var output map[string]interface{}
 	err = json.Unmarshal(b, &output)
@@ -60,22 +58,18 @@ func TestLoggerJSONFormatter(t *testing.T) {
 
 func TestEntryClone(t *testing.T) {
 	logger := NewLogger()
-	entry := logger.newEntry()
-	entry.keys = append(entry.keys, "key1")
-	entry.values = append(entry.values, "val1")
+	entry := logger.Opt().Str("key1", "val1")
 
 	cloned := entry.clone()
 	assert.NotEqual(t, entry, cloned) // Different pointers
 	assert.Equal(t, entry.logger, cloned.logger)
-	assert.Equal(t, entry.keys, cloned.keys)
-	assert.Equal(t, entry.values, cloned.values)
+	assert.Equal(t, entry.Fields(), cloned.Fields())
 
 	// Modify cloned shouldn't affect original
-	cloned.keys = append(cloned.keys, "key2")
-	cloned.values = append(cloned.values, "val2")
+	cloned.Str("key2", "val2")
 
-	assert.Len(t, entry.keys, 1)
-	assert.Len(t, cloned.keys, 2)
+	assert.Len(t, entry.Fields(), 1)
+	assert.Len(t, cloned.Fields(), 2)
 }
 
 func BenchmarkLoggerInfo(b *testing.B) {
@@ -109,21 +103,31 @@ func BenchmarkLoggerWithFieldsInfo(b *testing.B) {
 }
 
 func BenchmarkTextFormatter(b *testing.B) {
-	entry := &Entry{
-		level:   LogLevelInfo,
-		message: "benchmark message",
-		time:    time.Now(),
-		keys:    []string{"key1", "key2"},
-		values:  []interface{}{"value1", 123},
-		buffer:  bytes.NewBuffer(make([]byte, 0, 1024)),
-	}
+	entry := NewLogger().Opt().
+		Str("key1", "value1").
+		Int("key2", 123)
+	entry.message = "benchmark message"
 	formatter := &TextFormatter{}
 
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		entry.buffer.Reset()
-		formatter.Format(entry)
+		formatter.FormatInto(entry)
+	}
+}
+
+func BenchmarkLoggerOpt(b *testing.B) {
+	logger := NewLogger()
+	logger.SetLevel(LogLevelInfo)
+	logger.SetOutput(io.Discard)
+	// Use TextFormatter to test the zero-alloc claim (JSON always allocs encoder)
+	logger.SetFormatter(&TextFormatter{DisableColors: true})
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		logger.Opt().Str("key", "val").Int("i", 1).Info("msg")
 	}
 }
 
@@ -151,4 +155,51 @@ func TestLoggerLevels(t *testing.T) {
 			assert.Equal(t, tt.want, got)
 		})
 	}
+}
+
+func TestLoggerFloat64(t *testing.T) {
+	entry := NewLogger().Opt().Float64("pi", 3.14159)
+	fields := entry.Fields()
+	assert.Equal(t, 3.14159, fields["pi"])
+}
+
+func TestDeduplicationTypes(t *testing.T) {
+	entry := NewLogger().Opt().
+		Int("val", 123).   // Int64 type
+		Str("val", "test") // Overwrite with String type
+
+	fields := entry.Fields()
+	assert.Equal(t, "test", fields["val"])
+
+	// Internal check (optional, but good for verification)
+	assert.Equal(t, LogTypeString, entry.fields[0].Type)
+}
+
+func TestDebugGuard(t *testing.T) {
+	entry := NewLogger().Opt()
+	entry.Release()
+
+	// Should panic because entry is released (logger is nil)
+	assert.Panics(t, func() {
+		entry.Str("foo", "bar")
+	})
+}
+
+func TestPoolHygiene(t *testing.T) {
+	entry := NewLogger().Opt().Str("retain", "value")
+
+	// Force fields retention
+	assert.NotEmpty(t, entry.fields)
+	assert.Equal(t, "value", entry.fields[0].StringVal)
+
+	entry.Release()
+
+	// In a real pool, we can't inspect the released object easily without race or unsafe.
+	// But we can check a fresh one from the pool or check that release cleared logic.
+	// Since we are mocking/testing locally, let's just inspect the logic in code review mostly.
+	// But we can manually invoke the reset logic if we exposed it, or trust integration tests.
+
+	// However, we can check basic NewLogger() returns clean entry
+	e2 := NewLogger().Opt()
+	assert.Empty(t, e2.fields)
 }

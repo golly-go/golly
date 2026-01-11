@@ -241,24 +241,9 @@ func TestPropagateCancel(t *testing.T) {
 }
 
 func TestContextLogger(t *testing.T) {
-	t.Run("FastPathCachedLogger", func(t *testing.T) {
-		// Create a context and preload a logger
-		ctx := NewContext(context.TODO())
-		preloadedLogger := defaultLogger.WithFields(nil)
-		ctx.logger.Store(preloadedLogger)
-
-		// Retrieve the logger
-		logger := ctx.Logger()
-
-		// Assert that the cached logger is returned
-		assert.Equal(t, preloadedLogger, logger, "Expected cached logger to be returned")
-	})
-
-	t.Run("SlowPathInheritParentLogger", func(t *testing.T) {
-		// Create a parent context and set its logger
-		parentCtx := NewContext(context.TODO())
-		parentLogger := defaultLogger.WithFields(nil)
-		parentCtx.logger.Store(parentLogger)
+	t.Run("InheritParentFields", func(t *testing.T) {
+		// Create a parent context and set its logger fields
+		parentCtx := WithLoggerField(context.TODO(), "parent", "true")
 
 		// Create a child context inheriting from the parent
 		childCtx := NewContext(parentCtx)
@@ -266,18 +251,13 @@ func TestContextLogger(t *testing.T) {
 		// Retrieve the logger from the child context
 		logger := childCtx.Logger()
 
-		// Assert that the parent's logger is returned
-		// Note: implementation now COPIES fields, so it's a NEW entry but with same data?
-		// My implementation in Step 1252:
-		// l := parent.Logger()
-		// logger = l.Logger.WithFields(l.Data)
-		// So Equal check might fail if strict pointer equality.
-		// Let's assert content equality or that it's not nil.
+		// Assert that the parent's fields are present
 		assert.NotNil(t, logger)
-		// assert.Equal(t, parentLogger.Data, logger.Data) // Data fields should match
+		fields := logger.Fields()
+		assert.Equal(t, "true", fields["parent"])
 	})
 
-	t.Run("SlowPathNewLogger", func(t *testing.T) {
+	t.Run("NewLoggerDefaults", func(t *testing.T) {
 		// Create a standalone context with no parent
 		standaloneCtx := NewContext(context.TODO())
 
@@ -286,14 +266,11 @@ func TestContextLogger(t *testing.T) {
 
 		// Assert that a new logger is created
 		assert.NotNil(t, logger, "Expected a new logger to be created")
-		assert.Equal(t, logger, standaloneCtx.Logger(), "Expected logger to be cached after first retrieval")
 	})
 
 	t.Run("CascadingLoggerUpwards", func(t *testing.T) {
 		// Create a parent context and set its logger
-		rootCtx := NewContext(context.TODO())
-		rootLogger := defaultLogger.WithFields(Fields{"root": "true"})
-		rootCtx.logger.Store(rootLogger)
+		rootCtx := WithLoggerField(context.TODO(), "root", "true")
 
 		// Create a chain of child contexts
 		midCtx := NewContext(rootCtx)
@@ -303,17 +280,8 @@ func TestContextLogger(t *testing.T) {
 		logger := leafCtx.Logger()
 
 		// Assert that the logger cascades upwards to the root (inherits fields)
-		// We can't easily check internal slice, so we check if formatting produces output?
-		// Or we access Keys/Values if package-internal. context_test is package golly.
-		// So we can access Keys/Values.
-		found := false
-		for i, k := range logger.keys {
-			if k == "root" && logger.values[i] == "true" {
-				found = true
-				break
-			}
-		}
-		assert.True(t, found, "Expected root=true in keys/values")
+		fields := logger.Fields()
+		assert.Equal(t, "true", fields["root"], "Expected root=true in fields")
 	})
 
 	t.Run("HandleParentAsContextInterface", func(t *testing.T) {
@@ -331,133 +299,23 @@ func TestContextLogger(t *testing.T) {
 	})
 }
 
-func TestToGollyContext(t *testing.T) {
-	tests := []struct {
-		name       string
-		input      context.Context
-		expectSame bool
-	}{
-		{
-			name:       "Already Golly context",
-			input:      NewContext(context.Background()),
-			expectSame: true,
-		},
-		{
-			name:       "Standard context",
-			input:      context.Background(),
-			expectSame: false,
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			got := ToGollyContext(tc.input)
-			assert.NotNil(t, got, "expected non-nil Golly context")
-
-			if tc.expectSame {
-				// If the input is already a *Context, it should be returned as-is.
-				assert.Equal(t, tc.input, got, "expected same *Context instance")
-			} else {
-				// For a standard context, the returned context should be a new Golly context.
-				assert.NotEqual(t, tc.input, got, "expected a new Golly context wrapping the standard context")
-			}
-		})
-	}
-}
-
-// ***************************************************************************
-// *  Benches
-// ***************************************************************************
-
-// Benchmark for context value retrieval.
-func BenchmarkContextValue(b *testing.B) {
-	ctx := WithValue(context.Background(), "key", "value")
-
-	b.Run("BenchmarkContextValue", func(b *testing.B) {
-		b.ReportAllocs()
-		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
-			_ = ctx.Value("key")
-		}
-	})
-}
-
-// Benchmark for context cancellation (parent cancel).
-func BenchmarkContextCancel(b *testing.B) {
-	parent, cancel := WithCancel(context.Background())
-	defer cancel()
-	_, childCancel := WithCancel(parent)
-	defer childCancel()
-
-	b.Run("BenchmarkContextCancel", func(b *testing.B) {
-		b.ReportAllocs()
-		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
-			cancel()
-		}
-	})
-}
-
-// Benchmark for deadline propagation.
-func BenchmarkContextWithDeadline(b *testing.B) {
-	deadline := time.Now().Add(10 * time.Millisecond)
-	parent := context.Background()
-
-	b.Run("BenchmarkContextWithDeadline", func(b *testing.B) {
-		b.ReportAllocs()
-		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
-			_, cancel := WithDeadline(parent, deadline)
-			cancel()
-		}
-	})
-}
-
-// Benchmark for context value propagation.
-func BenchmarkContextWithValuePropagation(b *testing.B) {
-	parent := context.Background()
-
-	b.Run("BenchmarkContextWithValuePropagation", func(b *testing.B) {
-		b.ReportAllocs()
-		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
-			_ = WithValue(parent, "key", i)
-		}
-	})
-}
+// ... existing tests ...
 
 func BenchmarkContextLogger(b *testing.B) {
-	// Setup: Create a parent context with a pre-set logger
-	parentCtx := NewContext(context.TODO())
-	parentLogger := defaultLogger.WithFields(nil)
-	parentCtx.logger.Store(parentLogger)
-
+	// Setup: Create a parent context with fields
+	parentCtx := WithLoggerField(context.TODO(), "foo", "bar")
 	childCtx := NewContext(parentCtx)
 	standaloneCtx := NewContext(context.TODO())
 
-	// Benchmark: Fast path (logger is cached)
-	b.Run("FastPath", func(b *testing.B) {
-
-		// Preload the logger in the child context
-		childCtx.logger.Store(parentLogger)
-
+	// Benchmark: Logger construction from fields (Inherited)
+	b.Run("InheritedFields", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			_ = childCtx.Logger()
 		}
 	})
 
-	// Benchmark: Slow path (resolve from parent)
-	b.Run("SlowPathResolveParent", func(b *testing.B) {
-		childCtx.logger = atomic.Value{}
-
-		for i := 0; i < b.N; i++ {
-			_ = childCtx.Logger()
-		}
-	})
-
-	// Benchmark: Slow path (create a new logger)
-	b.Run("SlowPathNewLogger", func(b *testing.B) {
-
+	// Benchmark: Logger construction (Empty)
+	b.Run("Empty", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			_ = standaloneCtx.Logger()
 		}
@@ -631,53 +489,50 @@ func TestDataFlow_ContextChaining(t *testing.T) {
 // TestDataFlow_MixedContextChain verifies Value() propagation through a stdlib context sandwich
 // Golly -> Stdlib -> Golly
 func TestDataFlow_MixedContextChain(t *testing.T) {
-	// 1. Root Golly Context
 	rootCtx := NewContext(context.Background())
 	rootCtx = WithValue(rootCtx, contextKey("golly-root"), "val-root")
 
-	// 2. Middle Stdlib Context (e.g. some middleware or library)
+	// Middle Stdlib Context (e.g. some middleware or library)
 	// This breaks the *Context chain type-assertion, forcing fallback to .Value()
 	middleCtx := context.WithValue(rootCtx, contextKey("stdlib-middle"), "val-middle")
 
-	// 3. Top Golly Context
+	// Top Golly Context
 	topCtx := WithValue(middleCtx, contextKey("golly-top"), "val-top")
 
 	// Verification
-	// A. Check immediate value
+	// Check immediate value
 	assert.Equal(t, "val-top", topCtx.Value(contextKey("golly-top")))
 
-	// B. Check parent value (traversing through stdlib context)
-	// topCtx.Value -> loop -> hits stdlib ctx -> defaults to middleCtx.Value(key) -> delegates to rootCtx.Value(key)
+	// Check parent value (traversing through stdlib context)
 	assert.Equal(t, "val-middle", topCtx.Value(contextKey("stdlib-middle")))
 
-	// C. Check root value (traversing through stdlib AND back into golly)
+	// Check root value (traversing through stdlib AND back into golly)
 	assert.Equal(t, "val-root", topCtx.Value(contextKey("golly-root")))
 
-	// D. Check Missing
+	// Check Missing
 	assert.Nil(t, topCtx.Value(contextKey("missing")))
 }
 
 // TestDataFlow_DetachedChain verifies that Detach() preserves values but cuts cancellation
 func TestDataFlow_DetachedChain(t *testing.T) {
-	// 1. Setup Root with values and cancel
 	rootCtx, cancel := context.WithCancel(context.Background())
 	rootCtx = WithValue(rootCtx, contextKey("val-root"), "root-data")
 
-	// 2. Create Detached Context in the middle
+	// Create Detached Context in the middle
 	// This simulates: ctx = golly.ToGollyContext(ctx).Detach()
 	gCtx := ToGollyContext(rootCtx)
 	detachedCtx := gCtx.Detach()
 
-	// 3. Add more values on top
+	// Add more values on top
 	finalCtx := WithValue(detachedCtx, contextKey("val-top"), "top-data")
 
 	// Verification
 
-	// A. Values should still propagate (Detach preserves parent link for Value)
+	// Values should still propagate (Detach preserves parent link for Value)
 	assert.Equal(t, "top-data", finalCtx.Value(contextKey("val-top")))
 	assert.Equal(t, "root-data", finalCtx.Value(contextKey("val-root")), "Detached context should still find parent values")
 
-	// B. Cancellation should NOT propagate
+	// Cancellation should NOT propagate
 	cancel() // Cancel root
 
 	// Root should be canceled

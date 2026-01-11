@@ -228,7 +228,7 @@ func TestEventManagerUnregisterWithDispatch(t *testing.T) {
 
 	// Dispatch - should call both handlers
 	em.Dispatch(gctx, TestDispatchEvent{Name: "test"})
-	if callCount != 11 { // 1 + 10
+	if callCount != 11 {
 		t.Errorf("Expected callCount to be 11 after first dispatch, got %d", callCount)
 	}
 

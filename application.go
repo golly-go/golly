@@ -93,6 +93,8 @@ type Application struct {
 	state ApplicationState
 
 	services map[string]Service
+
+	wctxPool sync.Pool
 }
 
 func (a *Application) Application() *Application { return a }
@@ -284,6 +286,12 @@ func NewApplication(options Options) *Application {
 		routes: NewRouteRoot().
 			Get("/routes", renderRoutes).
 			Get("/status", renderStatus), // Default route mount point (can be extended with specific handlers).
+
+		wctxPool: sync.Pool{
+			New: func() interface{} {
+				return &WebContext{}
+			},
+		},
 	}
 }
 

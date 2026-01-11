@@ -224,7 +224,7 @@ func GetPlugin[T Plugin](tracker any, name string) T {
 	case *Context:
 		a = c.Application()
 	case *WebContext:
-		a = c.Context.Application()
+		a = c.Application()
 	case *Application:
 		a = c
 	case context.Context:

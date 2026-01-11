@@ -9,10 +9,8 @@ import (
 	"net/url"
 	"os"
 	"strconv"
-	"strings"
 	"sync"
 	"sync/atomic"
-	"time"
 )
 
 const (
@@ -78,26 +76,31 @@ func makeRequestID(buf []byte) string {
 }
 
 type WebContext struct {
-	*Context // Embedded by pointer for correctness
+	// ctx is a pointer to the Golly Context.
+	// We use a pointer to ensure we don't have stale data issues with pooling.
+	// This incurs 1 allocation per request, which is acceptable for safety.
+	ctx *Context
 
 	method   string
 	path     string
 	segments []string
 
 	requestID string
+	reqIDBuf  [36]byte // Fixed buffer for UUID string
 
 	request *http.Request
 	writer  http.ResponseWriter
 
 	route *Route
 
-	params atomic.Value
+	// Embedded RouteVars (zero alloc)
+	vars       RouteVars
+	varsLoaded bool
 
 	mu sync.RWMutex
 
-	// scratch buffer to avoid allocations for path segments in most cases
-	segmentBuf [16]string
-	reqIDBuf   [64]byte // Scratch buffer for request ID
+	// Path segments (zero alloc storage)
+	segmentBuf [20]string
 
 	body []byte
 }
@@ -108,8 +111,13 @@ func (wctx *WebContext) Response() http.ResponseWriter { return wctx.writer }
 func (wctx *WebContext) RequestHeaders() http.Header   { return wctx.request.Header }
 func (wctx *WebContext) Request() *http.Request        { return wctx.request }
 func (wctx *WebContext) Route() *Route                 { return wctx.route }
-func (wctx *WebContext) Path() string                  { return wctx.path }
+func (wctx *WebContext) Context() context.Context      { return wctx.ctx }
+func (wctx *WebContext) GollyContext() *Context        { return wctx.ctx }
 func (wctx *WebContext) Query(key string) url.Values   { return wctx.request.URL.Query() }
+
+// Proxies for Golly Context features (but NOT satisfying context.Context interface)
+func (wctx *WebContext) Logger() *Entry            { return wctx.ctx.Logger() }
+func (wctx *WebContext) Application() *Application { return wctx.ctx.Application() }
 
 // Render provides a flexible method for sending responses in various formats (JSON, XML, etc.).
 // It adds minimal overhead compared to direct writes, making it an ideal choice for standardized response handling.
@@ -143,14 +151,14 @@ func (wctx *WebContext) RenderText(data string)                       { Render(w
 func (wctx *WebContext) RenderHTML(data string)                       { Render(wctx, FormatTypeHTML, data) }
 
 func (wctx *WebContext) URLParams() *RouteVars {
-	if p, ok := wctx.params.Load().(*RouteVars); ok {
-		return p
+	if wctx.varsLoaded {
+		return &wctx.vars
 	}
 
-	params := routeVariables(wctx.route, wctx.segments)
-	wctx.params.Store(params)
+	fillRouteVariables(&wctx.vars, wctx.route, wctx.segments)
+	wctx.varsLoaded = true
 
-	return params
+	return &wctx.vars
 }
 
 // Params marshals json params into out interface
@@ -184,73 +192,106 @@ func NewWebContext(parent context.Context, r *http.Request, w http.ResponseWrite
 		method:  r.Method,
 		request: r,
 		writer:  NewWrapResponseWriter(w, r.ProtoMajor),
-	}
-
-	// Allocate the Context struct
-	ctx := Context{
-		parent: parent,
-		done:   make(chan struct{}),
+		ctx:     NewContext(parent),
 	}
 
 	// Inherit application
 
 	switch p := parent.(type) {
 	case *Context:
-		ctx.application = p.application
-	case *WebContext:
-		ctx.application = p.Context.application
+		wctx.ctx.application = p.application
 	default:
-		ctx.application = app
+		wctx.ctx.application = app
 	}
 
-	wctx.Context = &ctx
+	// Propagate cancellation
 
 	// Propagate cancellation
 	if parent.Done() != nil {
 		switch parent.(type) {
 		case *Context:
 			// do nothing
-		case *WebContext:
-			// do nothing
 		default:
 			// Capture wctx pointer for closure
-			context.AfterFunc(parent, func() { ctx.cancel(parent.Err()) })
+			context.AfterFunc(parent, func() { wctx.ctx.cancel(parent.Err()) })
 		}
 	}
 
 	// ID generation
 	wctx.requestID = makeRequestID(wctx.reqIDBuf[:])
 
-	wctx.segments = wctx.fillSegments(r.URL.Path)
+	wctx.fillSegments(r.URL.Path)
 	return wctx
 }
 
-func (wctx *WebContext) fillSegments(path string) []string {
+// Reset re-initializes a WebContext for reuse.
+// It creates a NEW Context for safety (as Contexts are passed to background jobs),
+// but reuses the WebContext struct allocation.
+func (wctx *WebContext) Reset(parent context.Context, r *http.Request, w http.ResponseWriter) {
+	if parent == nil {
+		parent = context.TODO()
+	}
+
+	wctx.path = r.URL.Path
+	wctx.method = r.Method
+	wctx.request = r
+	wctx.varsLoaded = false
+	wctx.vars.count = 0
+
+	// Optimize: reuse existing writer if possible
+	if wr, ok := wctx.writer.(WrapResponseWriter); ok {
+		wr.Reset(w)
+	} else {
+		wctx.writer = NewWrapResponseWriter(w, r.ProtoMajor)
+	}
+
+	// We MUST re-initialize the embedded Context completely
+	// Use NewContext logic to ensure correct bootstrap
+	wctx.ctx = NewContext(parent)
+
+	// Ensure application is set (NewContext does this, but double check default)
+	if wctx.ctx.application == nil {
+		wctx.ctx.application = app
+	}
+
+	// Reset other fields
+	wctx.route = nil
+	wctx.body = nil
+
+	// Re-gen ID
+	wctx.requestID = makeRequestID(wctx.reqIDBuf[:])
+
+	// Reset segments (zero alloc)
+	wctx.fillSegments(r.URL.Path)
+}
+
+func (w *WebContext) fillSegments(path string) {
 	if path == "" {
-		return []string{}
+		w.segments = w.segmentBuf[:0]
+		return
 	}
 	if path == "/" {
-		return []string{"/"}
-	}
-
-	tokenCount := strings.Count(path, "/")
-	var segments []string
-
-	if tokenCount < len(wctx.segmentBuf) {
-		segments = wctx.segmentBuf[:0]
-	} else {
-		segments = make([]string, 0, tokenCount+1)
+		w.segmentBuf[0] = "/"
+		w.segments = w.segmentBuf[:1]
+		return
 	}
 
 	n := len(path)
 	i := 0
+	count := 0
+	max := len(w.segmentBuf)
 
+	// Leading root
 	if path[0] == '/' {
-		segments = append(segments, "/")
+		if count < max {
+			w.segmentBuf[count] = "/"
+			count++
+		}
 		i = 1
 	}
 
 	for i < n {
+		// Skip slashes
 		for i < n && path[i] == '/' {
 			i++
 		}
@@ -262,10 +303,34 @@ func (wctx *WebContext) fillSegments(path string) []string {
 		for i < n && path[i] != '/' {
 			i++
 		}
-		segments = append(segments, path[start:i])
+
+		if count < max {
+			w.segmentBuf[count] = path[start:i]
+			count++
+		} else {
+			// Fallback: append to slice if buffer full (rare)
+			// We effectively switch to a heap-allocated slice if we overflow
+			if len(w.segments) == 0 {
+				// Initialize slice with existing buffer contents + new item
+				// This is tricky because w.segments IS the slice view of buffer.
+				// If we append to it, it might reallocate.
+				// Let's just create a new slice that copies the buffer
+				newSlice := make([]string, max, max+4)
+				copy(newSlice, w.segmentBuf[:])
+				w.segments = append(newSlice, path[start:i])
+			} else {
+				w.segments = append(w.segments, path[start:i])
+			}
+			// Once we overflow, we just keep appending to w.segments
+			// Update i -> continue loop
+			continue
+		}
 	}
 
-	return segments
+	// If we didn't overflow, set the slice to the buffer view
+	if len(w.segments) == 0 || &w.segments[0] == &w.segmentBuf[0] {
+		w.segments = w.segmentBuf[:count]
+	}
 }
 
 func WebContextWithRequestID(gctx *Context, reqID string, r *http.Request, w http.ResponseWriter) *WebContext {
@@ -279,27 +344,6 @@ func WebContextWithRequestID(gctx *Context, reqID string, r *http.Request, w htt
 	return wctx
 }
 
-func requestLogfields(requestID string, r *http.Request) map[string]interface{} {
-	// Preallocate map with expected number of fields to avoid rehash allocations.
-	logFields := make(map[string]interface{}, 12)
-	logFields["ts"] = time.Now().UTC().Format(time.RFC1123)
-	logFields["http.proto"] = r.Proto
-	logFields["http.request_id"] = requestID
-	logFields["http.method"] = r.Method
-	logFields["http.useragent"] = r.UserAgent()
-	logFields["http.url"] = r.URL.String()
-	logFields["http.url_details.path"] = r.URL.Path
-	logFields["http.url_details.host"] = r.Host
-	logFields["http.url_details.queryString"] = r.URL.RawQuery
-
-	logFields["http.url_details.schema"] = SchemeHTTP
-	if r.TLS != nil {
-		logFields["http.url_details.schema"] = SchemeHTTPS
-	}
-
-	return logFields
-}
-
 // WithContext updates the embedded context.
 // Note: This mutates the WebContext in place, as intended.
 func (w *WebContext) WithContext(ctx context.Context) *WebContext {
@@ -308,12 +352,7 @@ func (w *WebContext) WithContext(ctx context.Context) *WebContext {
 	}
 
 	w.mu.Lock()
-	switch x := ctx.(type) {
-	case *WebContext:
-		w.Context = NewContext(x.Context)
-	default:
-		w.Context = ToGollyContext(ctx)
-	}
+	w.ctx = ToGollyContext(ctx)
 	w.mu.Unlock()
 
 	return w

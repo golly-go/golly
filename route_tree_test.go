@@ -173,8 +173,10 @@ func TestAddRouteHelpers(t *testing.T) {
 				assert.Equal(t, root, r.root)
 			}
 
-			if _, ok := r.handlers[GET]; ok {
-				assert.True(t, ok)
+			if r.handlers[methodIndex(GET)] != nil {
+				// Handler exists
+			} else {
+				t.Error("Handler should exist")
 			}
 		}
 	})
@@ -420,11 +422,10 @@ func BenchmarkRouteRequest(b *testing.B) {
 	}
 
 	for _, tt := range tests {
-		app := NewApplication(Options{})
-
-		tt.setup(app.routes)
-
 		b.Run(tt.name, func(b *testing.B) {
+			app := NewApplication(Options{})
+			tt.setup(app.routes)
+
 			var w *httptest.ResponseRecorder
 
 			b.ResetTimer()
@@ -436,6 +437,31 @@ func BenchmarkRouteRequest(b *testing.B) {
 				RouteRequest(app, tt.request, w)
 			}
 		})
+	}
+}
+
+type BenchMockWriter struct {
+	h http.Header
+}
+
+func (m *BenchMockWriter) Header() http.Header         { return m.h }
+func (m *BenchMockWriter) Write(b []byte) (int, error) { return len(b), nil }
+func (m *BenchMockWriter) WriteHeader(statusCode int)  {}
+
+func BenchmarkRouteRequest_ZeroAlloc(b *testing.B) {
+	app := NewApplication(Options{})
+	app.routes.Get("/test", func(ctx *WebContext) {
+		ctx.writer.WriteHeader(http.StatusOK)
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	mw := &BenchMockWriter{h: make(http.Header)}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		RouteRequest(app, req, mw)
 	}
 }
 

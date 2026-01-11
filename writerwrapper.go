@@ -5,36 +5,38 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"sync"
 )
 
-// NewWrapResponseWriter wraps an http.ResponseWriter, returning a proxy that allows you to
-// hook into various parts of the response process.
+// UniversalResponseWriter implements ALL interfaces and checks capability at runtime.
+// This allows a single struct type to be pooled and reused for any response writer.
+type UniversalResponseWriter struct {
+	basicWriter
+}
+
+// writerPool recycles UniversalResponseWriter instances.
+var writerPool = sync.Pool{
+	New: func() interface{} {
+		return &UniversalResponseWriter{}
+	},
+}
+
+// NewWrapResponseWriter wraps an http.ResponseWriter.
+// Returns a pooled instance if possible.
+//
+// Note: We ignore protoMajor for interface selection now as we implement all.
+// The runtime checks in Flush/Hijack/Push/ReadFrom handle capability.
 func NewWrapResponseWriter(w http.ResponseWriter, protoMajor int) WrapResponseWriter {
-	bw := basicWriter{ResponseWriter: w}
+	wr := writerPool.Get().(*UniversalResponseWriter)
+	wr.Reset(w)
+	return wr
+}
 
-	_, isFlusher := w.(http.Flusher)
-	switch protoMajor {
-	case 2:
-		if _, ok := w.(http.Pusher); isFlusher && ok {
-			return &http2FancyWriter{bw}
-		}
-	default:
-		if _, ok := w.(http.Hijacker); ok {
-			if _, ok := w.(io.ReaderFrom); isFlusher && ok {
-				return &httpFancyWriter{bw}
-			}
-			if isFlusher {
-				return &flushHijackWriter{bw}
-			}
-			return &hijackWriter{bw}
-		}
+// FreeWrapResponseWriter returns a WrapResponseWriter to the pool if it's a UniversalResponseWriter.
+func FreeWrapResponseWriter(w WrapResponseWriter) {
+	if u, ok := w.(*UniversalResponseWriter); ok {
+		writerPool.Put(u)
 	}
-
-	if isFlusher {
-		return &flushWriter{bw}
-	}
-
-	return &bw
 }
 
 // WrapResponseWriter proxies an http.ResponseWriter, allowing hooks into the response process.
@@ -45,6 +47,7 @@ type WrapResponseWriter interface {
 	Tee(io.Writer)
 	Unwrap() http.ResponseWriter
 	Discard()
+	Reset(w http.ResponseWriter)
 }
 
 // basicWriter implements the core functionality for WrapResponseWriter.
@@ -100,75 +103,60 @@ func (b *basicWriter) BytesWritten() int           { return b.bytes }
 func (b *basicWriter) Tee(w io.Writer)             { b.tee = w }
 func (b *basicWriter) Unwrap() http.ResponseWriter { return b.ResponseWriter }
 func (b *basicWriter) Discard()                    { b.discard = true }
-
-// flushWriter implements flushing for basicWriter.
-type flushWriter struct{ basicWriter }
-
-func (f *flushWriter) Flush() { f.flush() }
-
-// hijackWriter implements hijacking for basicWriter.
-type hijackWriter struct{ basicWriter }
-
-func (f *hijackWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
-	return f.hijack()
+func (b *basicWriter) Reset(w http.ResponseWriter) {
+	b.ResponseWriter = w
+	b.wroteHeader = false
+	b.code = 0
+	b.bytes = 0
+	b.tee = nil
+	b.discard = false
 }
 
-// flushHijackWriter implements both flushing and hijacking.
-type flushHijackWriter struct{ basicWriter }
-
-func (f *flushHijackWriter) Flush() { f.flush() }
-func (f *flushHijackWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
-	return f.hijack()
+// Flush implements http.Flusher
+func (u *UniversalResponseWriter) Flush() {
+	if f, ok := u.ResponseWriter.(http.Flusher); ok {
+		u.wroteHeader = true
+		f.Flush()
+	}
 }
 
-// httpFancyWriter satisfies Flusher, Hijacker, and ReaderFrom.
-type httpFancyWriter struct{ basicWriter }
-
-func (f *httpFancyWriter) Flush() { f.flush() }
-func (f *httpFancyWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
-	return f.hijack()
+// Hijack implements http.Hijacker
+func (u *UniversalResponseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	if h, ok := u.ResponseWriter.(http.Hijacker); ok {
+		return h.Hijack()
+	}
+	return nil, nil, http.ErrNotSupported
 }
-func (f *httpFancyWriter) ReadFrom(r io.Reader) (int64, error) {
-	if f.tee != nil {
-		n, err := io.Copy(&f.basicWriter, r)
-		f.bytes += int(n)
+
+// Push implements http.Pusher
+func (u *UniversalResponseWriter) Push(target string, opts *http.PushOptions) error {
+	if p, ok := u.ResponseWriter.(http.Pusher); ok {
+		return p.Push(target, opts)
+	}
+	return http.ErrNotSupported
+}
+
+// ReadFrom implements io.ReaderFrom
+func (u *UniversalResponseWriter) ReadFrom(r io.Reader) (int64, error) {
+	if u.tee != nil {
+		n, err := io.Copy(&u.basicWriter, r)
+		u.bytes += int(n)
 		return n, err
 	}
-	rf := f.ResponseWriter.(io.ReaderFrom)
-	f.maybeWriteHeader()
-	n, err := rf.ReadFrom(r)
-	f.bytes += int(n)
-	return n, err
-}
-
-// http2FancyWriter satisfies Flusher and Pusher.
-type http2FancyWriter struct{ basicWriter }
-
-func (f *http2FancyWriter) Flush() { f.flush() }
-func (f *http2FancyWriter) Push(target string, opts *http.PushOptions) error {
-	return f.ResponseWriter.(http.Pusher).Push(target, opts)
-}
-
-// Helper methods for flush and hijack.
-func (b *basicWriter) flush() {
-	if flusher, ok := b.ResponseWriter.(http.Flusher); ok {
-		b.wroteHeader = true
-		flusher.Flush()
+	if rf, ok := u.ResponseWriter.(io.ReaderFrom); ok {
+		u.maybeWriteHeader()
+		n, err := rf.ReadFrom(r)
+		u.bytes += int(n)
+		return n, err
 	}
+	return io.Copy(&u.basicWriter, r)
 }
 
-func (b *basicWriter) hijack() (net.Conn, *bufio.ReadWriter, error) {
-	return b.ResponseWriter.(http.Hijacker).Hijack()
-}
-
+// Compile time checks
 var (
-	_ http.Flusher  = &flushWriter{}
-	_ http.Flusher  = &flushHijackWriter{}
-	_ http.Hijacker = &hijackWriter{}
-	_ http.Hijacker = &flushHijackWriter{}
-	_ http.Flusher  = &httpFancyWriter{}
-	_ http.Hijacker = &httpFancyWriter{}
-	_ io.ReaderFrom = &httpFancyWriter{}
-	_ http.Flusher  = &http2FancyWriter{}
-	_ http.Pusher   = &http2FancyWriter{}
+	_ http.Flusher       = &UniversalResponseWriter{}
+	_ http.Hijacker      = &UniversalResponseWriter{}
+	_ http.Pusher        = &UniversalResponseWriter{}
+	_ io.ReaderFrom      = &UniversalResponseWriter{}
+	_ WrapResponseWriter = &UniversalResponseWriter{}
 )

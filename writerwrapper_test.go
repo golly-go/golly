@@ -95,9 +95,14 @@ func TestDiscard(t *testing.T) {
 // TestFlushWriter verifies flushing behavior.
 func TestFlushWriter(t *testing.T) {
 	rec := httptest.NewRecorder()
-	fw := flushWriter{basicWriter{ResponseWriter: rec}}
+	fw := NewWrapResponseWriter(rec, 1)
 
-	fw.Flush()
+	if f, ok := fw.(http.Flusher); ok {
+		f.Flush()
+	} else {
+		t.Errorf("expected Flusher interface")
+	}
+
 	if !rec.Flushed {
 		t.Errorf("expected recorder to be flushed")
 	}
@@ -106,7 +111,7 @@ func TestFlushWriter(t *testing.T) {
 // TestHttp2FancyWriter ensures http2FancyWriter correctly flushes and pushes.
 func TestHttp2FancyWriter(t *testing.T) {
 	rec := httptest.NewRecorder()
-	h2w := http2FancyWriter{basicWriter{ResponseWriter: rec}}
+	h2w := &UniversalResponseWriter{basicWriter: basicWriter{ResponseWriter: rec}}
 
 	h2w.Flush()
 	if !rec.Flushed {
@@ -117,7 +122,7 @@ func TestHttp2FancyWriter(t *testing.T) {
 // TestHttpFancyWriter verifies the full capabilities of httpFancyWriter.
 func TestHttpFancyWriter(t *testing.T) {
 	rec := httptest.NewRecorder()
-	fw := httpFancyWriter{basicWriter{ResponseWriter: rec}}
+	fw := &UniversalResponseWriter{basicWriter: basicWriter{ResponseWriter: rec}}
 
 	fw.Flush()
 	if !rec.Flushed {
@@ -135,7 +140,7 @@ func TestHttpFancyWriter(t *testing.T) {
 
 func TestHijackWriter(t *testing.T) {
 	hijackableRec := &HijackableResponseWriter{ResponseWriter: httptest.NewRecorder()}
-	hw := hijackWriter{basicWriter{ResponseWriter: hijackableRec}}
+	hw := &UniversalResponseWriter{basicWriter: basicWriter{ResponseWriter: hijackableRec}}
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _, err := hw.Hijack()
@@ -161,11 +166,9 @@ func TestNewWrapResponseWriter(t *testing.T) {
 		responseWriter http.ResponseWriter
 		expectedType   string
 	}{
-		{1, httptest.NewRecorder(), "*flushWriter"},
-		{2, httptest.NewRecorder(), "*http2FancyWriter"},
-		{1, &HijackableResponseWriter{ResponseWriter: httptest.NewRecorder()}, "*flushHijackWriter"},
-		{1, &HijackableResponseWriter{ResponseWriter: httptest.NewRecorder()}, "*hijackWriter"},
-		{1, httptest.NewRecorder(), "*basicWriter"},
+		{1, httptest.NewRecorder(), "*golly.UniversalResponseWriter"},
+		{2, httptest.NewRecorder(), "*golly.UniversalResponseWriter"},
+		{1, &HijackableResponseWriter{ResponseWriter: httptest.NewRecorder()}, "*golly.UniversalResponseWriter"},
 	}
 
 	for _, tc := range cases {
@@ -174,6 +177,11 @@ func TestNewWrapResponseWriter(t *testing.T) {
 
 		if wr.Status() != http.StatusAccepted {
 			t.Errorf("expected status %d, got %d", http.StatusAccepted, wr.Status())
+		}
+
+		// Verify type is implicitly correct by interface satisfaction
+		if _, ok := wr.(*UniversalResponseWriter); !ok {
+			t.Errorf("expected *UniversalResponseWriter, got %T", wr)
 		}
 	}
 }
@@ -200,7 +208,7 @@ func BenchmarkBasicWriter(b *testing.B) {
 	}
 }
 
-// Benchmark for flushWriter.
+// Benchmark for flushWriter (Universal).
 func BenchmarkFlushWriter(b *testing.B) {
 	benchmarks := []struct {
 		name string
@@ -214,7 +222,7 @@ func BenchmarkFlushWriter(b *testing.B) {
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
 				rec := httptest.NewRecorder()
-				fw := flushWriter{basicWriter{ResponseWriter: rec}}
+				fw := &UniversalResponseWriter{basicWriter: basicWriter{ResponseWriter: rec}}
 				fw.WriteHeader(http.StatusOK)
 				fw.Flush()
 			}
@@ -222,30 +230,7 @@ func BenchmarkFlushWriter(b *testing.B) {
 	}
 }
 
-// Benchmark for hijackWriter.
-// func BenchmarkHijackWriter(b *testing.B) {
-// 	benchmarks := []struct {
-// 		name string
-// 	}{
-// 		{"hijack writer"},
-// 	}
-
-// 	for _, bm := range benchmarks {
-// 		hijackableRec := &HijackableResponseWriter{ResponseWriter: httptest.NewRecorder()}
-// 		hw := hijackWriter{basicWriter{ResponseWriter: hijackableRec}}
-
-// 		b.Run(bm.name, func(b *testing.B) {
-
-// 			b.ReportAllocs()
-// 			b.ResetTimer()
-// 			for i := 0; i < b.N; i++ {
-// 				_, _, _ = hw.Hijack()
-// 			}
-// 		})
-// 	}
-// }
-
-// Benchmark for httpFancyWriter.
+// Benchmark for httpFancyWriter (Universal).
 func BenchmarkHttpFancyWriter(b *testing.B) {
 	benchmarks := []struct {
 		name string
@@ -259,31 +244,9 @@ func BenchmarkHttpFancyWriter(b *testing.B) {
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
 				rec := httptest.NewRecorder()
-				fw := httpFancyWriter{basicWriter{ResponseWriter: rec}}
+				fw := &UniversalResponseWriter{basicWriter: basicWriter{ResponseWriter: rec}}
 				fw.WriteHeader(http.StatusOK)
 				fw.Flush()
-			}
-		})
-	}
-}
-
-// Benchmark for http2FancyWriter.
-func BenchmarkHttp2FancyWriter(b *testing.B) {
-	benchmarks := []struct {
-		name string
-	}{
-		{"http2 fancy writer"},
-	}
-
-	for _, bm := range benchmarks {
-		b.Run(bm.name, func(b *testing.B) {
-			b.ReportAllocs()
-			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
-				rec := httptest.NewRecorder()
-				h2w := http2FancyWriter{basicWriter{ResponseWriter: rec}}
-				h2w.WriteHeader(http.StatusOK)
-				h2w.Flush()
 			}
 		})
 	}
@@ -320,7 +283,7 @@ func BenchmarkHttpFancyWriterReadFrom(b *testing.B) {
 
 	for _, bm := range benchmarks {
 		rec := &ReaderFromResponseWriter{ResponseWriter: httptest.NewRecorder()}
-		fw := httpFancyWriter{basicWriter{ResponseWriter: rec}}
+		fw := &UniversalResponseWriter{basicWriter: basicWriter{ResponseWriter: rec}}
 		data := bytes.NewReader([]byte("Benchmark data for ReadFrom method"))
 
 		b.Run(bm.name, func(b *testing.B) {
