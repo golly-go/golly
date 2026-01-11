@@ -12,7 +12,7 @@ Most Go frameworks are just HTTP routers. Golly is different. It provides the **
 
 ---
 
-## 🚀 The Philosophy: Monolithic Logic, Independent Scale
+## The Philosophy: Monolithic Logic, Independent Scale
 
 Stop tearing your application apart into microservices just to scale a queue consumer.
 
@@ -26,9 +26,9 @@ All sharing the same models, domain logic, and utilities. **Zero logic duplicati
 
 ---
 
-## ⚡ Obsessive Performance
+## Obsessive Performance
 
-We don't just say "fast"; we prove it. Golly is engineered for **Zero-Allocation** in the hot paths.
+We don't just say "fast"; we prove it. Golly is engineered for **High-Performance** in the hot paths.
 
 | Component  | Operation          | Latency     | Allocations   |
 | :--------- | :----------------- | :---------- | :------------ |
@@ -41,7 +41,7 @@ _\*The single router allocation is the `Context` object, ensuring thread-safe co
 
 ---
 
-## 🛠 Real World Production Example
+## Real World Production Example
 
 Golly applications are declarative and easy to reason about. Here is what a real-world production entrypoint looks like:
 
@@ -110,12 +110,12 @@ Golly's `Context` is the spine of your request. It's not just a bag of values; i
 - **Identity**: Built-in methods for `ctx.Actor()` and authentication state.
 - **Safe Detachment**: Use `ctx.Detach()` to spawn goroutines that keep trace metadata but survive request cancellation.
 
-### 2. Zero-Alloc Logger
+### 2. High-Performance Logger
 
 Why use `zap` when you can have something built-in and cleaner?
 
 ```go
-// 0 Heap Allocations. Typesafe.
+// Near-Zero Heap Allocations. Typesafe.
 logger.Opt().
     Str("service", "payment").
     Int("status", 200).

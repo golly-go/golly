@@ -10,7 +10,7 @@ It prioritizes "Monolithic Logic, Independent Scale".
 # Key Features
 
   - Service Framework: Define multiple Services (Web, Worker, Consumer) in one binary.
-  - Zero-Allocation: Obsessively optimized logger, router, and context for hot paths.
+  - High-Performance: Obsessively optimized logger, router, and context for hot paths.
   - Supercharged Context: Carries structured logging, identity, and safe detachment logic.
   - Plugin Ecosystem: Modular architecture for ORM, Kafka, Redis, etc.
   - Production Ready: Graceful shutdown, lifecycle hooks, and built-in CLI.
@@ -44,7 +44,7 @@ A minimal example of a Golly application entrypoint:
 
   - Application: The root container for configuration, plugins, and lifecycle.
   - Context: The request-scoped context carrying metadata and logger.
-  - Logger: A high-performance, structured logger (zero-alloc).
+  - Logger: A high-performance, structured logger.
   - WebContext: A pool-optimized wrapper for HTTP requests.
 
 For more details, see the README or visit https://github.com/golly-go/golly.
