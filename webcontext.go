@@ -111,7 +111,7 @@ func (wctx *WebContext) Response() http.ResponseWriter { return wctx.writer }
 func (wctx *WebContext) RequestHeaders() http.Header   { return wctx.request.Header }
 func (wctx *WebContext) Request() *http.Request        { return wctx.request }
 func (wctx *WebContext) Route() *Route                 { return wctx.route }
-func (wctx *WebContext) Context() context.Context      { return wctx.ctx }
+func (wctx *WebContext) Context() *Context             { return wctx.ctx }
 func (wctx *WebContext) GollyContext() *Context        { return wctx.ctx }
 func (wctx *WebContext) Query(key string) url.Values   { return wctx.request.URL.Query() }
 
