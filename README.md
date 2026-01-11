@@ -12,7 +12,7 @@
 > - **Logger**: Replaced `logrus` with a zero-allocation custom logger. Syntax has changed (see `doc.go`).
 > - **Context**: `WebContext` no longer implements `context.Context` directly to prevent unintended interface promotion. Use `wctx.Context()` to access the underlying context.
 
-**Golly** is an ergonomic, zero-allocation service framework designed for **production engineering**.
+**Golly** is an ergonomic service framework designed for **production engineering**.
 
 Most Go frameworks are just HTTP routers. Golly is different. It provides the **architecture** to build scalable systems where your API, Background Workers, and Consumer workloads live in a single, cohesive codebase but scale independently.
 
