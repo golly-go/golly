@@ -6,6 +6,12 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/golly-go/golly)](https://goreportcard.com/report/github.com/golly-go/golly)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
+> [!WARNING] > **v0.9.1 Breaking Changes**
+> This release introduces significant architectural improvements that require migration:
+>
+> - **Logger**: Replaced `logrus` with a zero-allocation custom logger. Syntax has changed (see `doc.go`).
+> - **Context**: `WebContext` no longer implements `context.Context` directly to prevent unintended interface promotion. Use `wctx.Context()` to access the underlying context.
+
 **Golly** is an ergonomic, zero-allocation service framework designed for **production engineering**.
 
 Most Go frameworks are just HTTP routers. Golly is different. It provides the **architecture** to build scalable systems where your API, Background Workers, and Consumer workloads live in a single, cohesive codebase but scale independently.
