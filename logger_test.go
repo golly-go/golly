@@ -20,7 +20,7 @@ func TestLoggerTextFormatter(t *testing.T) {
 		buffer:  &bytes.Buffer{},
 	}
 
-	formatter := &TextFormatter{}
+	formatter := &TextFormatter{DisableColors: true}
 	b, err := formatter.Format(entry)
 	assert.NoError(t, err)
 

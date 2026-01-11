@@ -127,15 +127,67 @@ func (f *JSONFormatter) Format(e *Entry) ([]byte, error) {
 	return e.buffer.Bytes(), nil
 }
 
-// TextFormatter formats logs as text
-type TextFormatter struct{}
+// const (
+// 	colorReset = "\033[0m"
+
+// 	// Meta
+// 	colorBold = "\033[1m"
+
+// 	// Levels
+// 	colorTrace = "\033[90m"       // Bright black / gray (low noise)
+// 	colorDebug = "\033[38;5;75m"  // Soft blue (less loud than pure 34)
+// 	colorInfo  = "\033[38;5;81m"  // Sky blue (clear but not green/teal)
+// 	colorWarn  = "\033[38;5;214m" // Orange / amber (better than yellow)
+// 	colorError = "\033[38;5;196m" // Bright red (hard stop)
+// 	colorFatal = "\033[38;5;201m" // Magenta/purple (distinct from error)
+
+// 	colorTimestamp = "\033[2;90m"
+// )
+
+const (
+	colorReset = "\033[0m"
+	colorBold  = "\033[1m"
+
+	colorTimestamp = "\033[2;90m"
+
+	colorTrace = "\033[90m"      // Gray
+	colorDebug = "\033[38;5;67m" // Deep steel blue (subdued)
+	colorInfo  = "\033[38;5;39m" // Bright azure (clear, readable)
+
+	colorWarn  = "\033[38;5;214m" // Orange
+	colorError = "\033[38;5;196m" // Red
+	colorFatal = "\033[38;5;201m" // Magenta
+)
+
+// TextFormatter formats log entries as plain text with optional color coding.
+// Colors are enabled by default for better readability.
+type TextFormatter struct {
+	// DisableColors turns off ANSI color codes (useful for non-TTY output)
+	DisableColors bool
+}
 
 func (f *TextFormatter) Format(e *Entry) ([]byte, error) {
 	b := e.buffer
 
-	b.WriteString(e.level.String())
-	b.WriteByte(' ')
+	// Write colored timestamp
+	if !f.DisableColors {
+		b.WriteString(colorTimestamp)
+	}
 	b.WriteString(e.time.Format(time.RFC3339))
+	if !f.DisableColors {
+		b.WriteString(colorReset)
+	}
+	b.WriteByte('\t')
+
+	// Write colored level
+	if !f.DisableColors {
+		b.WriteString(f.getLevelColor(e.level))
+	}
+	b.WriteString(e.level.String())
+	if !f.DisableColors {
+		b.WriteString(colorReset)
+	}
+
 	b.WriteByte(' ')
 	b.WriteByte(' ')
 
@@ -153,12 +205,43 @@ func (f *TextFormatter) Format(e *Entry) ([]byte, error) {
 			continue
 		}
 		b.WriteByte(' ')
+
+		// Color the field key with the same color as the level
+		if !f.DisableColors {
+			b.WriteString(f.getLevelColor(e.level))
+		}
+
 		b.WriteString(k)
 		b.WriteByte('=')
+		if !f.DisableColors {
+			b.WriteString(colorReset)
+		}
+
+		// Write the value (uncolored)
 		fmt.Fprint(b, e.values[i])
 	}
 
 	return b.Bytes(), nil
+}
+
+// getLevelColor returns the ANSI color code for the given log level
+func (f *TextFormatter) getLevelColor(level Level) string {
+	switch level {
+	case LogLevelTrace:
+		return colorTrace
+	case LogLevelDebug:
+		return colorDebug
+	case LogLevelInfo:
+		return colorInfo
+	case LogLevelWarn:
+		return colorWarn
+	case LogLevelError:
+		return colorError
+	case LogLevelFatal:
+		return colorBold + colorFatal
+	default:
+		return ""
+	}
 }
 
 // NewLogger creates a new Logger instance
