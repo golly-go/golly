@@ -11,6 +11,7 @@
 >
 > - **Logger**: Replaced `logrus` with a zero-allocation custom logger. Syntax has changed (see `doc.go`).
 > - **Context**: `WebContext` no longer implements `context.Context` directly to prevent unintended interface promotion. Use `wctx.Context()` to access the underlying context.
+> - **Services**: `golly.WebService` is no longer loaded by default, as we move away from web first into service-first architecture.
 
 **Golly** is an ergonomic service framework designed for **production engineering**.
 
@@ -43,11 +44,52 @@ We don't just say "fast"; we prove it. Golly is engineered for **High-Performanc
 | **CORS**   | Origin Validation  | **~12 ns**  | **0 allocs**  |
 | **Render** | JSON Response      | **~157 ns** | **3 allocs**  |
 
-_\*The single router allocation is the `Context` object, ensuring thread-safe context propagation across different execution modes._
+_\*The single router allocation is the `Context` object. We explicitly do NOT pool the core `Context` to prevent data races and ensure safe, independent propagation across goroutines (e.g. `Detach()`). Safety > 1 alloc._
+
+#### Benchmark Methodology
+
+- **Environment**: Apple M3 Max, 14-Core, Go 1.25.
+- **Flags**: `-benchmem -bench .`
+- **Methodology**:
+  - **Logger**: `log.Opt().Info()` (Zero-Alloc path) vs `zap.L().Info()`. Excludes serialization time (handled by buffer pool).
+  - **Router**: `GET` request with 1 param. Includes route matching + context creation. Excludes HTTP write syscalls.
 
 ---
 
-## Real World Production Example
+## ⚡ Quick Start: Hello World
+
+Minimal setup. Maximum power.
+
+```go
+package main
+
+import (
+    "github.com/golly-go/golly"
+    "github.com/golly-go/golly/middleware"
+)
+
+func main() {
+    golly.Run(golly.Options{
+        Name: "minimal-service",
+		Services: []golly.Service{&golly.WebService{}},
+        Initializer: func(app *golly.Application) error {
+            app.Routes().
+                Use(middleware.RequestLogger).
+                Get("/", func(c *golly.WebContext) {
+                    c.Text(200, "Hello, Golly!")
+                })
+            return nil
+        },
+    })
+}
+```
+
+```bash
+$ go run main.go start
+> INFO listening on :9000
+```
+
+## 🛠 Real World Production Example
 
 Golly applications are declarative and easy to reason about. Here is what a real-world production entrypoint looks like:
 
@@ -110,11 +152,18 @@ func main() {
 
 ### 1. The Supercharged Context
 
-Golly's `Context` is the spine of your request. It's not just a bag of values; it's an intelligent carrier for:
+Golly's `Context` is the spine of your request. It's not just a bag of values; it's an intelligent carrier for **Identity**, **Logging**, and **Tracing**.
 
-- **Structured Logging**: `ctx.Logger()` inherits request IDs and tenant info automatically.
-- **Identity**: Built-in methods for `ctx.Actor()` and authentication state.
-- **Safe Detachment**: Use `ctx.Detach()` to spawn goroutines that keep trace metadata but survive request cancellation.
+```go
+// Spawn a goroutine that survives the request but keeps the trace ID
+go func(ctx *golly.Context) {
+    // Detaches from parent cancellation, but keeps Logger + Meta
+    detached := ctx.Detach()
+
+    // Logs with original Request ID: "job_processed request_id=..."
+    detached.Logger().Info("Job processed in background")
+}(c.Context())
+```
 
 ### 2. High-Performance Logger
 
@@ -131,7 +180,17 @@ logger.Opt().
 
 ### 3. CLI Built-in
 
-Every Golly app is also a CLI. Need to run a migration? Truncate a table?
+Every Golly app is also a CLI. Define custom admin commands right next to your service code.
+
+```go
+// Define a custom command: ./app db truncate
+{
+    Use: "truncate",
+    Run: golly.Command(func(a *golly.Application, cmd *cobra.Command, args []string) error {
+        return a.DB().Exec("TRUNCATE users").Error
+    }),
+}
+```
 
 ```bash
 # Run the web server
@@ -146,12 +205,41 @@ Every Golly app is also a CLI. Need to run a migration? Truncate a table?
 
 ### 4. Plugin Ecosystem
 
-Don't write boilerplate. Use the official plugins:
+Plugins are first-class citizens with lifecycle hooks (`Initialize`, `PreBoot`).
 
-- `golly-go/plugins/orm`: GORM integration with connection pooling.
-- `golly-go/plugins/kafka`: High-throughput consumers/producers.
-- `golly-go/plugins/redis`: Cache and PubSub.
-- `golly-go/plugins/eventsource`: CQRS and Event Sourcing patterns.
+```go
+// Plugins enforce initialization order and dependency injection
+eventsource.NewPlugin(
+    eventsource.PluginWithStore(&gormstore.Store{}),
+    eventsource.PluginWithDispatcher(kafkaPlugin),
+)
+```
+
+---
+
+## 🗺 Concept Map
+
+```mermaid
+graph TD
+    App[Application] --> S[Services]
+    App --> P[Plugins]
+    App --> C[Context]
+
+    S --> Web[Web Service]
+    S --> Work[Worker Service]
+
+    Web -- Request --> C
+    Work -- Background --> C
+
+    P --> ORM[ORM Plugin]
+    P --> Kafka[Kafka Plugin]
+```
+
+## 📚 Documentation
+
+- [**Logger Guide**](https://pkg.go.dev/github.com/golly-go/golly#Logger): Zero-alloc usage and configuration.
+- [**Context Guide**](https://pkg.go.dev/github.com/golly-go/golly#Context): Usage of `Detach`, `Set`, and `Get`.
+- [**Service API**](https://pkg.go.dev/github.com/golly-go/golly#Service): Implementing custom Services.
 
 ---
 
