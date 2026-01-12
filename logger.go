@@ -842,6 +842,12 @@ func (e *Entry) Panicf(format string, args ...interface{}) {
 	panic(e.message)
 }
 
+// Printf logs the entry at Info level with formatting (compatibility method).
+// Implements the Printf(format string, args ...interface{}) interface used by many libraries.
+func (e *Entry) Printf(format string, args ...interface{}) {
+	e.finalizef(LogLevelInfo, format, args...)
+}
+
 // WithFields adds multiple key-value pairs to the entry and returns a new Entry.
 // If a key already exists, its value is replaced.
 func (e *Entry) WithFields(fields Fields) *Entry {

@@ -36,6 +36,8 @@ const maxValueDepth = 1000
 //
 // Context is safe for concurrent use and follows stdlib context patterns.
 type Context struct {
+	_ struct{} // prevent embedding
+
 	application *Application
 
 	loader atomic.Pointer[DataLoader]
