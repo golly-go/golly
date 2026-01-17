@@ -10,7 +10,8 @@ const (
 // citizen but this just provides a clean way for
 // plugins to handle auth
 type Identity interface {
-	IsValid() error
+	Valid() error
+	IsValid() bool
 }
 
 // IdentityToContext sets the given Identity in the *Context store
