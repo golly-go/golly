@@ -369,6 +369,7 @@ func NewLogger() *Logger {
 	}
 
 	var formatter Formatter = &JSONFormatter{}
+
 	if Env().IsDevelopmentOrTest() {
 		formatter = &TextFormatter{}
 	}
@@ -376,7 +377,15 @@ func NewLogger() *Logger {
 	l := &Logger{
 		level: level,
 	}
-	l.out.Store(&outputHolder{w: os.Stderr})
+
+	// In test mode, discard output by default (like logrus)
+	// Use NewTestLogger(t) if you want buffered output via t.Log()
+	if Env() == Test && os.Getenv("ENABLE_LOGGING_IN_TEST") != "true" {
+		l.out.Store(&outputHolder{w: io.Discard})
+	} else {
+		l.out.Store(&outputHolder{w: os.Stderr})
+	}
+
 	l.formatter.Store(&formatterHolder{f: formatter})
 	return l
 }

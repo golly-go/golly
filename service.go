@@ -247,7 +247,17 @@ func serviceRun(name string) CLICommand {
 //
 // Returns an error if any service stops unexpectedly before shutdown.
 func runAllServices(app *Application, cmd *cobra.Command, args []string) error {
-	var eg errgroup.Group
+	// Use WithContext to fail-fast on first service error
+	eg, ctx := errgroup.WithContext(context.Background())
+
+	// Watch for context cancellation (on first error) and shutdown immediately
+	go func() {
+		<-ctx.Done()
+
+		if ctx.Err() != nil {
+			app.Shutdown()
+		}
+	}()
 
 	// Run each service in its own goroutine
 	for _, svc := range app.services {
