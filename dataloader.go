@@ -57,6 +57,13 @@ func (dl *DataLoader) Delete(key any) {
 	delete(dl.cache, key)
 }
 
+func (dl *DataLoader) Clear() {
+	dl.mu.Lock()
+	defer dl.mu.Unlock()
+
+	dl.cache = make(map[any]cacheResult)
+}
+
 // Fetch attempts to retrieve a value from the cache by key.
 // If the key is not found, it calls the provided fetch function to obtain the value, caches it,
 // and then returns the result.
