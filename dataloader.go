@@ -3,107 +3,155 @@ package golly
 import (
 	"fmt"
 	"sync"
+	"sync/atomic"
 )
-
-type cacheResult struct {
-	err   error
-	value any
-}
 
 // FetchFunc is a generic function type that returns a value of type T and an error.
 type FetchFunc[T any] func() (T, error)
 
-// DataLoader is a concurrency-safe structure that caches and retrieves values based on keys.
-// It uses sync.Map internally for efficient thread-safe storage.
+// entry represents a single cached result. If multiple goroutines request the same key,
+// only the first will execute the fetch. Others will wait on `ready`.
+type entry struct {
+	ready chan struct{}
+	value any
+	err   error
+	done  uint32
+}
+
+// DataLoader is a concurrency-safe, request-scoped cache with single-flight semantics per key.
+// It caches both values and errors intentionally.
 type DataLoader struct {
-	cache map[any]cacheResult
-	mu    sync.RWMutex
+	mu    sync.Mutex
+	cache map[any]*entry
 }
 
 // NewDataLoader initializes and returns a new instance of DataLoader.
 func NewDataLoader() *DataLoader {
 	return &DataLoader{
-		cache: make(map[any]cacheResult),
+		cache: make(map[any]*entry),
 	}
 }
 
+// Has returns true if the key exists in the loader (whether loaded or in-flight).
 func (dl *DataLoader) Has(key any) bool {
-	dl.mu.RLock()
-	defer dl.mu.RUnlock()
-
+	dl.mu.Lock()
 	_, ok := dl.cache[key]
+	dl.mu.Unlock()
 	return ok
 }
 
+// Get returns the value for key if present and fully loaded.
+// If the key is in-flight, Get returns (nil, false).
 func (dl *DataLoader) Get(key any) (any, bool) {
-	dl.mu.RLock()
-	defer dl.mu.RUnlock()
+	dl.mu.Lock()
+	e, ok := dl.cache[key]
+	dl.mu.Unlock()
+	if !ok {
+		return nil, false
+	}
 
-	value, ok := dl.cache[key]
-	return value.value, ok
+	// Non-blocking check: only return if loaded.
+	select {
+	case <-e.ready:
+		return e.value, true
+	default:
+		return nil, false
+	}
 }
 
+// GetWait returns the cached value for key if present, waiting if the fetch is in-flight.
+// If the key does not exist, it returns (nil, false).
+func (dl *DataLoader) GetWait(key any) (any, bool) {
+	dl.mu.Lock()
+	e, ok := dl.cache[key]
+	dl.mu.Unlock()
+	if !ok {
+		return nil, false
+	}
+
+	<-e.ready
+	return e.value, true
+}
+
+// Set sets a value for key and marks it as ready.
+// If another goroutine is already fetching or has set this key, the first writer wins.
 func (dl *DataLoader) Set(key any, value any) {
 	dl.mu.Lock()
-	defer dl.mu.Unlock()
-
-	dl.cache[key] = cacheResult{value: value, err: nil}
-}
-
-func (dl *DataLoader) Delete(key any) {
-	dl.mu.Lock()
-	defer dl.mu.Unlock()
-
-	delete(dl.cache, key)
-}
-
-func (dl *DataLoader) Clear() {
-	dl.mu.Lock()
-	defer dl.mu.Unlock()
-
-	dl.cache = make(map[any]cacheResult)
-}
-
-// Fetch attempts to retrieve a value from the cache by key.
-// If the key is not found, it calls the provided fetch function to obtain the value, caches it,
-// and then returns the result.
-func (dl *DataLoader) Fetch(key any, fetchFn FetchFunc[any]) (any, error) {
-	// Read lock for cache lookup
-	dl.mu.RLock()
-	if result, ok := dl.cache[key]; ok {
-		dl.mu.RUnlock()
-		return result.value, result.err
+	e, ok := dl.cache[key]
+	if !ok {
+		e = &entry{ready: make(chan struct{})}
+		dl.cache[key] = e
 	}
-	dl.mu.RUnlock()
-
-	// Write lock for cache miss
-	dl.mu.Lock()
-
-	// Double-check to avoid race condition
-	if result, ok := dl.cache[key]; ok {
-		dl.mu.Unlock()
-		return result.value, result.err
-	}
-
-	// Release lock before calling fetchFn to avoid deadlock
-	// This allows other goroutines to proceed while we fetch
 	dl.mu.Unlock()
 
-	// Call fetch function without holding the lock
-	value, err := fetchFn()
+	if atomic.CompareAndSwapUint32(&e.done, 0, 1) {
+		e.value = value
+		e.err = nil
+		close(e.ready)
+	}
+}
 
-	// Re-acquire lock to store the result
+// SetError sets an error for key and marks it as ready.
+// This matches the intentional "cache errors" behavior. First writer wins.
+func (dl *DataLoader) SetError(key any, err error) {
 	dl.mu.Lock()
-	defer dl.mu.Unlock()
+	e, ok := dl.cache[key]
+	if !ok {
+		e = &entry{ready: make(chan struct{})}
+		dl.cache[key] = e
+	}
+	dl.mu.Unlock()
 
-	// Double-check again in case another goroutine already cached it
-	if result, ok := dl.cache[key]; ok {
-		return result.value, result.err
+	if atomic.CompareAndSwapUint32(&e.done, 0, 1) {
+		e.value = nil
+		e.err = err
+		close(e.ready)
+	}
+}
+
+// Delete deletes the key from the cache. If the key is in-flight, it is removed from the map,
+// but any existing waiters on the entry will still be released when the fetch completes.
+func (dl *DataLoader) Delete(key any) {
+	dl.mu.Lock()
+	delete(dl.cache, key)
+	dl.mu.Unlock()
+}
+
+// Clear clears the cache.
+func (dl *DataLoader) Clear() {
+	dl.mu.Lock()
+	dl.cache = make(map[any]*entry)
+	dl.mu.Unlock()
+}
+
+// Fetch retrieves a value by key. If the key is not present, it executes fetchFn exactly once per key,
+// caching both value and error, and releases all waiters.
+func (dl *DataLoader) Fetch(key any, fetchFn FetchFunc[any]) (any, error) {
+	// Fast path: check if present.
+	dl.mu.Lock()
+	if e, ok := dl.cache[key]; ok {
+		dl.mu.Unlock()
+		<-e.ready
+		return e.value, e.err
 	}
 
-	dl.cache[key] = cacheResult{value: value, err: err}
+	// Miss: create in-flight entry.
+	e := &entry{ready: make(chan struct{})}
+	dl.cache[key] = e
+	dl.mu.Unlock()
 
-	return value, err
+	// Compute without holding the lock.
+	value, err := fetchFn()
+
+	if atomic.CompareAndSwapUint32(&e.done, 0, 1) {
+		e.value = value
+		e.err = err
+		close(e.ready)
+		return value, err
+	}
+
+	<-e.ready
+	return e.value, e.err
 }
 
 // FetchData is a generic function that retrieves typed data from the DataLoader.
@@ -123,48 +171,23 @@ func FetchData[T any](loader *DataLoader, key any, fetchFn FetchFunc[T]) (T, err
 	if !ok {
 		return zero, fmt.Errorf("type assertion to target type failed")
 	}
-
 	return castedResult, nil
 }
 
+// GetData returns the typed value if present and fully loaded, without waiting.
+// If the key is in-flight or absent, it returns (zero, false).
 func GetData[T any](loader *DataLoader, key any) (T, bool) {
 	var zero T
 
-	if value, ok := loader.Get(key); ok {
-		castedResult, ok := value.(T)
-		if !ok {
-			return zero, false
-		}
-
-		return castedResult, true
+	value, ok := loader.Get(key)
+	if !ok {
+		return zero, false
 	}
 
-	return zero, false
+	castedResult, ok := value.(T)
+	if !ok {
+		return zero, false
+	}
+
+	return castedResult, true
 }
-
-// Documentation
-/*
-Package golly provides a lightweight DataLoader to cache and fetch values associated with specific keys.
-
-DataLoader:
-- `NewDataLoader() *DataLoader` - Creates a new DataLoader instance.
-- `Fetch` - Retrieves data based on a key, stores it in the cache, and returns the result.
-- `FetchData` - A generic helper function for typed data fetching, leveraging Go generics.
-
-Caching Mechanism:
-- `sync.Map` is used to provide thread-safe concurrent access to the cache.
-- If the key is not found, the fetch function is executed, and the result is cached.
-
-Error Handling:
-- Errors during fetch operations are propagated to ensure robust error detection.
-
-Usage:
-  loader := NewDataLoader()
-  result, err := loader.Fetch("key1", func() (interface{}, error) {
-      return doSomeWork()
-  })
-
-  typedResult, err := FetchData("key2", func() (string, error) {
-      return "World", nil
-  })
-*/

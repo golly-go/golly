@@ -2,6 +2,8 @@ package golly
 
 import (
 	"errors"
+	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -73,6 +75,73 @@ func TestFetchData(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestDataLoaderFetchSingleFlight(t *testing.T) {
+	loader := NewDataLoader()
+	var calls int32
+
+	startFetch := make(chan struct{})
+	releaseFetch := make(chan struct{})
+
+	fetchFn := func() (any, error) {
+		if atomic.AddInt32(&calls, 1) == 1 {
+			close(startFetch)
+		}
+		<-releaseFetch
+		return "value", nil
+	}
+
+	const goroutines = 16
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+
+	results := make(chan any, goroutines)
+	for i := 0; i < goroutines; i++ {
+		go func() {
+			defer wg.Done()
+			value, err := loader.Fetch("key", fetchFn)
+			assert.NoError(t, err)
+			results <- value
+		}()
+	}
+
+	<-startFetch
+	close(releaseFetch)
+	wg.Wait()
+	close(results)
+
+	assert.Equal(t, int32(1), atomic.LoadInt32(&calls))
+	for value := range results {
+		assert.Equal(t, "value", value)
+	}
+}
+
+func TestDataLoaderSetWinsOverInFlightFetch(t *testing.T) {
+	loader := NewDataLoader()
+
+	fetchStarted := make(chan struct{})
+	releaseFetch := make(chan struct{})
+
+	fetchFn := func() (any, error) {
+		close(fetchStarted)
+		<-releaseFetch
+		return "fetch", nil
+	}
+
+	resultCh := make(chan any, 1)
+	go func() {
+		value, err := loader.Fetch("key", fetchFn)
+		assert.NoError(t, err)
+		resultCh <- value
+	}()
+
+	<-fetchStarted
+	loader.Set("key", "set")
+	close(releaseFetch)
+
+	result := <-resultCh
+	assert.Equal(t, "set", result)
 }
 
 // ***************************************************************************
