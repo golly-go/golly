@@ -129,23 +129,35 @@ func (c *Context) collectFields(acc []Field) []Field {
 }
 
 // Cache returns the DataLoader (cache) for this context.
-// It checks the immediate parent only, then creates a new DataLoader if not found.
-// The returned DataLoader is cached in the current context for future calls.
+// It walks up the parent chain to find an existing loader and shares it.
+// If none is found, it creates one and stores it on the nearest parent (or self).
 //
-// Note: Unlike Logger() and Application(), Cache() only checks one level up.
-// This is because caches are typically request-scoped and don't chain deeply.
+// This keeps a single request-scoped loader even when multiple child contexts are created.
 func (c *Context) Cache() *DataLoader {
 	if loader := c.loader.Load(); loader != nil {
 		return loader
 	}
 
-	// Only check immediate parent, then create (caches rarely chain deep)
 	var loader *DataLoader
-	switch p := c.parent.(type) {
-	case *Context:
-		if l := p.loader.Load(); l != nil {
-			loader = l
+
+	var inf any = c
+	for range maxContextTreeWalk {
+		if inf == nil {
+			break
 		}
+
+		ctx, ok := inf.(*Context)
+		if !ok {
+			break
+		}
+
+		if l := ctx.loader.Load(); l != nil {
+			loader = l
+			break
+		}
+
+		inf = ctx.parent
+
 	}
 
 	if loader == nil {

@@ -322,6 +322,34 @@ func BenchmarkContextLogger(b *testing.B) {
 	})
 }
 
+func TestContextCacheSharedWhenRootInitialized(t *testing.T) {
+	root := NewContext(context.Background())
+	rootLoader := root.Cache()
+
+	childA := WithValue(root, "a", "1")
+	childB := WithValue(root, "b", "2")
+
+	loaderA := childA.Cache()
+	loaderB := childB.Cache()
+
+	assert.Same(t, rootLoader, loaderA)
+	assert.Same(t, rootLoader, loaderB)
+}
+
+func TestContextCacheNotSharedAcrossSiblingsWithoutParentCache(t *testing.T) {
+	root := NewContext(context.Background())
+	childA := WithValue(root, "a", "1")
+	childB := WithValue(root, "b", "2")
+
+	loaderA := childA.Cache()
+	loaderB := childB.Cache()
+	loaderRoot := root.Cache()
+
+	assert.NotSame(t, loaderA, loaderB)
+	assert.NotSame(t, loaderA, loaderRoot)
+	assert.NotSame(t, loaderB, loaderRoot)
+}
+
 func BenchmarkContextCache(b *testing.B) {
 	rootCtx := &Context{}
 	childCtx := &Context{parent: rootCtx}

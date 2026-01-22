@@ -177,8 +177,7 @@ func BenchmarkDataLoaderFetch_CacheMiss(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		key := i + 100 // Ensure cache miss
-		_, _ = loader.Fetch(key, fetchFunc)
+		_, _ = loader.Fetch(i, fetchFunc)
 	}
 }
 
@@ -211,7 +210,8 @@ func BenchmarkFetchData_CacheMiss(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		key := i + 100 // Ensure cache miss
+		key := "miss-key"
 		_, _ = FetchData(loader, key, fetchFunc)
+		loader.Delete(key)
 	}
 }
