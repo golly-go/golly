@@ -336,7 +336,7 @@ func TestContextCacheSharedWhenRootInitialized(t *testing.T) {
 	assert.Same(t, rootLoader, loaderB)
 }
 
-func TestContextCacheNotSharedAcrossSiblingsWithoutParentCache(t *testing.T) {
+func TestContextCacheSharedWhenChildInitialized(t *testing.T) {
 	root := NewContext(context.Background())
 	childA := WithValue(root, "a", "1")
 	childB := WithValue(root, "b", "2")
@@ -345,9 +345,8 @@ func TestContextCacheNotSharedAcrossSiblingsWithoutParentCache(t *testing.T) {
 	loaderB := childB.Cache()
 	loaderRoot := root.Cache()
 
-	assert.NotSame(t, loaderA, loaderB)
-	assert.NotSame(t, loaderA, loaderRoot)
-	assert.NotSame(t, loaderB, loaderRoot)
+	assert.Same(t, loaderA, loaderB)
+	assert.Same(t, loaderA, loaderRoot)
 }
 
 func BenchmarkContextCache(b *testing.B) {

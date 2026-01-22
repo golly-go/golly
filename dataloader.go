@@ -15,7 +15,7 @@ type entry struct {
 	ready chan struct{}
 	value any
 	err   error
-	done  uint32
+	state uint32
 }
 
 // DataLoader is a concurrency-safe, request-scoped cache with single-flight semantics per key.
@@ -50,13 +50,12 @@ func (dl *DataLoader) Get(key any) (any, bool) {
 		return nil, false
 	}
 
-	// Non-blocking check: only return if loaded.
-	select {
-	case <-e.ready:
+	// Fast non-blocking check: only return if loaded.
+	if atomic.LoadUint32(&e.state) == 2 {
 		return e.value, true
-	default:
-		return nil, false
 	}
+
+	return nil, false
 }
 
 // GetWait returns the cached value for key if present, waiting if the fetch is in-flight.
@@ -84,9 +83,10 @@ func (dl *DataLoader) Set(key any, value any) {
 	}
 	dl.mu.Unlock()
 
-	if atomic.CompareAndSwapUint32(&e.done, 0, 1) {
+	if atomic.CompareAndSwapUint32(&e.state, 0, 1) {
 		e.value = value
 		e.err = nil
+		atomic.StoreUint32(&e.state, 2)
 		close(e.ready)
 	}
 }
@@ -102,9 +102,10 @@ func (dl *DataLoader) SetError(key any, err error) {
 	}
 	dl.mu.Unlock()
 
-	if atomic.CompareAndSwapUint32(&e.done, 0, 1) {
+	if atomic.CompareAndSwapUint32(&e.state, 0, 1) {
 		e.value = nil
 		e.err = err
+		atomic.StoreUint32(&e.state, 2)
 		close(e.ready)
 	}
 }
@@ -131,6 +132,9 @@ func (dl *DataLoader) Fetch(key any, fetchFn FetchFunc[any]) (any, error) {
 	dl.mu.Lock()
 	if e, ok := dl.cache[key]; ok {
 		dl.mu.Unlock()
+		if atomic.LoadUint32(&e.state) == 2 {
+			return e.value, e.err
+		}
 		<-e.ready
 		return e.value, e.err
 	}
@@ -140,17 +144,18 @@ func (dl *DataLoader) Fetch(key any, fetchFn FetchFunc[any]) (any, error) {
 	dl.cache[key] = e
 	dl.mu.Unlock()
 
+	if !atomic.CompareAndSwapUint32(&e.state, 0, 1) {
+		<-e.ready
+		return e.value, e.err
+	}
+
 	// Compute without holding the lock.
 	value, err := fetchFn()
 
-	if atomic.CompareAndSwapUint32(&e.done, 0, 1) {
-		e.value = value
-		e.err = err
-		close(e.ready)
-		return value, err
-	}
-
-	<-e.ready
+	e.value = value
+	e.err = err
+	atomic.StoreUint32(&e.state, 2)
+	close(e.ready)
 	return e.value, e.err
 }
 

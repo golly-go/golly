@@ -139,29 +139,32 @@ func (c *Context) Cache() *DataLoader {
 	}
 
 	var loader *DataLoader
+	var attach *Context
 
-	var inf any = c
+	var current context.Context = c.parent
 	for range maxContextTreeWalk {
-		if inf == nil {
+		if current == nil {
 			break
 		}
-
-		ctx, ok := inf.(*Context)
+		ctx, ok := current.(*Context)
 		if !ok {
 			break
 		}
-
+		if attach == nil {
+			attach = ctx
+		}
 		if l := ctx.loader.Load(); l != nil {
 			loader = l
 			break
 		}
-
-		inf = ctx.parent
-
+		current = ctx.parent
 	}
 
 	if loader == nil {
 		loader = NewDataLoader()
+		if attach != nil {
+			attach.loader.Store(loader)
+		}
 	}
 
 	c.loader.Store(loader)

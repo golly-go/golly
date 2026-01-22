@@ -181,6 +181,27 @@ func BenchmarkDataLoaderFetch_CacheMiss(b *testing.B) {
 	}
 }
 
+func BenchmarkDataLoaderGet_CacheHit(b *testing.B) {
+	loader := NewDataLoader()
+	loader.Set("key", "value")
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = loader.Get("key")
+	}
+}
+
+func BenchmarkDataLoaderGet_CacheMiss(b *testing.B) {
+	loader := NewDataLoader()
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = loader.Get("missing")
+	}
+}
+
 // Benchmark for FetchData generic function (cache hit and miss scenarios).
 func BenchmarkFetchData_CacheHit(b *testing.B) {
 	loader := NewDataLoader()
