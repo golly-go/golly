@@ -2,8 +2,8 @@ package golly
 
 import "context"
 
-const (
-	identityContextKey ContextKey = "identityContext"
+var (
+	identityContextKey ContextKey
 )
 
 // Will eventually want to make this more of a

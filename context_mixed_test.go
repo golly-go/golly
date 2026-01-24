@@ -13,7 +13,9 @@ func ExternalLibWrap(ctx context.Context, key, val string) context.Context {
 }
 
 func TestContext_MixedWrapping(t *testing.T) {
-	dbKey := ContextKey("database")
+	var dbKey ContextKey
+	var requestIdKey ContextKey
+
 	dbVal := "the-db"
 
 	// Base Golly Context with DB
@@ -25,7 +27,7 @@ func TestContext_MixedWrapping(t *testing.T) {
 	// Wrap again with Golly
 	// WithValue accepts context.Context, returns *Context
 	// We assign back to interface to keep chain generic
-	ctx = WithValue(ctx, ContextKey("request-id"), "123")
+	ctx = WithValue(ctx, requestIdKey, "123")
 
 	// Verify DB is visible from top
 	val := ctx.Value(dbKey)
