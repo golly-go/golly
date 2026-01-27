@@ -1,6 +1,6 @@
 # Golly
 
-> **The Go Service Framework for High-Performance Monoliths**
+> **A composable Go application framework for building production services.**
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/golly-go/golly.svg)](https://pkg.go.dev/github.com/golly-go/golly)
 [![Go Report Card](https://goreportcard.com/badge/github.com/golly-go/golly)](https://goreportcard.com/report/github.com/golly-go/golly)
@@ -11,25 +11,27 @@
 >
 > - **Logger**: Replaced `logrus` with a zero-allocation custom logger. Syntax has changed (see `doc.go`).
 > - **Context**: `WebContext` no longer implements `context.Context` directly to prevent unintended interface promotion. Use `wctx.Context()` to access the underlying context.
-> - **Services**: `golly.WebService` is no longer loaded by default, as we move away from web first into service-first architecture.
+> - **Services**: `golly.WebService` is no longer loaded by default, as we move away from web-first into service-first architecture.
 
-**Golly** is an ergonomic service framework designed for **production engineering**.
+**Golly** is a general-purpose application framework for building production Go services—web APIs, background workers, event consumers, IoT systems, and more.
 
-Most Go frameworks are just HTTP routers. Golly is different. It provides the **architecture** to build scalable systems where your API, Background Workers, and Consumer workloads live in a single, cohesive codebase but scale independently.
+Started as glue code between popular libraries, it evolved over years of production use into a cohesive framework with custom implementations for tighter integration. Build web services, smart home automation, data pipelines, or any Go application with structured logging, lifecycle management, and a universal context abstraction.
 
 ---
 
-## The Philosophy: Monolithic Logic, Independent Scale
+## Philosophy: Build Once, Deploy Anywhere
 
-Stop tearing your application apart into microservices just to scale a queue consumer.
+One codebase. Multiple deployment modes.
 
-Golly allows you to define multiple **Services** (Web, Worker, Consumer) in one binary. In production, you deploy the same binary as different "Pods", each running only the workload it needs.
+Golly lets you define services (Web, Worker, Consumer, Cron, etc.) in a single binary. Deploy the same code as different processes—each running only what it needs.
 
-- **Pod A (Web)**: API Traffic, highly scalable, stateless.
-- **Pod B (Worker)**: Background jobs, memory-intensive.
-- **Pod C (Consumer)**: Kafka stream processor, throughput-optimized.
+**Examples:**
 
-All sharing the same models, domain logic, and utilities. **Zero logic duplication. Infinite scale.**
+- **HRIS Backend**: Web API + Kafka consumers + scheduled jobs
+- **Smart Home**: IoT device handlers + automation workers + admin API
+- **Data Pipeline**: Stream processors + batch jobs + monitoring dashboard
+
+All sharing the same domain logic, context, and configuration. **Write once. Scale independently.**
 
 ---
 
@@ -150,70 +152,91 @@ func main() {
 
 ## Key Features
 
-### 1. The Supercharged Context
+### 1. Universal Context
 
-Golly's `Context` is the spine of your request. It's not just a bag of values; it's an intelligent carrier for **Identity**, **Logging**, and **Tracing**.
+Golly's `Context` is the backbone of your application—not just web requests. It works seamlessly across web handlers, Kafka consumers, background workers, and cron jobs.
 
-```go
-// Spawn a goroutine that survives the request but keeps the trace ID
-go func(ctx *golly.Context) {
-    // Detaches from parent cancellation, but keeps Logger + Meta
-    detached := ctx.Detach()
-
-    // Logs with original Request ID: "job_processed request_id=..."
-    detached.Logger().Info("Job processed in background")
-}(c.Context())
-```
-
-### 2. High-Performance Logger
-
-Why use `zap` when you can have something built-in and cleaner?
+**Opinionated separation:** `WebContext` is for HTTP-specific concerns (request/response). For everything else, extract the universal `Context`:
 
 ```go
-// Near-Zero Heap Allocations. Typesafe.
-logger.Opt().
-    Str("service", "payment").
-    Int("status", 200).
-    Dur("latency", duration).
-    Info("Payment processed")
-```
+// ✅ Extract Context for passing down
+func Handler(wctx *golly.WebContext) {
+    ctx := wctx.Context() // Universal context
 
-### 3. CLI Built-in
+    // Pass ctx, not wctx, to business logic
+    result := doBusinessLogic(ctx)
+    wctx.JSON(200, result)
+}
 
-Every Golly app is also a CLI. Define custom admin commands right next to your service code.
+func doBusinessLogic(ctx *golly.Context) Result {
+    // Works in web handlers, workers, consumers, anywhere
+    ctx.Logger().Info("Processing payment")
 
-```go
-// Define a custom command: ./app db truncate
-{
-    Use: "truncate",
-    Run: golly.Command(func(a *golly.Application, cmd *cobra.Command, args []string) error {
-        return a.DB().Exec("TRUNCATE users").Error
-    }),
+    // Safe detachment for async work
+    go func(ctx *golly.Context) {
+        detached.Logger().Info("Background job started")
+    }(ctx.Detach())
+
+    return Result{}
 }
 ```
 
-```bash
-# Run the web server
-./app start
+**This separation is intentional.** Don't pass `WebContext` to business logic—it couples your domain to HTTP.
 
-# Run a specific service
-./app service start worker
+### 2. Service Framework, Not Just Web
 
-# Run custom commands
-./app db truncate
-```
-
-### 4. Plugin Ecosystem
-
-Plugins are first-class citizens with lifecycle hooks (`Initialize`, `PreBoot`).
+Define multiple services (Web, Worker, Consumer) in one codebase. Deploy as separate pods that share domain logic but scale independently.
 
 ```go
-// Plugins enforce initialization order and dependency injection
-eventsource.NewPlugin(
-    eventsource.PluginWithStore(&gormstore.Store{}),
-    eventsource.PluginWithDispatcher(kafkaPlugin),
-)
+Services: []golly.Service{
+    &golly.WebService{},      // HTTP API
+    &worker.JobProcessor{},   // Background jobs
+    &kafka.ConsumerService{}, // Event consumers
+}
 ```
+
+Each pod runs the same binary, just different services. **Monolithic logic. Independent scale.**
+
+### 3. High-Performance Hot Paths
+
+Obsessively optimized logger, router, and context for production workloads.
+
+```go
+// Near-zero allocation logging
+logger.Opt().
+    Str("service", "payment").
+    Int("status", 200).
+    Info("Payment processed")
+```
+
+See [Obsessive Performance](#obsessive-performance) for benchmarks.
+
+### 4. CLI Built-in
+
+Every Golly app is also a CLI. Define custom admin commands right next to your service code.
+
+```bash
+./app start                # Run services
+./app service start worker # Run specific service
+./app db migrate           # Custom commands
+```
+
+### 5. Optional Plugin Ecosystem
+
+Plugins are **completely optional**. Use the core framework with your own integrations, or drop in official plugins for common needs.
+
+**Plugins are detached from the main framework**—you can use Golly without any plugins at all.
+
+```go
+// Optional plugins for common needs (ORM, Kafka, Eventsource, etc.)
+Plugins: []golly.Plugin{
+    orm.NewOrmPlugin(...),
+    kafka.NewPlugin(),
+    eventsource.NewPlugin(...),
+}
+```
+
+Available in the separate [`golly-go/plugins`](https://github.com/golly-go/plugins) repository.
 
 ---
 
