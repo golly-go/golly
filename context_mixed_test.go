@@ -8,13 +8,15 @@ import (
 )
 
 // Simulate an external library wrapping the context
-func ExternalLibWrap(ctx context.Context, key, val string) context.Context {
+type externalKey string
+
+func ExternalLibWrap(ctx context.Context, key externalKey, val string) context.Context {
 	return context.WithValue(ctx, key, val)
 }
 
 func TestContext_MixedWrapping(t *testing.T) {
-	var dbKey ContextKey
-	var requestIdKey ContextKey
+	var dbKey = &ContextKey{}
+	var requestIdKey = &ContextKey{}
 
 	dbVal := "the-db"
 

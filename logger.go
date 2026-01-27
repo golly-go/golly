@@ -20,6 +20,12 @@ import (
 type Level int32
 
 const (
+	maxTmpMapKeys     = 64
+	maxFieldsCap      = 128      // tune based on typical log field counts
+	maxBufferCapBytes = 64 << 10 // 64KiB, tune based on typical log line size
+)
+
+const (
 	LogLevelTrace Level = iota
 	LogLevelDebug
 	LogLevelInfo
@@ -500,12 +506,10 @@ func (l *Logger) newEntry() *Entry {
 	entry.retain = false
 
 	// Reset tmpMap optimization (avoid O(n) delete for large maps)
-	if len(entry.tmpMap) > 64 {
+	if len(entry.tmpMap) >= maxTmpMapKeys {
 		entry.tmpMap = make(Fields, 16)
 	} else {
-		for k := range entry.tmpMap {
-			delete(entry.tmpMap, k)
-		}
+		clear(entry.tmpMap)
 	}
 
 	return entry
@@ -574,7 +578,7 @@ func (l *Logger) writeEntry(e *Entry) {
 	}
 
 	l.mu.Lock()
-	out.Write(e.buffer.Bytes())
+	_, _ = out.Write(e.buffer.Bytes())
 	l.mu.Unlock()
 
 	e.Release()

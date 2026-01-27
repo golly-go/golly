@@ -2,7 +2,6 @@ package golly
 
 import (
 	"context"
-	"slices"
 	"sync/atomic"
 	"time"
 	"unsafe"
@@ -11,7 +10,9 @@ import (
 // Deprecated: ContextKey is being deprecated in favor of using your own key type.
 // For now, you must use a pointer to ensure uniqueness: var key = &golly.ContextKey{}
 // In the future, define your own context keys using the pattern: var key = &struct{}{}
-type ContextKey struct{}
+type ContextKey struct {
+	_ byte // Prevents compiler from pointing all instances to the same address
+}
 
 // ContextFuncError is a function that operates on a Context and may return an error.
 type ContextFuncError func(*Context) error
@@ -63,71 +64,127 @@ type Context struct {
 // The returned logger is cached in the current context for future calls.
 //
 // Maximum tree walk depth is limited to maxContextTreeWalk to prevent infinite loops.
-// Logger returns the logger entry for this context.
-// It reconstructs the logger by collecting fields from the context chain.
+// Logger returns a reusable *Entry for building a log event.
+// Prefer calling a terminal method (Info/Error/etc), which releases resources.
+// If you construct an Entry without emitting a log, call Release() to return
+// buffers to internal pools and avoid temporary memory retention.
 func (c *Context) Logger() *Entry {
-	// Collect fields from parent chain
-	fields := c.collectFields(nil)
+	// // Collect fields from parent chain
+	// fields := c.collectFields(nil)
 
 	// Create new entry
 	e := defaultLogger.newEntry()
-	if len(fields) > 0 {
-		e.fields = append(e.fields, fields...)
-	}
+	e.fields = c.collectFields(e.fields[:0])
+
 	return e
 }
 
 func (c *Context) collectFields(acc []Field) []Field {
-	var inf any = c
-
-	// Pass 1: count how many fields we’ll append (bounded walk)
+	// Pass 1: count needed
 	needed := 0
-	for range maxContextTreeWalk {
-		if inf == nil {
+	for i := 0; i < maxContextTreeWalk; i++ {
+		if c == nil {
 			break
 		}
+		needed += len(c.fields)
 
-		ctx, ok := inf.(*Context)
+		// Walk only while parent is *Context
+		p, ok := c.parent.(*Context)
 		if !ok {
-			break // hit a stdlib context (or other), stop walking
+			break
 		}
-
-		needed += len(ctx.fields)
-		inf = ctx.parent
+		c = p
 	}
 
 	if needed == 0 {
 		return acc
 	}
 
-	// Ensure capacity once (Go 1.21+)
-	if acc == nil {
-		acc = make([]Field, 0, needed+4) // small headroom is optional
-	} else {
-		acc = slices.Grow(acc, needed)
+	// Grow once
+	base := len(acc)
+	if cap(acc)-base < needed {
+		// manual grow avoids slices.Grow (same effect, sometimes nicer for old compilers / tighter control)
+		n := base + needed + 4 // optional headroom
+		tmp := make([]Field, base, n)
+		copy(tmp, acc)
+		acc = tmp
 	}
+	acc = acc[:base+needed]
 
-	// Pass 2: append fields in the same order as the walk (leaf -> root)
-	inf = c
-	for range maxContextTreeWalk {
-		if inf == nil {
+	// Pass 2: fill directly (leaf -> root)
+	dst := acc[base:]
+	for i := 0; i < maxContextTreeWalk; i++ {
+		if c == nil {
 			break
 		}
 
-		ctx, ok := inf.(*Context)
+		n := copy(dst, c.fields)
+		dst = dst[n:]
+
+		p, ok := c.parent.(*Context)
 		if !ok {
 			break
 		}
-
-		if len(ctx.fields) > 0 {
-			acc = append(acc, ctx.fields...)
-		}
-
-		inf = ctx.parent
+		c = p
 	}
+
+	// dst should be empty if counts matched; if you're paranoid, you can reslice:
+	// acc = acc[:base+(needed-len(dst))]
 
 	return acc
 }
+
+// func (c *Context) collectFields(acc []Field) []Field {
+// 	var inf any = c
+
+// 	// Pass 1: count how many fields we’ll append (bounded walk)
+// 	needed := 0
+// 	for range maxContextTreeWalk {
+// 		if inf == nil {
+// 			break
+// 		}
+
+// 		ctx, ok := inf.(*Context)
+// 		if !ok {
+// 			break // hit a stdlib context (or other), stop walking
+// 		}
+
+// 		needed += len(ctx.fields)
+// 		inf = ctx.parent
+// 	}
+
+// 	if needed == 0 {
+// 		return acc
+// 	}
+
+// 	// Ensure capacity once (Go 1.21+)
+// 	if acc == nil {
+// 		acc = make([]Field, 0, needed+4) // small headroom is optional
+// 	} else {
+// 		acc = slices.Grow(acc, needed)
+// 	}
+
+// 	// Pass 2: append fields in the same order as the walk (leaf -> root)
+// 	inf = c
+// 	for range maxContextTreeWalk {
+// 		if inf == nil {
+// 			break
+// 		}
+
+// 		ctx, ok := inf.(*Context)
+// 		if !ok {
+// 			break
+// 		}
+
+// 		if len(ctx.fields) > 0 {
+// 			acc = append(acc, ctx.fields...)
+// 		}
+
+// 		inf = ctx.parent
+// 	}
+
+// 	return acc
+// }
 
 // Cache returns the DataLoader (cache) for this context.
 // It walks up the parent chain to find an existing loader and shares it.
@@ -203,8 +260,8 @@ walk:
 	}
 
 	// Fallback to global app
-	if app != nil {
-		c.application = app
+	if a := app.Load(); a != nil {
+		c.application = a
 	}
 
 	return c.application
@@ -444,8 +501,8 @@ func NewContext(parent context.Context) *Context {
 	// Inherit application
 	if c, ok := parent.(*Context); ok && c != nil {
 		ctx.application = c.application
-	} else if app != nil {
-		ctx.application = app
+	} else if a := app.Load(); a != nil {
+		ctx.application = a
 	}
 
 	// Propagate cancellation from non-Golly parent contexts
@@ -502,7 +559,7 @@ func WithValue(parent context.Context, key, val interface{}) *Context {
 	case *Context:
 		ctx.application = p.application
 	default:
-		ctx.application = app
+		ctx.application = app.Load()
 	}
 
 	return ctx

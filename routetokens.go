@@ -3,7 +3,6 @@ package golly
 import (
 	"regexp"
 	"strings"
-	"unsafe"
 )
 
 type RouteToken struct {
@@ -33,12 +32,6 @@ func (rs *RouteToken) Match(str *string) bool {
 
 	matched, _ := regexp.MatchString(rs.matcher, *str)
 	return matched
-}
-
-// stringToBytes converts a string to byte slice without allocation
-// using unsafe pointer conversion
-func stringToBytes(s string) []byte {
-	return unsafe.Slice(unsafe.StringData(s), len(s))
 }
 
 // tokenize takes a string path and turns it into RouteTokens.
@@ -119,32 +112,43 @@ func tokenize(path string) []RouteToken {
 	return tokens
 }
 
+func makePathCount(path string) int {
+	if path == "" {
+		return 0
+	}
+	if path == "/" {
+		return 1
+	}
+	return strings.Count(path, "/") + 1
+}
+
 // pathSegments takes a string path and turns it into segments.
 // Used for walking/matching/vars. Optimized for runtime hotpath:
 // - no []byte conversion
 // - no []byte->string copies
 // - segments are string views into `path` (zero-alloc)
 // Only allocation is the segments slice backing array (once).
-func pathSegments(path string) []string {
-	if path == "" {
-		return []string{}
-	}
-	if path == "/" {
-		return []string{"/"}
+func pathSegments(stack []string, path string) {
+	if path == "" || cap(stack) == 0 {
+		return
 	}
 
-	// Preallocate based on slash count. This is an upper bound because we
-	// skip empty segments from repeated slashes.
-	tokenCount := strings.Count(path, "/")
-	segments := make([]string, 0, tokenCount+1)
+	if path == "/" {
+		stack[0] = "/"
+
+		return
+	}
 
 	n := len(path)
 	i := 0
+	cnt := 0
 
 	// Leading root segment if starts with '/'
 	if path[0] == '/' {
-		segments = append(segments, "/")
+		stack[cnt] = "/"
+
 		i = 1
+		cnt++
 	}
 
 	for i < n {
@@ -162,8 +166,8 @@ func pathSegments(path string) []string {
 		}
 
 		// Zero-alloc substring view
-		segments = append(segments, path[start:i])
+		stack[cnt] = path[start:i]
+		cnt++
 	}
 
-	return segments
 }

@@ -1,7 +1,6 @@
 package golly
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"maps"
@@ -200,10 +199,13 @@ func listAllPluginsCommand(app *Application, cmd *cobra.Command, args []string) 
 // CurrentPlugins returns the current loaded plugins
 // pulling from global App - nil if the app ahs not been started yet
 func CurrentPlugins() *PluginManager {
-	if app == nil {
+	a := app.Load()
+
+	if a == nil {
 		return nil
 	}
-	return app.plugins
+
+	return a.plugins
 }
 
 // GetPlugin retrieves a plugin by name with type safety.
@@ -227,10 +229,8 @@ func GetPlugin[T Plugin](tracker any, name string) T {
 		a = c.Application()
 	case *Application:
 		a = c
-	case context.Context:
-		a = app
 	default:
-		a = app
+		a = app.Load()
 	}
 
 	// Fallback to global

@@ -158,8 +158,11 @@ func BenchmarkSegmentPath(b *testing.B) {
 		b.Run(tt.name, func(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
+
 			for i := 0; i < b.N; i++ {
-				_ = pathSegments(tt.path)
+				stack := make([]string, 0, makePathCount(tt.path))
+
+				pathSegments(stack, tt.path)
 			}
 		})
 	}

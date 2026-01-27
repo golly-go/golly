@@ -30,6 +30,47 @@ func TestParseHeaders(t *testing.T) {
 	}
 }
 
+func TestCors_ValidateHeaders(t *testing.T) {
+	c := &cors{
+		allHeaders: false,
+		headers:    []string{"Content-Type", "Authorization"},
+	}
+
+	assert.True(t, c.validateHeaders("Content-Type"))
+	assert.True(t, c.validateHeaders("content-type"))
+	assert.True(t, c.validateHeaders("Content-Type, Authorization"))
+	assert.False(t, c.validateHeaders("X-Custom-Header"))
+	assert.True(t, c.validateHeaders("")) // Empty is allowed
+}
+
+func TestCors_IsOriginAllowed(t *testing.T) {
+	c := &cors{
+		allOrigins:     false,
+		allowedOrigins: []string{"https://example.com"},
+		worigins:       []string{"*.example.org"},
+	}
+
+	assert.True(t, c.isOriginAllowed("https://example.com"))
+	assert.True(t, c.isOriginAllowed("https://EXAMPLE.com"))     // Case insensitive
+	assert.True(t, c.isOriginAllowed("https://sub.example.org")) // Wildcard
+	assert.False(t, c.isOriginAllowed("https://other.com"))
+}
+
+func TestCors_IsMethodAllowed(t *testing.T) {
+	c := &cors{
+		methods: []string{"GET", "POST"},
+	}
+
+	assert.True(t, c.isMethodAllowed("GET"))
+	assert.True(t, c.isMethodAllowed("get"))     // Case insensitive
+	assert.True(t, c.isMethodAllowed("OPTIONS")) // Always allowed
+	assert.False(t, c.isMethodAllowed("DELETE"))
+}
+
+/***************************************************
+ * Benchmarks
+ ***************************************************/
+
 func BenchmarkParseHeaders(b *testing.B) {
 	tests := []struct {
 		name  string

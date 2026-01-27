@@ -202,7 +202,7 @@ func NewWebContext(parent context.Context, r *http.Request, w http.ResponseWrite
 	case *Context:
 		wctx.ctx.application = p.application
 	default:
-		wctx.ctx.application = app
+		wctx.ctx.application = app.Load()
 	}
 
 	// Propagate cancellation
@@ -228,7 +228,7 @@ func NewWebContext(parent context.Context, r *http.Request, w http.ResponseWrite
 // Reset re-initializes a WebContext for reuse.
 // It creates a NEW Context for safety (as Contexts are passed to background jobs),
 // but reuses the WebContext struct allocation.
-func (wctx *WebContext) Reset(parent context.Context, r *http.Request, w http.ResponseWriter) {
+func (wctx *WebContext) Reset(parent context.Context, r *http.Request, w http.ResponseWriter, segements []string) {
 	if parent == nil {
 		parent = context.TODO()
 	}
@@ -252,7 +252,7 @@ func (wctx *WebContext) Reset(parent context.Context, r *http.Request, w http.Re
 
 	// Ensure application is set (NewContext does this, but double check default)
 	if wctx.ctx.application == nil {
-		wctx.ctx.application = app
+		wctx.ctx.application = app.Load()
 	}
 
 	// Reset other fields
@@ -263,7 +263,12 @@ func (wctx *WebContext) Reset(parent context.Context, r *http.Request, w http.Re
 	wctx.requestID = makeRequestID(wctx.reqIDBuf[:])
 
 	// Reset segments (zero alloc)
-	wctx.fillSegments(r.URL.Path)
+
+	if len(segements) == 0 {
+		wctx.fillSegments(r.URL.Path)
+	} else {
+		copy(wctx.segments, segements)
+	}
 }
 
 func (w *WebContext) fillSegments(path string) {

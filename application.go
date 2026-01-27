@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/spf13/viper"
@@ -34,23 +35,24 @@ type AppFunc func(*Application) error
 type PluginFunc func() AppFunc
 
 var (
-	lock sync.RWMutex // lock ensures thread-safe access to application initializers.
-
 	// not a big fan of this we may use it
 	// we may not, just feels like this breeds bad practices
 	// i remember how often Rails.configuration was abused back in the day
 	// still have PTSD from that (Plus global singletons are not thread safe without a global lock)
-	app *Application
+	app atomic.Pointer[Application]
 )
 
 func App() *Application {
-	return app
+	return app.Load()
 }
 
 func Config() *viper.Viper {
+	app := App()
+
 	if app == nil || app.config == nil {
 		return viper.GetViper()
 	}
+
 	return app.config
 }
 
@@ -89,7 +91,7 @@ type Application struct {
 	// arrays and loops to a single intializer function with a chain long term
 	preboot AppFunc
 
-	mu    sync.Mutex // Ensures safe concurrent access during initialization.
+	mu    sync.RWMutex // Ensures safe concurrent access during initialization.
 	state ApplicationState
 
 	services map[string]Service
@@ -106,8 +108,8 @@ func (a *Application) Logger() *Logger           { return a.logger }
 func (a *Application) Plugins() *PluginManager   { return a.plugins }
 
 func (a *Application) Services() []Service {
-	lock.RLock()
-	defer lock.RUnlock()
+	a.mu.RLock()
+	defer a.mu.RUnlock()
 
 	services := make([]Service, 0, len(a.services))
 	for _, s := range a.services {
@@ -142,19 +144,19 @@ func (a *Application) initialize() error {
 	}
 
 	if a.plugins != nil {
-		if err := a.plugins.bindEvents(app); err != nil {
+		if err := a.plugins.bindEvents(a); err != nil {
 			return err
 		}
 
-		if err := a.plugins.beforeInitialize(app); err != nil {
+		if err := a.plugins.beforeInitialize(a); err != nil {
 			return err
 		}
 
-		if err := a.plugins.initialize(app); err != nil {
+		if err := a.plugins.initialize(a); err != nil {
 			return err
 		}
 
-		if err := a.plugins.afterInitialize(app); err != nil {
+		if err := a.plugins.afterInitialize(a); err != nil {
 			return err
 		}
 	}
@@ -176,19 +178,21 @@ func (a *Application) Off(event string, fnc EventFunc) {
 
 // Shutdown starts the shutdown process
 func (a *Application) Shutdown() {
-	lock.RLock()
+	a.mu.RLock()
 	if a.state == StateShutdown {
-		lock.RUnlock()
+		a.mu.RUnlock()
 		return
 	}
-	lock.RUnlock()
+	a.mu.RUnlock()
 
 	a.changeState(StateShutdown)
 
 	stopRunningServices(a)
 
 	if a.plugins != nil {
-		a.plugins.deinitialize(app)
+		if err := a.plugins.deinitialize(a); err != nil {
+			a.logger.WithError(err)
+		}
 	}
 
 	a.events.Dispatch(
@@ -196,7 +200,7 @@ func (a *Application) Shutdown() {
 		ApplicationShutdown{})
 
 	if a.plugins != nil {
-		a.plugins.afterDeinitialize(app)
+		a.plugins.afterDeinitialize(a)
 	}
 
 }
@@ -209,8 +213,8 @@ func (a *Application) Shutdown() {
 // Returns:
 //   - nil if the initializer is registered successfully.
 func (a *Application) RegisterInitializer(initializer AppFunc) {
-	lock.Lock()
-	defer lock.Unlock()
+	a.mu.Lock()
+	defer a.mu.Unlock()
 
 	a.initializer = AppFuncChain(a.initializer, initializer)
 }
@@ -225,10 +229,10 @@ func (a *Application) RegisterInitializer(initializer AppFunc) {
 //   - nil if the service is registered successfully.
 //   - ErrorServiceAlreadyRegistered if the service is already registered.
 func (a *Application) RegisterService(service Service) error {
-	lock.Lock()
-	defer lock.Unlock()
-
 	name := getServiceName(service)
+
+	a.mu.Lock()
+	defer a.mu.Unlock()
 
 	if _, exists := a.services[name]; exists {
 		return ErrorServiceAlreadyRegistered
@@ -289,32 +293,32 @@ func NewApplication(options Options) *Application {
 
 		wctxPool: sync.Pool{
 			New: func() interface{} {
-				return &WebContext{}
+				return &WebContext{
+					writer: NewWrapResponseWriter(nil, 1), // Dummy, will be Reset()
+				}
 			},
 		},
 	}
 }
 
 func NewTestApplication(options Options) (*Application, error) {
-	lock.Lock()
-	app = NewApplication(options)
-	lock.Unlock()
+	a := NewApplication(options)
 
-	if err := setAndInitConfig(app); err != nil {
+	app.Store(a)
+
+	if err := setAndInitConfig(a); err != nil {
 		return nil, err
 	}
 
-	if err := app.initialize(); err != nil {
+	if err := a.initialize(); err != nil {
 		return nil, err
 	}
 
-	return app, nil
+	return a, nil
 }
 
 func ResetTestApp() {
-	lock.Lock()
-	app = nil
-	lock.Unlock()
+	app.Swap(nil)
 }
 
 func renderStatus(ctx *WebContext) {

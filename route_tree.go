@@ -8,6 +8,11 @@ import (
 	"strings"
 )
 
+const (
+	HeaderAllow                      = "Allow"
+	HeaderAccessControlRequestMethod = "Access-Control-Request-Method"
+)
+
 // RouteVars holds route path variables using zero-alloc SoA with string views.
 // Uses fixed-size stack buffer for common case (≤8 vars), with heap overflow for rare deep routes.
 type RouteVars struct {
@@ -176,8 +181,8 @@ type Route struct {
 
 	// Keep these here for runtime performance so we do not need to chain
 	// while running (need to think about how to handle this long term)
-	methodNotAllowedHandler HandlerFunc
-	noOp                    HandlerFunc
+	// methodNotAllowedHandler HandlerFunc
+	noOp HandlerFunc
 
 	parent *Route
 	root   *Route
@@ -241,7 +246,11 @@ func FindRouteBySegments(root *Route, segments []string) *Route {
 }
 
 func FindRoute(root *Route, path string) *Route {
-	return FindRouteBySegments(root, pathSegments(path))
+	var stack = make([]string, makePathCount(path))
+
+	pathSegments(stack, path)
+
+	return FindRouteBySegments(root, stack)
 }
 
 func (re *Route) search(segments []string) *Route {
@@ -290,10 +299,9 @@ func NewRouteRoot() *Route {
 
 func NewRoute(root *Route) *Route {
 	return &Route{
-		middleware:              []MiddlewareFunc{},
-		root:                    root,
-		methodNotAllowedHandler: notAllowedHandler,
-		noOp:                    noOpHandler,
+		middleware: []MiddlewareFunc{},
+		root:       root,
+		noOp:       noOpHandler,
 	}
 }
 
@@ -328,7 +336,7 @@ func (re *Route) updateHandlers() {
 		child.updateHandlers()
 	}
 
-	re.methodNotAllowedHandler = chain(middleware, notAllowedHandler)
+	// re.methodNotAllowedHandler = chain(middleware, notAllowedHandler)
 	re.noOp = chain(middleware, noOpHandler)
 
 	// Precompute Allow header
@@ -470,32 +478,44 @@ func (re *Route) Route(path string, f func(r *Route)) *Route {
 }
 
 func RouteRequest(a *Application, r *http.Request, w http.ResponseWriter) {
-	var method string
+	path := r.URL.Path
 
-	// reID := makeRequestID(nil) // Handled internally now
+	// Pre-sized slice (length=capacity) for zero-alloc parsing
+	var stack = make([]string, makePathCount(path))
 
-	// Create WebContext (handles request ID and Context creation internally)
-	wctx := a.wctxPool.Get().(*WebContext)
-	// Reset reuses the struct but allocates new Context/Channel
-	wctx.Reset(r.Context(), r, w)
-	defer a.wctxPool.Put(wctx)
+	// Tokenize path for route lookup (returns count, int doesn't escape)
+	pathSegments(stack, path)
 
-	// Route matching
-	re := FindRouteBySegments(a.routes, wctx.segments)
-	if re == nil {
-		goto notFound
+	if len(path) == 0 {
+		w.WriteHeader(http.StatusNotAcceptable)
+		return
 	}
 
+	// Fast route lookup before any allocations
+	re := FindRouteBySegments(a.routes, stack)
+	if re == nil {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+
+	if re.allowed == 0 {
+		w.Header().Set(HeaderAllow, re.allowHeader)
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Route found - now allocate WebContext for handler execution
+	wctx := a.wctxPool.Get().(*WebContext)
+	wctx.Reset(r.Context(), r, w, stack)
+	defer a.wctxPool.Put(wctx)
+
 	wctx.route = re
+
 	fillRouteVariables(&wctx.vars, re, wctx.segments)
 	wctx.varsLoaded = true
 
-	if re.allowed == 0 {
-		goto notAllowed
-	}
-
 	// Resolve method for CORS preflight or actual request
-	method = r.Header.Get("Access-Control-Request-Method")
+	method := r.Header.Get(HeaderAccessControlRequestMethod)
 	if method == "" {
 		method = r.Method
 	}
@@ -512,15 +532,9 @@ func RouteRequest(a *Application, r *http.Request, w http.ResponseWriter) {
 		}
 	}
 
-	goto notAllowed
-
-notAllowed:
-	notAllowedHandler(wctx)
-	return
-
-notFound:
-	notFoundHandler(wctx)
-	return
+	// Method not allowed after wctx allocated
+	w.Header().Set(HeaderAllow, re.allowHeader)
+	w.WriteHeader(http.StatusMethodNotAllowed)
 }
 
 func chain(middlewares []MiddlewareFunc, endpoint HandlerFunc) HandlerFunc {
@@ -596,9 +610,4 @@ func buildPath(route *Route, prefix string) []string {
 	return ret
 }
 
-func noOpHandler(*WebContext)          {}
-func notFoundHandler(wctx *WebContext) { wctx.Response().WriteHeader(http.StatusNotFound) }
-func notAllowedHandler(wctx *WebContext) {
-	wctx.writer.Header().Set("Allow", wctx.route.allowHeader)
-	wctx.writer.WriteHeader(http.StatusMethodNotAllowed)
-}
+func noOpHandler(*WebContext) {}

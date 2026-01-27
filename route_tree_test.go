@@ -62,9 +62,13 @@ func TestRouteVariables(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			var stack = make([]string, strings.Count(tt.path, "/")+1)
+
 			route := FindRoute(root, tt.path)
 
-			vars := routeVariables(route, pathSegments(tt.path))
+			pathSegments(stack, tt.path)
+
+			vars := routeVariables(route, stack)
 
 			assert.Equal(t, len(tt.expectedValues), vars.Len())
 			for key, expected := range tt.expectedValues {
@@ -354,6 +358,35 @@ func TestRouteRequest(t *testing.T) {
 }
 
 // ***************************************************************************
+// *  Recorder
+// ***************************************************************************
+
+type benchRW struct {
+	h      http.Header
+	status int
+	n      int
+}
+
+func newBenchRW() *benchRW {
+	return &benchRW{h: make(http.Header, 8)}
+}
+
+func (w *benchRW) Header() http.Header  { return w.h }
+func (w *benchRW) WriteHeader(code int) { w.status = code }
+func (w *benchRW) Write(p []byte) (int, error) {
+	w.n += len(p)
+	return len(p), nil
+}
+
+func (w *benchRW) Reset() {
+	for k := range w.h {
+		delete(w.h, k)
+	}
+	w.status = 0
+	w.n = 0
+}
+
+// ***************************************************************************
 // *  Benches
 // ***************************************************************************
 
@@ -421,19 +454,22 @@ func BenchmarkRouteRequest(b *testing.B) {
 		},
 	}
 
+	w := newBenchRW()
+
 	for _, tt := range tests {
 		b.Run(tt.name, func(b *testing.B) {
 			app := NewApplication(Options{})
 			tt.setup(app.routes)
 
-			var w *httptest.ResponseRecorder
+			// Optional warmup (route compilation, pools, etc)
+			RouteRequest(app, tt.request, w)
+			w.Reset()
 
 			b.ResetTimer()
 			b.ReportAllocs()
 
 			for i := 0; i < b.N; i++ {
-				w = httptest.NewRecorder()
-
+				w.Reset()
 				RouteRequest(app, tt.request, w)
 			}
 		})

@@ -52,7 +52,7 @@ func TestBasicWriter(t *testing.T) {
 		t.Errorf("expected status %d, got %d", http.StatusCreated, bw.Status())
 	}
 
-	bw.Write([]byte("Hello"))
+	_, _ = bw.Write([]byte("Hello"))
 	if bw.BytesWritten() != 5 {
 		t.Errorf("expected 5 bytes written, got %d", bw.BytesWritten())
 	}
@@ -70,7 +70,7 @@ func TestTeeWriter(t *testing.T) {
 	var buf bytes.Buffer
 	bw.Tee(&buf)
 
-	bw.Write([]byte("TeeTest"))
+	_, _ = bw.Write([]byte("TeeTest"))
 	if buf.String() != "TeeTest" {
 		t.Errorf("expected tee buffer to contain 'TeeTest', got %s", buf.String())
 	}
@@ -86,7 +86,7 @@ func TestDiscard(t *testing.T) {
 	bw := basicWriter{ResponseWriter: rec}
 	bw.Discard()
 
-	bw.Write([]byte("Discarded"))
+	_, _ = bw.Write([]byte("Discarded"))
 	if rec.Body.String() != "" {
 		t.Errorf("expected no response body, got %s", rec.Body.String())
 	}
@@ -201,8 +201,9 @@ func BenchmarkBasicWriter(b *testing.B) {
 			for i := 0; i < b.N; i++ {
 				rec := httptest.NewRecorder()
 				bw := basicWriter{ResponseWriter: rec}
+
 				bw.WriteHeader(http.StatusOK)
-				bw.Write([]byte("Benchmark"))
+				_, _ = bw.Write([]byte("Benchmark"))
 			}
 		})
 	}
@@ -223,6 +224,7 @@ func BenchmarkFlushWriter(b *testing.B) {
 			for i := 0; i < b.N; i++ {
 				rec := httptest.NewRecorder()
 				fw := &UniversalResponseWriter{basicWriter: basicWriter{ResponseWriter: rec}}
+
 				fw.WriteHeader(http.StatusOK)
 				fw.Flush()
 			}
@@ -245,6 +247,7 @@ func BenchmarkHttpFancyWriter(b *testing.B) {
 			for i := 0; i < b.N; i++ {
 				rec := httptest.NewRecorder()
 				fw := &UniversalResponseWriter{basicWriter: basicWriter{ResponseWriter: rec}}
+
 				fw.WriteHeader(http.StatusOK)
 				fw.Flush()
 			}

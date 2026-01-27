@@ -299,83 +299,6 @@ func TestContextLogger(t *testing.T) {
 	})
 }
 
-// ... existing tests ...
-
-func BenchmarkContextLogger(b *testing.B) {
-	// Setup: Create a parent context with fields
-	parentCtx := WithLoggerField(context.TODO(), "foo", "bar")
-	childCtx := NewContext(parentCtx)
-	standaloneCtx := NewContext(context.TODO())
-
-	// Benchmark: Logger construction from fields (Inherited)
-	b.Run("InheritedFields", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
-			_ = childCtx.Logger()
-		}
-	})
-
-	// Benchmark: Logger construction (Empty)
-	b.Run("Empty", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
-			_ = standaloneCtx.Logger()
-		}
-	})
-}
-
-func TestContextCacheSharedWhenRootInitialized(t *testing.T) {
-	root := NewContext(context.Background())
-	rootLoader := root.Cache()
-
-	childA := WithValue(root, "a", "1")
-	childB := WithValue(root, "b", "2")
-
-	loaderA := childA.Cache()
-	loaderB := childB.Cache()
-
-	assert.Same(t, rootLoader, loaderA)
-	assert.Same(t, rootLoader, loaderB)
-}
-
-func TestContextCacheSharedWhenChildInitialized(t *testing.T) {
-	root := NewContext(context.Background())
-	childA := WithValue(root, "a", "1")
-	childB := WithValue(root, "b", "2")
-
-	loaderA := childA.Cache()
-	loaderB := childB.Cache()
-	loaderRoot := root.Cache()
-
-	assert.Same(t, loaderA, loaderB)
-	assert.Same(t, loaderA, loaderRoot)
-}
-
-func BenchmarkContextCache(b *testing.B) {
-	rootCtx := &Context{}
-	childCtx := &Context{parent: rootCtx}
-
-	// Benchmark for cache creation
-	b.Run("CacheCreation", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
-			_ = rootCtx.Cache()
-		}
-	})
-
-	// Benchmark for retrieving existing cache
-	b.Run("CacheRetrievalRoot", func(b *testing.B) {
-		rootCtx.Cache() // Ensure cache is initialized
-		for i := 0; i < b.N; i++ {
-			_ = rootCtx.Cache()
-		}
-	})
-
-	// Benchmark for cascading cache retrieval from parent
-	b.Run("CacheCascadingFromParent", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
-			_ = childCtx.Cache()
-		}
-	})
-}
-
 // --- Cycle Prevention Tests ---
 
 // TestContextLoggerNoCycle ensures Logger() doesn't infinite loop with circular references
@@ -572,5 +495,131 @@ func TestDataFlow_DetachedChain(t *testing.T) {
 		t.Fatal("Final context closed unexpectedly")
 	default:
 		// OK
+	}
+}
+
+/****************************************************
+ * Benchmarks
+ ****************************************************/
+
+// Helper functions for benchmark setup
+func buildCtxEmpty() *Context {
+	return NewContext(context.TODO())
+}
+
+func buildCtxInherited() *Context {
+	parentCtx := WithLoggerField(context.TODO(), "foo", "bar")
+	return NewContext(parentCtx)
+}
+
+func BenchmarkContextLogger(b *testing.B) {
+	cases := []struct {
+		name string
+		ctx  *Context
+	}{
+		{"Empty", buildCtxEmpty()},
+		{"InheritedFields", buildCtxInherited()},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+
+		b.Run(tc.name, func(b *testing.B) {
+			b.ReportAllocs()
+			b.ResetTimer()
+
+			for i := 0; i < b.N; i++ {
+				e := tc.ctx.Logger()
+				_ = e.Fields() // Prevent compiler optimization
+				e.Release()
+			}
+		})
+	}
+}
+
+func BenchmarkEntryPoolWarm(b *testing.B) {
+	b.ReportAllocs()
+	ctx := buildCtxEmpty()
+
+	// warm pools outside timer
+	for i := 0; i < 10000; i++ {
+		e := ctx.Logger()
+		e.Release()
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		e := ctx.Logger()
+		e.Release()
+	}
+}
+
+func TestContextCacheSharedWhenRootInitialized(t *testing.T) {
+	root := NewContext(context.Background())
+	rootLoader := root.Cache()
+
+	childA := WithValue(root, "a", "1")
+	childB := WithValue(root, "b", "2")
+
+	loaderA := childA.Cache()
+	loaderB := childB.Cache()
+
+	assert.Same(t, rootLoader, loaderA)
+	assert.Same(t, rootLoader, loaderB)
+}
+
+func TestContextCacheSharedWhenChildInitialized(t *testing.T) {
+	root := NewContext(context.Background())
+	childA := WithValue(root, "a", "1")
+	childB := WithValue(root, "b", "2")
+
+	loaderA := childA.Cache()
+	loaderB := childB.Cache()
+	loaderRoot := root.Cache()
+
+	assert.Same(t, loaderA, loaderB)
+	assert.Same(t, loaderA, loaderRoot)
+}
+
+func BenchmarkContextCache(b *testing.B) {
+	rootCtx := &Context{}
+	childCtx := &Context{parent: rootCtx}
+
+	// Benchmark for cache creation
+	b.Run("CacheCreation", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			_ = rootCtx.Cache()
+		}
+	})
+
+	// Benchmark for retrieving existing cache
+	b.Run("CacheRetrievalRoot", func(b *testing.B) {
+		rootCtx.Cache() // Ensure cache is initialized
+		for i := 0; i < b.N; i++ {
+			_ = rootCtx.Cache()
+		}
+	})
+
+	// Benchmark for cascading cache retrieval from parent
+	b.Run("CacheCascadingFromParent", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			_ = childCtx.Cache()
+		}
+	})
+}
+
+func BenchmarkCollectFieldsOnly(b *testing.B) {
+	// build a context chain with some fields
+	root := &Context{fields: make([]Field, 4)}
+	mid := &Context{parent: root, fields: make([]Field, 4)}
+	leaf := &Context{parent: mid, fields: make([]Field, 4)}
+
+	b.ReportAllocs()
+	var acc []Field
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		acc = acc[:0]
+		_ = leaf.collectFields(acc)
 	}
 }

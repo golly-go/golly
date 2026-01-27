@@ -195,11 +195,11 @@ func GetService[T Service](tracker any, name string) T {
 		// Try to convert to Golly context
 		if gctx, ok := c.(*Context); ok {
 			a = gctx.Application()
-		} else {
-			a = app // fallback to global
 		}
-	default:
-		a = app
+	}
+
+	if a == nil {
+		a = app.Load()
 	}
 
 	return GetServiceFromApp[T](a, name)

@@ -129,7 +129,7 @@ func TestUnique(t *testing.T) {
 		{
 			name:   "empty slice",
 			input:  []int{},
-			expect: []int(nil),
+			expect: []int{},
 		},
 		{
 			name:   "single element",

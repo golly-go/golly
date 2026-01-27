@@ -117,7 +117,7 @@ func TestDataLoaderFetchSingleFlight(t *testing.T) {
 	}
 }
 
-func TestDataLoaderSetWinsOverInFlightFetch(t *testing.T) {
+func TestDataLoaderFirstToStartWins(t *testing.T) {
 	loader := NewDataLoader()
 
 	fetchStarted := make(chan struct{})
@@ -137,11 +137,158 @@ func TestDataLoaderSetWinsOverInFlightFetch(t *testing.T) {
 	}()
 
 	<-fetchStarted
-	loader.Set("key", "set")
+	loader.Set("key", "set") // This should NOT override the in-flight fetch
 	close(releaseFetch)
 
 	result := <-resultCh
-	assert.Equal(t, "set", result)
+	assert.Equal(t, "fetch", result, "First to start (fetch) should win over Set()")
+}
+
+func TestDataLoaderHas(t *testing.T) {
+	loader := NewDataLoader()
+
+	assert.False(t, loader.Has("missing"))
+
+	loader.Set("key", "value")
+	assert.True(t, loader.Has("key"))
+}
+
+func TestDataLoaderGet(t *testing.T) {
+	loader := NewDataLoader()
+
+	// Get on missing key
+	val, ok := loader.Get("missing")
+	assert.False(t, ok)
+	assert.Nil(t, val)
+
+	// Get on set key
+	loader.Set("key", "value")
+	val, ok = loader.Get("key")
+	assert.True(t, ok)
+	assert.Equal(t, "value", val)
+
+	// Get on in-flight key returns false
+	fetchStarted := make(chan struct{})
+	releaseFetch := make(chan struct{})
+
+	go func() {
+		loader.Fetch("inflight", func() (any, error) {
+			close(fetchStarted)
+			<-releaseFetch
+			return "result", nil
+		})
+	}()
+
+	<-fetchStarted
+	val, ok = loader.Get("inflight")
+	assert.False(t, ok, "Get should return false for in-flight keys")
+	assert.Nil(t, val)
+	close(releaseFetch)
+}
+
+func TestDataLoaderGetWait(t *testing.T) {
+	loader := NewDataLoader()
+
+	// GetWait on missing key
+	val, ok := loader.GetWait("missing")
+	assert.False(t, ok)
+	assert.Nil(t, val)
+
+	// GetWait on completed key
+	loader.Set("key", "value")
+	val, ok = loader.GetWait("key")
+	assert.True(t, ok)
+	assert.Equal(t, "value", val)
+
+	// GetWait waits for in-flight fetch
+	fetchStarted := make(chan struct{})
+	releaseFetch := make(chan struct{})
+
+	go func() {
+		loader.Fetch("inflight", func() (any, error) {
+			close(fetchStarted)
+			<-releaseFetch
+			return "result", nil
+		})
+	}()
+
+	<-fetchStarted
+
+	resultCh := make(chan any, 1)
+	go func() {
+		val, ok := loader.GetWait("inflight")
+		assert.True(t, ok)
+		resultCh <- val
+	}()
+
+	close(releaseFetch)
+	result := <-resultCh
+	assert.Equal(t, "result", result)
+}
+
+func TestDataLoaderSetError(t *testing.T) {
+	loader := NewDataLoader()
+
+	testErr := errors.New("test error")
+	loader.SetError("key", testErr)
+
+	val, err := loader.Fetch("key", func() (any, error) {
+		t.Fatal("fetch should not be called")
+		return nil, nil
+	})
+
+	assert.Error(t, err)
+	assert.Equal(t, testErr, err)
+	assert.Nil(t, val)
+}
+
+func TestDataLoaderDelete(t *testing.T) {
+	loader := NewDataLoader()
+
+	loader.Set("key", "value")
+	assert.True(t, loader.Has("key"))
+
+	loader.Delete("key")
+	assert.False(t, loader.Has("key"))
+}
+
+func TestDataLoaderClear(t *testing.T) {
+	loader := NewDataLoader()
+
+	loader.Set("key1", "value1")
+	loader.Set("key2", "value2")
+	assert.True(t, loader.Has("key1"))
+	assert.True(t, loader.Has("key2"))
+
+	loader.Clear()
+	assert.False(t, loader.Has("key1"))
+	assert.False(t, loader.Has("key2"))
+}
+
+func TestGetData(t *testing.T) {
+	loader := NewDataLoader()
+
+	// GetData on missing key
+	val, ok := GetData[string](loader, "missing")
+	assert.False(t, ok)
+	assert.Equal(t, "", val)
+
+	// GetData on existing key with correct type
+	loader.Set("key", "value")
+	val, ok = GetData[string](loader, "key")
+	assert.True(t, ok)
+	assert.Equal(t, "value", val)
+
+	// GetData with wrong type
+	loader.Set("int-key", 42)
+	strVal, ok := GetData[string](loader, "int-key")
+	assert.False(t, ok)
+	assert.Equal(t, "", strVal)
+
+	// GetData with correct type
+	intVal, ok := GetData[int](loader, "int-key")
+	assert.True(t, ok)
+	assert.Equal(t, 42, intVal)
 }
 
 // ***************************************************************************

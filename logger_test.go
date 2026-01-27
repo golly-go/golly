@@ -112,8 +112,10 @@ func BenchmarkTextFormatter(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
+		b.StopTimer()
 		entry.buffer.Reset()
-		formatter.FormatInto(entry)
+		b.StartTimer()
+		_ = formatter.FormatInto(entry)
 	}
 }
 
@@ -202,4 +204,90 @@ func TestPoolHygiene(t *testing.T) {
 	// However, we can check basic NewLogger() returns clean entry
 	e2 := NewLogger().Opt()
 	assert.Empty(t, e2.fields)
+}
+
+func TestLogger_SetLevel(t *testing.T) {
+	logger := NewLogger()
+	logger.SetOutput(io.Discard)
+
+	logger.SetLevel(LogLevelWarn)
+	assert.True(t, logger.IsLevelEnabled(LogLevelError))
+	assert.True(t, logger.IsLevelEnabled(LogLevelWarn))
+	assert.False(t, logger.IsLevelEnabled(LogLevelInfo))
+	assert.False(t, logger.IsLevelEnabled(LogLevelDebug))
+}
+
+func TestLogger_IsLevelEnabled(t *testing.T) {
+	logger := NewLogger()
+	logger.SetLevel(LogLevelInfo)
+
+	assert.True(t, logger.IsLevelEnabled(LogLevelFatal))
+	assert.True(t, logger.IsLevelEnabled(LogLevelError))
+	assert.True(t, logger.IsLevelEnabled(LogLevelWarn))
+	assert.True(t, logger.IsLevelEnabled(LogLevelInfo))
+	assert.False(t, logger.IsLevelEnabled(LogLevelDebug))
+	assert.False(t, logger.IsLevelEnabled(LogLevelTrace))
+}
+
+func TestLogger_LoggingMethods(t *testing.T) {
+	logger := NewLogger()
+	logger.SetOutput(io.Discard)
+	logger.SetLevel(LogLevelTrace) // Enable all levels
+
+	// These should not panic
+	logger.Info("info message")
+	logger.Infof("info %s", "formatted")
+	logger.Error("error message")
+	logger.Errorf("error %s", "formatted")
+	logger.Warn("warn message")
+	logger.Warnf("warn %s", "formatted")
+	logger.Debug("debug message")
+	logger.Debugf("debug %s", "formatted")
+	logger.Trace("trace message")
+	logger.Tracef("trace %s", "formatted")
+	logger.Print("print message")
+	logger.Printf("print %s", "formatted")
+	logger.Println("println", "message")
+}
+
+func TestLogger_ErrorWithError(t *testing.T) {
+	logger := NewLogger()
+	logger.SetOutput(io.Discard)
+
+	err := assert.AnError
+	logger.WithError(err)
+
+	// Should not panic
+}
+
+func TestEntry_AccessorMethods(t *testing.T) {
+	logger := NewLogger()
+	entry := logger.Opt().Str("key", "value")
+	entry.level = LogLevelInfo
+	entry.message = "test message"
+	entry.time = time.Now()
+
+	assert.Equal(t, LogLevelInfo, entry.Level())
+	assert.Equal(t, logger, entry.Logger())
+	assert.Equal(t, "test message", entry.Message())
+	assert.NotZero(t, entry.Time())
+}
+
+func TestLogger_SetFormatter(t *testing.T) {
+	logger := NewLogger()
+	logger.SetOutput(io.Discard)
+
+	jsonFormatter := &JSONFormatter{}
+	logger.SetFormatter(jsonFormatter)
+
+	// Log something to ensure formatter is used
+	logger.Info("test")
+	// Should not panic
+}
+
+func TestLogger_Level(t *testing.T) {
+	logger := NewLogger()
+	logger.SetLevel(LogLevelWarn)
+
+	assert.Equal(t, LogLevelWarn, logger.Level())
 }

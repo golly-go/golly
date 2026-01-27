@@ -39,22 +39,24 @@ All sharing the same domain logic, context, and configuration. **Write once. Sca
 
 We don't just say "fast"; we prove it. Golly is engineered for **High-Performance** in the hot paths.
 
-| Component  | Operation          | Latency     | Allocations   |
-| :--------- | :----------------- | :---------- | :------------ |
-| **Logger** | `Log.Opt().Info()` | **~133 ns** | **0 allocs**  |
-| **Router** | `GET /blog/:id`    | **~136 ns** | **1 alloc**\* |
-| **CORS**   | Origin Validation  | **~12 ns**  | **0 allocs**  |
-| **Render** | JSON Response      | **~157 ns** | **3 allocs**  |
+| Component  | Operation          | Latency     | Allocations  |
+| :--------- | :----------------- | :---------- | :----------- |
+| **Logger** | `Log.Opt().Info()` | **~118 ns** | **0 allocs** |
+| **Router** | `GET /test`        | **~140 ns** | **1 alloc**  |
+| **Router** | `GET /404` (miss)  | **~29 ns**  | **0 allocs** |
+| **CORS**   | Preflight Request  | **~131 ns** | **1 alloc**  |
+| **Render** | JSON Response      | **~75 ns**  | **3 allocs** |
 
-_\*The single router allocation is the `Context` object. We explicitly do NOT pool the core `Context` to prevent data races and ensure safe, independent propagation across goroutines (e.g. `Detach()`). Safety > 1 alloc._
+_Router allocation is the `Context` object - we prioritize safety over pooling for seamless `Detach()` support. 404s skip all allocations for bot/scanner resilience._
 
 #### Benchmark Methodology
 
-- **Environment**: Apple M3 Max, 14-Core, Go 1.25.
-- **Flags**: `-benchmem -bench .`
-- **Methodology**:
-  - **Logger**: `log.Opt().Info()` (Zero-Alloc path) vs `zap.L().Info()`. Excludes serialization time (handled by buffer pool).
-  - **Router**: `GET` request with 1 param. Includes route matching + context creation. Excludes HTTP write syscalls.
+- **Environment**: Apple M3 Max, 14-Core, Go 1.25.5
+- **Flags**: `-benchmem -benchtime=100000x`
+- **What's measured**:
+  - **Logger**: `log.Opt().Info()` optimized path. Excludes I/O (buffered writes).
+  - **Router**: Route matching + Context creation. Excludes handler execution and HTTP syscalls.
+  - **Generics**: In-place operations on pre-allocated slices where applicable.
 
 ---
 

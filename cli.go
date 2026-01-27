@@ -118,9 +118,7 @@ var (
 //	SetIn(input)
 //	defer SetIn(os.Stdin)
 func SetIn(r io.Reader) {
-	lock.Lock()
 	reader = r
-	lock.Unlock()
 }
 
 // Credentials prompts the user for a username and password.

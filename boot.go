@@ -8,38 +8,40 @@ import (
 )
 
 func boot(f AppFunc) error {
-	app = NewApplication(options)
+	a := NewApplication(options)
 
-	signals(app)
+	app.Store(a)
 
-	app.changeState(StateStarting)
+	signals(a)
+
+	a.changeState(StateStarting)
 
 	{
-		v, err := initConfig(app)
+		v, err := initConfig(a)
 		if err != nil {
 			return err
 		}
-		app.config = v
+		a.config = v
 	}
 
-	if err := app.initialize(); err != nil {
-		app.changeState(StateErrored)
+	if err := a.initialize(); err != nil {
+		a.changeState(StateErrored)
 
 		return err
 	}
 
-	app.changeState(StateInitialized)
+	a.changeState(StateInitialized)
 
-	defer app.Shutdown()
+	defer a.Shutdown()
 
-	app.changeState(StateRunning)
+	a.changeState(StateRunning)
 
-	if err := f(app); err != nil {
-		app.changeState(StateErrored)
+	if err := f(a); err != nil {
+		a.changeState(StateErrored)
 		return err
 	}
 
-	app.Shutdown()
+	a.Shutdown()
 	return nil
 }
 

@@ -1,5 +1,10 @@
 package golly
 
+import (
+	"cmp"
+	"slices"
+)
+
 // Find searches for the first element in the slice that satisfies the predicate.
 // Returns the element and a boolean indicating if it was found.
 func Find[T any](slice []T, predicate func(T) bool) (T, bool) {
@@ -66,29 +71,18 @@ func Map[T any, R any](list []T, fn func(T) R) []R {
 //   numbers := []int{1, 2, 3, 4}
 //   evens := Filter(numbers, func(n int) bool { return n%2 == 0 }) // []int{2, 4}
 
-// func Filter[T any](list []T, fn func(T) bool) []T {
-// 	ret := []T{}
+func Filter[T any](in []T, keep func(T) bool) []T {
+	out := make([]T, len(in))
+	copy(out, in) // 1 alloc, fast memcpy
 
-// 	for i := range list {
-// 		if result := fn(list[i]); result {
-// 			ret = append(ret, list[i])
-// 		}
-// 	}
-
-// 	return ret
-// }
-
-func Filter[T any](list []T, fn func(T) bool) []T {
-	// Estimate capacity based on a fraction of the input size.
-	ret := make([]T, 0, len(list)/3)
-
-	for i := range list {
-		if fn(list[i]) {
-			ret = append(ret, list[i])
+	w := 0
+	for _, v := range out {
+		if keep(v) {
+			out[w] = v
+			w++
 		}
 	}
-
-	return ret
+	return out[:w]
 }
 
 // MapWithIndex applies a transformation function to each element of the slice, passing its index.
@@ -117,48 +111,44 @@ func MapWithIndex[T any, R any](list []T, fn func(T, int) R) []R {
 	return ret
 }
 
-// // Unique removes duplicate elements (preserving first occurrences)
-// // by overwriting the input slice in place and returning a subslice.
-// func Unique[T comparable](original []T) []T {
-
-// 	// Small optimization: no work if slice length is 0 or 1
-// 	if len(original) < 2 {
-// 		return original
-// 	}
-
-// 	list := make([]T, len(original))
-
-// 	// Use map[T]struct{} to save a bit of space over map[T]bool.
-// 	// Pre-size to len(list) to minimize rehashing.
-// 	seen := make(map[T]bool, len(list))
-// 	copy(list, original)
-
-// 	writeIdx := 0
-// 	for pos := range list {
-// 		if _, exists := seen[list[pos]]; !exists {
-// 			seen[list[pos]] = true
-// 			list[writeIdx] = list[pos]
-// 			writeIdx++
-// 		}
-// 	}
-
-// 	// Return only the portion of 'list' that contains unique elements
-// 	return list[:writeIdx]
-// }
-
-func Unique[T comparable](original []T) []T {
-	if len(original) < 2 {
-		// Return a copy if you want truly non-destructive
-		return append([]T(nil), original...)
+// Unique removes duplicate elements from a slice in-place.
+//
+// ⚠️ WARNING: This function SORTS the input slice and DOES NOT preserve original order!
+// The returned slice will be sorted in ascending order with duplicates removed.
+// If you need to preserve order, use a map-based approach instead.
+//
+// Example:
+//
+//	in := []int{3, 1, 2, 1, 3}
+//	result := Unique(in)  // Returns: [1, 2, 3] (sorted, unique)
+//
+// Performance: O(n log n) time, 0 allocations (sorts in-place).
+func Unique[T cmp.Ordered](in []T) []T {
+	if len(in) < 2 {
+		return in
 	}
-	seen := make(map[T]struct{}, len(original))
-	result := make([]T, 0, len(original)) // grows by appending
-
-	for _, val := range original {
-		if _, found := seen[val]; !found {
-			seen[val] = struct{}{}
-			result = append(result, val)
+	slices.Sort(in) // In-place, O(n log n)
+	w := 1
+	for i := 1; i < len(in); i++ {
+		if in[i] != in[i-1] {
+			in[w] = in[i]
+			w++
 		}
 	}
-	return result
+	return in[:w]
 }
+
+// func Unique[T comparable](in []T) []T {
+// 	seen := make(map[T]struct{}, len(in))
+
+// 	w := 0
+// 	for _, v := range in {
+// 		if _, ok := seen[v]; ok {
+// 			continue
+// 		}
+// 		seen[v] = struct{}{}
+// 		in[w] = v
+// 		w++
+// 	}
+// 	return in[:w]
+// }

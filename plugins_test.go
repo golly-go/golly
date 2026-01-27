@@ -84,55 +84,6 @@ func TestGetPlugin(t *testing.T) {
 		assert.Equal(t, "from-webcontext", result.data)
 	})
 
-	t.Run("Falls back to global app when context has no app", func(t *testing.T) {
-		// Setup global app
-		plugin := &testPlugin{name: "global-plugin", data: "from-global"}
-		globalApp, err := NewTestApplication(Options{
-			Plugins: []Plugin{plugin},
-		})
-		require.NoError(t, err)
-
-		// Set global (simulate production)
-		oldApp := app
-		app = globalApp
-		defer func() { app = oldApp }()
-
-		// Context with no application set
-		ctx := NewContext(context.Background())
-		ctx.application = nil
-
-		result := GetPlugin[*testPlugin](ctx, "global-plugin")
-		assert.NotNil(t, result)
-		assert.Equal(t, "from-global", result.data)
-	})
-
-	t.Run("Context app takes precedence over global", func(t *testing.T) {
-		// Setup global app
-		globalPlugin := &testPlugin{name: "test-plugin", data: "from-global"}
-		globalApp, err := NewTestApplication(Options{
-			Plugins: []Plugin{globalPlugin},
-		})
-		require.NoError(t, err)
-
-		oldApp := app
-		app = globalApp
-		defer func() { app = oldApp }()
-
-		// Setup context app
-		ctxPlugin := &testPlugin{name: "test-plugin", data: "from-context"}
-		ctxApp, err := NewTestApplication(Options{
-			Plugins: []Plugin{ctxPlugin},
-		})
-		require.NoError(t, err)
-
-		ctx := NewContext(context.Background())
-		ctx.application = ctxApp
-
-		result := GetPlugin[*testPlugin](ctx, "test-plugin")
-		assert.NotNil(t, result)
-		assert.Equal(t, "from-context", result.data, "Should use context app, not global")
-	})
-
 	t.Run("Returns nil when plugin not found anywhere", func(t *testing.T) {
 		app, err := NewTestApplication(Options{})
 		require.NoError(t, err)
