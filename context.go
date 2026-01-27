@@ -10,6 +10,8 @@ import (
 
 // ContextKey is a type-safe key for context values.
 // Use this to create strongly-typed context keys and avoid collisions.
+// This is being deprecated in favor of using your own key type, in stead
+// however for now you must make this a pointer
 type ContextKey struct{}
 
 // ContextFuncError is a function that operates on a Context and may return an error.
