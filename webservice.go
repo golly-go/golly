@@ -7,8 +7,6 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
-
-	"github.com/spf13/cobra"
 )
 
 type WebService struct {
@@ -40,16 +38,16 @@ func (ws *WebService) Initialize(app *Application) error {
 	return nil
 }
 
-func (ws *WebService) Commands() []*cobra.Command {
-	return []*cobra.Command{
+func (ws *WebService) Commands() []*Command {
+	return []*Command{
 		{
-			Use:   "routes",
+			Name:  "routes",
 			Short: "List all routes",
-			Run: Command(func(app *Application, cmd *cobra.Command, args []string) error {
+			Run: func(ctx *Context, args []string) error {
 				fmt.Println("Listing Routes:")
-				fmt.Println(strings.Join(buildPath(app.routes, ""), "\n"))
+				fmt.Println(strings.Join(buildPath(ctx.Application().routes, ""), "\n"))
 				return nil
-			}),
+			},
 		},
 	}
 }

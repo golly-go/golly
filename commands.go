@@ -2,133 +2,82 @@ package golly
 
 import (
 	"fmt"
-	"os"
 
-	"github.com/spf13/cobra"
+	"golang.org/x/sync/errgroup"
 )
 
-var (
-	serviceCommand = &cobra.Command{
-		Use:              "service",
-		Short:            "Start a named service service",
-		Aliases:          []string{"services"},
-		TraverseChildren: true,
+func listServicesCommand(ctx *Context, args []string) error {
+	fmt.Println("Registered Services:")
+	for i, svc := range ctx.Application().Services() {
+		fmt.Printf("  %d. %s\n", i+1, getServiceName(svc))
 	}
-
-	listServiceCommand = &cobra.Command{
-		Use:   "list",
-		Short: "List services",
-	}
-
-	allServicesCommand = &cobra.Command{
-		Use:   "all",
-		Short: "List all services",
-		Run:   Command(runAllServices),
-	}
-
-	commands = []*cobra.Command{
-		serviceCommand,
-		{
-			Use:   "plugins",
-			Short: "List all plugins",
-			Run:   Command(listAllPluginsCommand),
-		},
-	}
-)
-
-// CLICommand is a function type representing a CLI command handler.
-// It receives a golly.Context, a Cobra command, and the command's arguments.
-//
-// Example:
-//
-//	func deleteUser(ctx *golly.Context, cmd *cobra.Command, args []string) error {
-//	    fmt.Println("Deleting user:", args)
-//	    return nil
-//	}
-type CLICommand func(*Application, *cobra.Command, []string) error
-
-// Command wraps a CLICommand to execute within the golly application context.
-// It ensures the command is executed with error handling and context propagation.
-//
-// Example:
-//
-//	{
-//	    Use: "delete-users [emailpattern] [orgID]",
-//	    Run: golly.Command(deleteUser),
-//	}
-func Command(command CLICommand) func(cmd *cobra.Command, args []string) {
-	return func(cmd *cobra.Command, args []string) {
-		a := app.Load()
-		if a == nil {
-			fmt.Println("Error: application not initialized")
-			os.Exit(1)
-		}
-
-		err := command(a, cmd, args)
-		if err != nil && err != ErrorExit && err != ErrorNone {
-			fmt.Printf("Error: %s\n", err)
-			os.Exit(1)
-		}
-	}
+	return nil
 }
 
-func bindCommands(app *Application, options Options) *cobra.Command {
+func runAllServicesCommand(ctx *Context, args []string) error {
+	app := ctx.Application()
+	eg := &errgroup.Group{}
 
-	rootCMD := &cobra.Command{
-		Use: app.Name,
-		// Initialize app before ANY command runs
-		PersistentPreRun: func(cmd *cobra.Command, args []string) {
-			if err := initializeApp(app); err != nil {
-				app.logger.Fatal(err)
+	for _, svc := range app.Services() {
+		service := svc // Capture for closure
+		eg.Go(func() error {
+			if err := StartService(app, service); err != nil {
+				return fmt.Errorf("%s failed: %w", getServiceName(service), err)
 			}
-			_ = setupSignals(app)
-			app.changeState(StateRunning)
-		},
-	}
-
-	if options.Standalone {
-		if len(options.Commands) > 0 {
-			rootCMD.AddCommand(options.Commands...)
-		}
-		return rootCMD
-	}
-
-	services := append(pluginServices(options.Plugins), options.Services...)
-
-	// Add "list-services" command
-	listServiceCommand.Run = listServices(services)
-
-	serviceCommand.AddCommand(listServiceCommand)
-	serviceCommand.AddCommand(allServicesCommand)
-
-	// Add individual service commands
-	for pos := range services {
-		name := getServiceName(services[pos])
-
-		serviceCommand.AddCommand(&cobra.Command{
-			Use:   name,
-			Short: getServiceDescription(services[pos]),
-			Run:   Command(serviceRun(name)),
+			return nil
 		})
 	}
 
-	// Add other non dynamic application commands and options
-	rootCMD.AddCommand(commands...)
+	// Wait for all services (blocks until shutdown or error)
+	return eg.Wait()
+}
 
-	// Add service commands
-	for pos := range services {
-		if sc, ok := services[pos].(ServiceCommands); ok {
-			rootCMD.AddCommand(sc.Commands()...)
+// buildCommandTree constructs the root command with all subcommands
+// We have app here, so we can setup service commands!
+func buildCommandTree(app *Application, opts Options) *Command {
+	root := &Command{
+		Name:  opts.Name,
+		Short: fmt.Sprintf("%s CLI", opts.Name),
+	}
+
+	if opts.Standalone {
+		root.Commands = opts.Commands
+		return root
+	}
+
+	// Build service command with dynamic subcommands
+	serviceCmd := &Command{
+		Name:  "service",
+		Short: "Manage services",
+		Commands: []*Command{
+			{Name: "list", Short: "List all services", Run: listServicesCommand},
+			{Name: "all", Short: "Run all services", Run: runAllServicesCommand},
+		},
+	}
+
+	// Add individual service start commands
+	for _, svc := range app.Services() {
+		name := getServiceName(svc)
+		service := svc // Capture for closure
+
+		serviceCmd.Commands = append(serviceCmd.Commands, &Command{
+			Name:  name,
+			Short: fmt.Sprintf("Start %s service", getServiceDescription(service)),
+			Run: func(ctx *Context, args []string) error {
+				return StartService(ctx.Application(), service)
+			},
+		})
+
+		// Add service-specific commands if available
+		if sc, ok := service.(ServiceCommands); ok {
+			serviceCmd.Commands = append(serviceCmd.Commands, sc.Commands()...)
 		}
 	}
 
-	// loop through our plugins incase they are defining
-	// cli commands - i am putting this here for now cause it needs
-	// to happen prior to rootCMD.execute
-	rootCMD.AddCommand(pluginCommands(options.Plugins)...)
+	root.Commands = append(root.Commands, serviceCmd)
 
-	// Any misc commands defined by the end user
-	rootCMD.AddCommand(options.Commands...)
+	// Add user commands
+	root.Commands = append(root.Commands, opts.Commands...)
 
-	return rootCMD
+	return root
 }

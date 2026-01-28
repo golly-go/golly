@@ -40,7 +40,7 @@ type Service interface {
 }
 
 type ServiceCommands interface {
-	Commands() []*cobra.Command
+	Commands() []*Command
 }
 
 // serviceMap converts a slice of Service into a map with service names as keys.
@@ -224,28 +224,6 @@ func GetServiceFromApp[T Service](app *Application, name string) T {
  * CLI Commands
  */
 
-// serviceRun creates a CLICommand for running a specific service by name.
-// The function can be extended with logic to start or manage the service.
-//
-// Parameters:
-//   - name: The name of the service to run.
-//
-// Returns:
-//   - A CLICommand function to execute the service run command within the application context.
-func serviceRun(name string) CLICommand {
-	return func(app *Application, cmd *cobra.Command, args []string) error {
-		service, exists := app.services[name]
-		if !exists {
-			return ErrorServiceNotRegistered
-		}
-
-		return StartService(app, service)
-	}
-}
-
-// runAllServices creates a CLICommand for running all registered services concurrently.
-//
-// Returns an error if any service stops unexpectedly before shutdown.
 func runAllServices(app *Application, cmd *cobra.Command, args []string) error {
 	// Use WithContext to fail-fast on first service error
 	eg, ctx := errgroup.WithContext(context.Background())

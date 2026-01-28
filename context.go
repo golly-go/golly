@@ -520,6 +520,12 @@ func NewContext(parent context.Context) *Context {
 	return ctx
 }
 
+func NewContextWithApplication(parent context.Context, app *Application) *Context {
+	ctx := NewContext(parent)
+	ctx.SetApplication(app)
+	return ctx
+}
+
 // ToGollyContext converts a standard context.Context to a Golly *Context.
 // If ctx is already a *Context, it returns it directly.
 // If ctx is a *WebContext, it returns the embedded Context.

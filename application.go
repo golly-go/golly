@@ -107,6 +107,10 @@ func (a *Application) Events() *EventManager     { return a.events }
 func (a *Application) Logger() *Logger           { return a.logger }
 func (a *Application) Plugins() *PluginManager   { return a.plugins }
 
+func (a *Application) isInitialized() bool {
+	return a.state == StateInitialized || a.state == StateRunning
+}
+
 func (a *Application) Services() []Service {
 	a.mu.RLock()
 	defer a.mu.RUnlock()

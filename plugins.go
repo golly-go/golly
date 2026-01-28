@@ -41,7 +41,7 @@ type PluginServices interface {
 
 // PluginCommands provides a list of commands that the plugin provides.
 type PluginCommands interface {
-	Commands() []*cobra.Command
+	Commands() []*Command
 }
 
 type PluginEvents interface {
@@ -162,7 +162,7 @@ func (pm *PluginManager) deinitialize(app *Application) error {
 }
 
 // AggregateCommands collects all CLI commands from registered plugins and returns them as a slice.
-func (pm *PluginManager) Commands() []*cobra.Command {
+func (pm *PluginManager) Commands() []*Command {
 	var plugins []Plugin
 
 	for plugin := range maps.Values(pm.plugins) {
@@ -172,8 +172,8 @@ func (pm *PluginManager) Commands() []*cobra.Command {
 	return pluginCommands(plugins)
 }
 
-func pluginCommands(plugins []Plugin) []*cobra.Command {
-	var commands []*cobra.Command
+func pluginCommands(plugins []Plugin) []*Command {
+	var commands []*Command
 
 	for pos := range plugins {
 		if pc, ok := plugins[pos].(PluginCommands); ok {

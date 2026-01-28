@@ -1,7 +1,5 @@
 package golly
 
-import "github.com/spf13/cobra"
-
 type Options struct {
 	// Name of the application (the reason this is dynamic)
 	// is it can be assigned by Terraform IE: myapp-consumers, myapp-webservice
@@ -13,7 +11,7 @@ type Options struct {
 	ConfigPath string
 
 	// Commands Supported commands
-	Commands []*cobra.Command
+	Commands []*Command
 
 	// Loaded before code initializers
 	// reserved for plugins, database connection and required things

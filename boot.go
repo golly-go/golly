@@ -1,14 +1,13 @@
 package golly
 
 import (
-	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
 )
 
-// bootApplication creates the application and stores it globally
-// Initialization happens in command PersistentPreRun
+// bootApplication creates the application (cheap - just struct + logger)
+// Does NOT initialize - that happens lazily in ensureAppReady
 func bootApplication(opts Options) *Application {
 	a := NewApplication(opts)
 	app.Store(a) // Set global for CLI access
@@ -16,11 +15,9 @@ func bootApplication(opts Options) *Application {
 }
 
 // initializeApp handles config loading and app initialization
-// Testable: pure function, takes app as parameter
 func initializeApp(app *Application) error {
 	app.changeState(StateStarting)
 
-	// Load config
 	config, err := initConfig(app)
 	if err != nil {
 		app.changeState(StateErrored)
@@ -28,7 +25,6 @@ func initializeApp(app *Application) error {
 	}
 	app.config = config
 
-	// Run initialization
 	if err := app.initialize(); err != nil {
 		app.changeState(StateErrored)
 		return err
@@ -52,13 +48,34 @@ func setupSignals(app *Application) func() {
 	return func() { signal.Stop(sig) }
 }
 
+// ensureAppReady handles lazy initialization of app
+// Called before running actual commands (but not for --help)
+func ensureAppReady(app *Application) error {
+	if app.isInitialized() {
+		return nil
+	}
+
+	if err := initializeApp(app); err != nil {
+		return err
+	}
+
+	setupSignals(app)
+	app.changeState(StateRunning)
+
+	return nil
+}
+
 // Run starts the application with command-line interface
 func Run(opts Options) {
+	// Create app (cheap - just struct + logger)
 	app := bootApplication(opts)
-	cmd := bindCommands(app, opts)
 
-	if err := cmd.Execute(); err != nil {
-		fmt.Printf("Error: %s\n", err)
+	// Build command tree with service commands (fast - no initialization)
+	root := buildCommandTree(app, opts)
+
+	// Execute with lazy initialization
+	if err := root.Execute(app, os.Args[1:]); err != nil {
+		app.Logger().WithError(err).Error("command execution failed")
 		os.Exit(1)
 	}
 }
