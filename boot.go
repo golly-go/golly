@@ -7,77 +7,63 @@ import (
 	"syscall"
 )
 
-func boot(f AppFunc) error {
-	a := NewApplication(options)
+// bootApplication creates the application and stores it globally
+// Initialization happens in command PersistentPreRun
+func bootApplication(opts Options) *Application {
+	a := NewApplication(opts)
+	app.Store(a) // Set global for CLI access
+	return a
+}
 
-	app.Store(a)
+// initializeApp handles config loading and app initialization
+// Testable: pure function, takes app as parameter
+func initializeApp(app *Application) error {
+	app.changeState(StateStarting)
 
-	signals(a)
-
-	a.changeState(StateStarting)
-
-	{
-		v, err := initConfig(a)
-		if err != nil {
-			return err
-		}
-		a.config = v
+	// Load config
+	config, err := initConfig(app)
+	if err != nil {
+		app.changeState(StateErrored)
+		return err
 	}
+	app.config = config
 
-	if err := a.initialize(); err != nil {
-		a.changeState(StateErrored)
-
+	// Run initialization
+	if err := app.initialize(); err != nil {
+		app.changeState(StateErrored)
 		return err
 	}
 
-	a.changeState(StateInitialized)
-
-	defer a.Shutdown()
-
-	a.changeState(StateRunning)
-
-	if err := f(a); err != nil {
-		a.changeState(StateErrored)
-		return err
-	}
-
-	a.Shutdown()
+	app.changeState(StateInitialized)
 	return nil
 }
 
-func signals(app *Application) {
+// setupSignals configures graceful shutdown on SIGTERM/SIGINT
+func setupSignals(app *Application) func() {
 	sig := make(chan os.Signal, 1)
-
 	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
 
-	go func(c <-chan os.Signal) {
-		s := <-c
-
-		app.logger.Infof("issuing shutdown due to signal (%s)", s.String())
+	go func() {
+		s := <-sig
+		app.logger.Infof("shutdown signal: %s", s)
 		app.Shutdown()
-	}(sig)
+	}()
+
+	return func() { signal.Stop(sig) }
 }
 
-// Run a standalone function against the application lifecycle
-func run(fn AppFunc) {
-	if err := boot(fn); err != nil {
-		fmt.Printf("Application Error: %s\n", err)
-		os.Exit(1)
-	}
-
-	os.Exit(0)
-}
-
+// Run starts the application with command-line interface
 func Run(opts Options) {
-	options = opts
-
-	cmd := bindCommands(opts)
+	app := bootApplication(opts)
+	cmd := bindCommands(app, opts)
 
 	if err := cmd.Execute(); err != nil {
-		panic(err)
+		fmt.Printf("Error: %s\n", err)
+		os.Exit(1)
 	}
 }
 
+// RunStandalone runs the application in standalone mode (no service subcommands)
 func RunStandalone(opts Options) {
 	opts.Standalone = true
 	Run(opts)

@@ -35,7 +35,8 @@ func TestBindCommands(t *testing.T) {
 		},
 	}
 
-	rootCMD := bindCommands(options)
+	app := NewApplication(options)
+	rootCMD := bindCommands(app, options)
 	assert.NotNil(t, rootCMD)
 	assert.Len(t, rootCMD.Commands(), 3)
 }

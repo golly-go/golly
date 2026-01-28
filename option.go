@@ -2,10 +2,6 @@ package golly
 
 import "github.com/spf13/cobra"
 
-var (
-	options Options
-)
-
 type Options struct {
 	// Name of the application (the reason this is dynamic)
 	// is it can be assigned by Terraform IE: myapp-consumers, myapp-webservice

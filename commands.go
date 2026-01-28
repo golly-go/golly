@@ -1,6 +1,9 @@
 package golly
 
 import (
+	"fmt"
+	"os"
+
 	"github.com/spf13/cobra"
 )
 
@@ -55,19 +58,33 @@ type CLICommand func(*Application, *cobra.Command, []string) error
 //	}
 func Command(command CLICommand) func(cmd *cobra.Command, args []string) {
 	return func(cmd *cobra.Command, args []string) {
-		run(func(app *Application) error {
-			err := command(app, cmd, args)
+		a := app.Load()
+		if a == nil {
+			fmt.Println("Error: application not initialized")
+			os.Exit(1)
+		}
 
-			if err != nil && err != ErrorExit && err != ErrorNone {
-				return err
-			}
-			return nil
-		})
+		err := command(a, cmd, args)
+		if err != nil && err != ErrorExit && err != ErrorNone {
+			fmt.Printf("Error: %s\n", err)
+			os.Exit(1)
+		}
 	}
 }
 
-func bindCommands(options Options) *cobra.Command {
-	rootCMD := &cobra.Command{}
+func bindCommands(app *Application, options Options) *cobra.Command {
+
+	rootCMD := &cobra.Command{
+		Use: app.Name,
+		// Initialize app before ANY command runs
+		PersistentPreRun: func(cmd *cobra.Command, args []string) {
+			if err := initializeApp(app); err != nil {
+				app.logger.Fatal(err)
+			}
+			_ = setupSignals(app)
+			app.changeState(StateRunning)
+		},
+	}
 
 	if options.Standalone {
 		if len(options.Commands) > 0 {
