@@ -3,11 +3,44 @@ package golly
 import (
 	"encoding/json"
 	"io"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 )
+
+// TestingWriter is an io.Writer that routes log output through testing.TB.Log().
+// This causes logs to be buffered and only displayed if the test fails or -v is used.
+type TestingWriter struct {
+	t testing.TB
+}
+
+// NewTestingWriter creates a new TestingWriter that routes to testing.TB.
+func NewTestingWriter(t testing.TB) io.Writer {
+	return &TestingWriter{t: t}
+}
+
+// Write implements io.Writer by forwarding to t.Log().
+func (tw *TestingWriter) Write(p []byte) (n int, err error) {
+	// Remove trailing newline as t.Log adds one
+	s := string(p)
+	s = strings.TrimSuffix(s, "\n")
+	tw.t.Log(s)
+	return len(p), nil
+}
+
+// NewTestLogger creates a logger configured for tests.
+// Logs are buffered and only shown if the test fails or -v flag is used.
+func NewTestLogger(t testing.TB) *Logger {
+	logger := NewLogger()
+	logger.out.Store(&outputHolder{w: NewTestingWriter(t)})
+	return logger
+}
+
+// ******************************************************************
+// Tests
+// ******************************************************************
 
 func TestLoggerTextFormatter(t *testing.T) {
 	entry := NewLogger().Opt().
@@ -70,67 +103,6 @@ func TestEntryClone(t *testing.T) {
 
 	assert.Len(t, entry.Fields(), 1)
 	assert.Len(t, cloned.Fields(), 2)
-}
-
-func BenchmarkLoggerInfo(b *testing.B) {
-	logger := NewLogger()
-	logger.SetLevel(LogLevelInfo)
-	logger.SetOutput(io.Discard)
-	logger.SetFormatter(&JSONFormatter{})
-
-	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		logger.Info("benchmark logging")
-	}
-}
-
-func BenchmarkLoggerWithFieldsInfo(b *testing.B) {
-	logger := NewLogger()
-	logger.SetLevel(LogLevelInfo)
-	logger.SetOutput(io.Discard)
-	logger.SetFormatter(&JSONFormatter{})
-
-	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		logger.WithFields(Fields{
-			"string": "test",
-			"int":    123,
-			"bool":   true,
-		}).Info("benchmark logging")
-	}
-}
-
-func BenchmarkTextFormatter(b *testing.B) {
-	entry := NewLogger().Opt().
-		Str("key1", "value1").
-		Int("key2", 123)
-	entry.message = "benchmark message"
-	formatter := &TextFormatter{}
-
-	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		b.StopTimer()
-		entry.buffer.Reset()
-		b.StartTimer()
-		_ = formatter.FormatInto(entry)
-	}
-}
-
-func BenchmarkLoggerOpt(b *testing.B) {
-	logger := NewLogger()
-	logger.SetLevel(LogLevelInfo)
-	logger.SetOutput(io.Discard)
-	// Use TextFormatter to test the zero-alloc claim (JSON always allocs encoder)
-	logger.SetFormatter(&TextFormatter{DisableColors: true})
-
-	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		logger.Opt().Str("key", "val").Int("i", 1).Info("msg")
-	}
 }
 
 func TestLoggerLevels(t *testing.T) {
@@ -290,4 +262,67 @@ func TestLogger_Level(t *testing.T) {
 	logger.SetLevel(LogLevelWarn)
 
 	assert.Equal(t, LogLevelWarn, logger.Level())
+}
+
+// ******************************************************************
+// Benchmarks
+// ******************************************************************
+
+func BenchmarkLoggerInfo(b *testing.B) {
+	logger := NewLogger()
+	logger.SetLevel(LogLevelInfo)
+	logger.SetOutput(io.Discard)
+	logger.SetFormatter(&JSONFormatter{})
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		logger.Info("benchmark logging")
+	}
+}
+
+func BenchmarkLoggerWithFieldsInfo(b *testing.B) {
+	logger := NewLogger()
+	logger.SetLevel(LogLevelInfo)
+	logger.SetOutput(io.Discard)
+	logger.SetFormatter(&JSONFormatter{})
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		logger.WithFields(Fields{
+			"string": "test",
+			"int":    123,
+			"bool":   true,
+		}).Info("benchmark logging")
+	}
+}
+
+func BenchmarkTextFormatter(b *testing.B) {
+	entry := NewLogger().Opt().
+		Str("key1", "value1").
+		Int("key2", 123)
+	entry.message = "benchmark message"
+	formatter := &TextFormatter{}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		entry.buffer.Reset()
+		_ = formatter.FormatInto(entry)
+	}
+}
+
+func BenchmarkLoggerOpt(b *testing.B) {
+	logger := NewLogger()
+	logger.SetLevel(LogLevelInfo)
+	logger.SetOutput(io.Discard)
+	// Use TextFormatter to test the zero-alloc claim (JSON always allocs encoder)
+	logger.SetFormatter(&TextFormatter{DisableColors: true})
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		logger.Opt().Str("key", "val").Int("i", 1).Info("msg")
+	}
 }

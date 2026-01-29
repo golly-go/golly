@@ -498,10 +498,7 @@ func (l *Logger) newEntry() *Entry {
 	entry.buffer.Reset()
 
 	// Reset slices (keep capacity) but clear references to avoid GC leaks
-	for i := range entry.fields {
-		entry.fields[i].Interface = nil
-		entry.fields[i].StringVal = ""
-	}
+	clear(entry.fields)
 	entry.fields = entry.fields[:0]
 	entry.retain = false
 

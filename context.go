@@ -82,18 +82,19 @@ func (c *Context) Logger() *Entry {
 func (c *Context) collectFields(acc []Field) []Field {
 	// Pass 1: count needed
 	needed := 0
+	curr := c
 	for i := 0; i < maxContextTreeWalk; i++ {
-		if c == nil {
+		if curr == nil {
 			break
 		}
-		needed += len(c.fields)
+		needed += len(curr.fields)
 
 		// Walk only while parent is *Context
-		p, ok := c.parent.(*Context)
+		p, ok := curr.parent.(*Context)
 		if !ok {
 			break
 		}
-		c = p
+		curr = p
 	}
 
 	if needed == 0 {
@@ -112,20 +113,21 @@ func (c *Context) collectFields(acc []Field) []Field {
 	acc = acc[:base+needed]
 
 	// Pass 2: fill directly (leaf -> root)
+	curr = c // RESET POINTER
 	dst := acc[base:]
 	for i := 0; i < maxContextTreeWalk; i++ {
-		if c == nil {
+		if curr == nil {
 			break
 		}
 
-		n := copy(dst, c.fields)
+		n := copy(dst, curr.fields)
 		dst = dst[n:]
 
-		p, ok := c.parent.(*Context)
+		p, ok := curr.parent.(*Context)
 		if !ok {
 			break
 		}
-		c = p
+		curr = p
 	}
 
 	// dst should be empty if counts matched; if you're paranoid, you can reslice:

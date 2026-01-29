@@ -1,6 +1,7 @@
 package golly
 
 import (
+	"bytes"
 	"context"
 	"sync"
 	"sync/atomic"
@@ -496,6 +497,198 @@ func TestDataFlow_DetachedChain(t *testing.T) {
 	default:
 		// OK
 	}
+}
+
+func TestContext_LoggerLeak(t *testing.T) {
+	// Re-route default logger for the test
+	buf := new(bytes.Buffer)
+	oldLogger := defaultLogger
+
+	defaultLogger = NewLogger()
+	defaultLogger.SetOutput(buf)
+	defaultLogger.SetFormatter(&TextFormatter{DisableColors: true})
+
+	defer func() {
+		defaultLogger = oldLogger
+	}()
+
+	// Step 1: Create a context with many fields to expand the pooled entry's fields slice
+	ctx1 := WithLoggerFields(NewContext(nil), Fields{
+		"field1": "val1",
+		"field2": "val2",
+		"field3": "val3",
+		"field4": "val4",
+	})
+	ctx1.Logger().Info("Log 1")
+
+	output1 := buf.String()
+	assert.Contains(t, output1, "field1=val1")
+	assert.Contains(t, output1, "field2=val2")
+	assert.Contains(t, output1, "field3=val3")
+	assert.Contains(t, output1, "field4=val4")
+	buf.Reset()
+
+	// Step 2: Create a second context with ONE field.
+	// If the bug exists, Pass 1 walks to root, finds 1 field.
+	// Pass 2 walks from root, finds 0 fields.
+	// e.fields has length 1, but index 0 contains "field1" from previous log!
+
+	ctx2 := WithLoggerField(NewContext(nil), "newfield", "newval")
+	ctx2.Logger().Info("Log 2")
+
+	output2 := buf.String()
+	assert.Contains(t, output2, "newfield=newval")
+
+	// If the fix works, Log 2 should NOT contain field1
+	assert.NotContains(t, output2, "field1=val1")
+}
+
+// Simulate an external library wrapping the context
+type externalKey string
+
+func ExternalLibWrap(ctx context.Context, key externalKey, val string) context.Context {
+	return context.WithValue(ctx, key, val)
+}
+
+func TestContext_MixedWrapping(t *testing.T) {
+	var dbKey = &ContextKey{}
+	var requestIdKey = &ContextKey{}
+
+	dbVal := "the-db"
+
+	// Base Golly Context with DB
+	var ctx context.Context = WithValue(context.Background(), dbKey, dbVal)
+
+	// Wrap with "External" stdlib context
+	ctx = ExternalLibWrap(ctx, "std-key", "std-val")
+
+	// Wrap again with Golly
+	// WithValue accepts context.Context, returns *Context
+	// We assign back to interface to keep chain generic
+	ctx = WithValue(ctx, requestIdKey, "123")
+
+	// Verify DB is visible from top
+	val := ctx.Value(dbKey)
+	assert.Equal(t, dbVal, val, "DB value should be visible through stdlib wrapper")
+
+	// Verify Detach works if the top is Golly
+	if gctx, ok := ctx.(*Context); ok {
+		detached := gctx.Detach()
+		valDetached := detached.Value(dbKey)
+		assert.Equal(t, dbVal, valDetached, "DB value should be visible in Detached context through wrapper")
+	}
+}
+
+func TestContextDetach(t *testing.T) {
+	t.Run("Detached context preserves values", func(t *testing.T) {
+		ctx := NewContext(context.Background())
+		ctx = WithValue(ctx, "user_id", "123")
+		ctx = WithValue(ctx, "tenant_id", "org-456")
+
+		detached := ctx.Detach()
+
+		assert.Equal(t, "123", detached.Value("user_id"))
+		assert.Equal(t, "org-456", detached.Value("tenant_id"))
+	})
+
+	t.Run("Detached context is independent from cancellation", func(t *testing.T) {
+		parent, cancel := context.WithCancel(context.Background())
+		ctx := NewContext(parent)
+		ctx = WithValue(ctx, "data", "important")
+
+		detached := ctx.Detach()
+
+		// Cancel original
+		cancel()
+		time.Sleep(10 * time.Millisecond)
+
+		// Original should be cancelled
+		assert.Error(t, ctx.Err())
+		select {
+		case <-ctx.Done():
+			// Expected
+		default:
+			t.Fatal("Original context should be cancelled")
+		}
+
+		// Detached should NOT be cancelled
+		assert.NoError(t, detached.Err())
+		select {
+		case <-detached.Done():
+			t.Fatal("Detached context should NOT be cancelled")
+		default:
+			// Expected
+		}
+
+		// Value still accessible
+		assert.Equal(t, "important", detached.Value("data"))
+	})
+
+	t.Run("Detached context preserves application", func(t *testing.T) {
+		app, err := NewTestApplication(Options{Name: "TestApp"})
+		require.NoError(t, err)
+
+		ctx := NewContext(context.Background())
+		ctx.application = app
+
+		detached := ctx.Detach()
+
+		assert.Equal(t, app, detached.Application())
+		assert.Equal(t, "TestApp", detached.Application().Name)
+	})
+
+	t.Run("Detached context with deadline independence", func(t *testing.T) {
+		parent, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+		defer cancel()
+
+		ctx := NewContext(parent)
+		ctx = WithValue(ctx, "job_id", "job-123")
+
+		detached := ctx.Detach()
+
+		// Wait for parent to timeout
+		time.Sleep(100 * time.Millisecond)
+
+		// Parent should be done
+		assert.Error(t, ctx.Err())
+
+		// Detached should still be alive
+		assert.NoError(t, detached.Err())
+		assert.Equal(t, "job-123", detached.Value("job_id"))
+	})
+
+	t.Run("Use case: async projection handling", func(t *testing.T) {
+		// Simulate request context with identity
+		reqCtx, cancel := context.WithCancel(context.Background())
+		ctx := NewContext(reqCtx)
+		ctx = WithValue(ctx, "user_id", "user-123")
+		ctx = WithValue(ctx, "tenant_id", "tenant-456")
+
+		// Detach for async work
+		asyncCtx := ctx.Detach()
+
+		// Request ends (context cancelled)
+		cancel()
+		time.Sleep(10 * time.Millisecond)
+
+		// Request context is done
+		require.Error(t, ctx.Err())
+
+		// But async context still has identity info
+		assert.NoError(t, asyncCtx.Err())
+		assert.Equal(t, "user-123", asyncCtx.Value("user_id"))
+		assert.Equal(t, "tenant-456", asyncCtx.Value("tenant_id"))
+
+		// This is safe to pass to async projection handlers
+		processProjection := func(ctx *Context) {
+			userID := ctx.Value("user_id")
+			tenantID := ctx.Value("tenant_id")
+			assert.Equal(t, "user-123", userID)
+			assert.Equal(t, "tenant-456", tenantID)
+		}
+
+		processProjection(asyncCtx)
+	})
 }
 
 /****************************************************

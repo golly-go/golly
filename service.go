@@ -261,8 +261,6 @@ func runAllServices(app *Application, cmd *cobra.Command, args []string) error {
 
 	// Run each service in its own goroutine
 	for _, svc := range app.services {
-		// Note: StartService handles Initialize() if needed
-
 		fnc := func(svc Service, name string) func() error {
 			return func() error {
 				if err := StartService(app, svc); err != nil {
