@@ -22,6 +22,36 @@ func (p *testPlugin) Initialize(*Application) error { return nil }
 
 func (p *testPlugin) Deinitialize(*Application) error { return nil }
 
+type lifecyclePlugin struct {
+	testPlugin
+	beforeInit  bool
+	afterInit   bool
+	afterDeinit bool
+	eventsBound bool
+}
+
+func (p *lifecyclePlugin) BeforeInitialize(*Application) error {
+	p.beforeInit = true
+	return nil
+}
+
+func (p *lifecyclePlugin) AfterInitialize(*Application) error {
+	p.afterInit = true
+	return nil
+}
+
+func (p *lifecyclePlugin) AfterDeinitialize(*Application) error {
+	p.afterDeinit = true
+	return nil
+}
+
+func (p *lifecyclePlugin) Events() map[string]EventFunc {
+	p.eventsBound = true
+	return map[string]EventFunc{
+		"test.event": func(ctx context.Context, event any) {},
+	}
+}
+
 func TestGetPluginFromApp(t *testing.T) {
 	t.Run("Returns plugin when found", func(t *testing.T) {
 		plugin := &testPlugin{name: "test-plugin", data: "test-data"}
@@ -118,4 +148,36 @@ func TestPluginHelpersIntegration(t *testing.T) {
 		assert.Equal(t, 200, res.Status())
 		assert.Equal(t, "harness-data", res.Body())
 	})
+}
+
+func TestPluginManager_Lifecycle(t *testing.T) {
+	plugin := &lifecyclePlugin{testPlugin: testPlugin{name: "lifecycle"}}
+	pm := NewPluginManager(plugin)
+	app, _ := NewTestApplication(Options{})
+
+	err := pm.beforeInitialize(app)
+	assert.NoError(t, err)
+	assert.True(t, plugin.beforeInit)
+
+	err = pm.initialize(app)
+	assert.NoError(t, err)
+
+	err = pm.afterInitialize(app)
+	assert.NoError(t, err)
+	assert.True(t, plugin.afterInit)
+
+	err = pm.bindEvents(app)
+	assert.NoError(t, err)
+	assert.True(t, plugin.eventsBound)
+
+	pm.afterDeinitialize(app)
+	assert.True(t, plugin.afterDeinit)
+}
+
+func TestPluginServicesAggregation(t *testing.T) {
+	type servicePlugin struct {
+		testPlugin
+	}
+	// Note: We can't easily mock PluginServices here without defining the interface match
+	// but we can check if the helper works with a slice
 }

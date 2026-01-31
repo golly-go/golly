@@ -264,6 +264,51 @@ func TestLogger_Level(t *testing.T) {
 	assert.Equal(t, LogLevelWarn, logger.Level())
 }
 
+func TestLoggerPanic(t *testing.T) {
+	logger := NewLogger()
+	logger.SetOutput(io.Discard)
+
+	assert.Panics(t, func() {
+		logger.Panic("panic message")
+	})
+
+	assert.Panics(t, func() {
+		logger.Panicf("panic %s", "formatted")
+	})
+}
+
+func TestEntry_Any(t *testing.T) {
+	logger := NewLogger()
+	entry := logger.Opt()
+
+	entry.Set("string", "val")
+	entry.Set("int", 123)
+	entry.Set("int64", int64(456))
+	entry.Set("uint64", uint64(500))
+	entry.Set("bool", true)
+	entry.Set("float64", 3.14)
+	entry.Set("duration", time.Second)
+	entry.Set("error", assert.AnError)
+	entry.Set("struct", struct{ Name string }{Name: "test"})
+
+	fields := entry.Fields()
+	assert.Equal(t, "val", fields["string"])
+	assert.Equal(t, int64(123), fields["int"])
+	assert.Equal(t, int64(456), fields["int64"])
+	assert.Equal(t, uint64(500), fields["uint64"])
+	assert.Equal(t, true, fields["bool"])
+	assert.Equal(t, 3.14, fields["float64"])
+	assert.Equal(t, time.Second, fields["duration"])
+	assert.Equal(t, assert.AnError, fields["error"])
+	assert.Equal(t, struct{ Name string }{Name: "test"}, fields["struct"])
+}
+
+func TestLoggerDefaults(t *testing.T) {
+	logger := NewLogger()
+	assert.Equal(t, LogLevelInfo, logger.Level())
+	assert.NotNil(t, logger.formatter.Load())
+}
+
 // ******************************************************************
 // Benchmarks
 // ******************************************************************
