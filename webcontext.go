@@ -60,7 +60,11 @@ func makeRequestID(buf []byte) string {
 		// If buf is [64]byte, ample space.
 
 		// Extend b
-		b = b[:len(b)+padLen]
+		if len(b)+padLen <= cap(b) {
+			b = b[:len(b)+padLen]
+		} else {
+			b = append(b, make([]byte, padLen)...)
+		}
 
 		// Shift
 		copy(b[prefixLen+padLen:], b[prefixLen:prefixLen+countLen])
