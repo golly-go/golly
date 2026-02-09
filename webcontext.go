@@ -90,7 +90,7 @@ type WebContext struct {
 	segments []string
 
 	requestID string
-	reqIDBuf  [36]byte // Fixed buffer for UUID string
+	reqIDBuf  [64]byte // Fixed buffer for UUID string
 
 	request *http.Request
 	writer  http.ResponseWriter
