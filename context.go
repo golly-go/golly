@@ -2,6 +2,7 @@ package golly
 
 import (
 	"context"
+	"slices"
 	"sync/atomic"
 	"time"
 	"unsafe"
@@ -47,8 +48,8 @@ type Context struct {
 
 	// context.Context implementation (stdlib pattern)
 	parent   context.Context
-	key      interface{} // Single key-value pair (creates new context per WithValue)
-	val      interface{}
+	key      any // Single key-value pair (creates new context per WithValue)
+	val      any
 	deadline atomic.Value
 	done     atomic.Value
 	err      atomic.Value
@@ -83,7 +84,7 @@ func (c *Context) collectFields(acc []Field) []Field {
 	// Pass 1: count needed
 	needed := 0
 	curr := c
-	for i := 0; i < maxContextTreeWalk; i++ {
+	for range maxContextTreeWalk {
 		if curr == nil {
 			break
 		}
@@ -115,7 +116,7 @@ func (c *Context) collectFields(acc []Field) []Field {
 	// Pass 2: fill directly (leaf -> root)
 	curr = c // RESET POINTER
 	dst := acc[base:]
-	for i := 0; i < maxContextTreeWalk; i++ {
+	for range maxContextTreeWalk {
 		if curr == nil {
 			break
 		}
@@ -352,7 +353,7 @@ func (c *Context) Err() error {
 // This should be sufficient for any legitimate context chain.
 //
 // Returns nil if the key is not found or if max depth is reached.
-func (c *Context) Value(key interface{}) interface{} {
+func (c *Context) Value(key any) any {
 	var inf context.Context = c
 
 	for range maxValueDepth {
@@ -443,10 +444,8 @@ func (c *Context) addChild(child canceler) {
 		var children []canceler
 		if oldPtr != nil {
 			children = *(*[]canceler)(oldPtr)
-			for pos := range children {
-				if children[pos] == child {
-					return
-				}
+			if slices.Contains(children, child) {
+				return
 			}
 		}
 
@@ -545,7 +544,7 @@ func ToGollyContext(ctx context.Context) *Context {
 //
 // The new context inherits the application reference from Golly parents,
 // or uses the global app if available.
-func WithValue(parent context.Context, key, val interface{}) *Context {
+func WithValue(parent context.Context, key, val any) *Context {
 	if parent == nil {
 		parent = context.TODO()
 	}
@@ -616,7 +615,7 @@ func WithApplication(parent context.Context, app *Application) *Context {
 	return gctx
 }
 
-func WithLoggerFields(parent context.Context, fields map[string]interface{}) *Context {
+func WithLoggerFields(parent context.Context, fields map[string]any) *Context {
 	gctx := NewContext(parent)
 
 	// Convert map to []Field
@@ -637,7 +636,7 @@ func WithLoggerFields(parent context.Context, fields map[string]interface{}) *Co
 	return gctx
 }
 
-func WithLoggerField(parent context.Context, key string, value interface{}) *Context {
+func WithLoggerField(parent context.Context, key string, value any) *Context {
 	gctx := NewContext(parent)
 
 	gctx.fields = []Field{{Key: key, Interface: value, Type: LogTypeAny}}

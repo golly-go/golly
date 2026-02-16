@@ -54,7 +54,6 @@ func BenchmarkASCIICompair(b *testing.B) {
 	}
 
 	for _, tt := range tests {
-		tt := tt // capture loop var
 		b.Run(tt.name, func(b *testing.B) {
 			s1, s2 := tt.str1, tt.str2
 			b.ResetTimer()

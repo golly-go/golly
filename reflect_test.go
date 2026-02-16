@@ -12,7 +12,7 @@ type AnotherStruct struct{}
 func TestTypeNoPtr(t *testing.T) {
 	tests := []struct {
 		name     string
-		input    interface{}
+		input    any
 		expected string
 	}{
 		{"Struct without pointer", SampleStruct{}, "golly.SampleStruct"},
@@ -35,7 +35,7 @@ func TestTypeNoPtr(t *testing.T) {
 func TestInfNameNoPackage(t *testing.T) {
 	tests := []struct {
 		name     string
-		input    interface{}
+		input    any
 		expected string
 	}{
 		{"Struct without pointer", SampleStruct{}, "SampleStruct"},
@@ -73,7 +73,7 @@ func (i InterfaceImpl) Handle() {}
 func TestFuncPath(t *testing.T) {
 	tests := []struct {
 		name             string
-		input            interface{}
+		input            any
 		expectedContains string
 	}{
 		{

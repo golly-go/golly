@@ -292,7 +292,7 @@ func NewApplication(options Options) *Application {
 			Get("/status", renderStatus), // Default route mount point (can be extended with specific handlers).
 
 		wctxPool: sync.Pool{
-			New: func() interface{} {
+			New: func() any {
 				return &WebContext{
 					writer: NewWrapResponseWriter(nil, 1), // Dummy, will be Reset()
 				}

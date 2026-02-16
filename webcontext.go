@@ -70,7 +70,7 @@ func makeRequestID(buf []byte) string {
 		copy(b[prefixLen+padLen:], b[prefixLen:prefixLen+countLen])
 
 		// Fill 0
-		for i := 0; i < padLen; i++ {
+		for i := range padLen {
 			b[prefixLen+i] = '0'
 		}
 	}
@@ -148,12 +148,12 @@ func (wctx *WebContext) Application() *Application { return wctx.ctx.Application
 // // Set the status code
 // wctx.Response().WriteHeader(http.StatusOK)
 
-func (wctx *WebContext) Render(format FormatOption, data interface{}) { Render(wctx, format, data) }
-func (wctx *WebContext) RenderJSON(data interface{})                  { Render(wctx, FormatTypeJSON, data) }
-func (wctx *WebContext) RenderXML(data interface{})                   { Render(wctx, FormatTypeXML, data) }
-func (wctx *WebContext) RenderData(data []byte)                       { Render(wctx, FormatTypeData, data) }
-func (wctx *WebContext) RenderText(data string)                       { Render(wctx, FormatTypeText, data) }
-func (wctx *WebContext) RenderHTML(data string)                       { Render(wctx, FormatTypeHTML, data) }
+func (wctx *WebContext) Render(format FormatOption, data any) { Render(wctx, format, data) }
+func (wctx *WebContext) RenderJSON(data any)                  { Render(wctx, FormatTypeJSON, data) }
+func (wctx *WebContext) RenderXML(data any)                   { Render(wctx, FormatTypeXML, data) }
+func (wctx *WebContext) RenderData(data []byte)               { Render(wctx, FormatTypeData, data) }
+func (wctx *WebContext) RenderText(data string)               { Render(wctx, FormatTypeText, data) }
+func (wctx *WebContext) RenderHTML(data string)               { Render(wctx, FormatTypeHTML, data) }
 
 func (wctx *WebContext) URLParams() *RouteVars {
 	if wctx.varsLoaded {
@@ -167,7 +167,7 @@ func (wctx *WebContext) URLParams() *RouteVars {
 }
 
 // Params marshals json params into out interface
-func (wctx *WebContext) Marshal(out interface{}) error {
+func (wctx *WebContext) Marshal(out any) error {
 	return json.Unmarshal(wctx.RequestBody(), out)
 }
 

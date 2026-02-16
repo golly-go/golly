@@ -12,9 +12,9 @@ import (
 // For example, it returns "mypackage.Something" instead of "*mypackage.Something".
 // This is useful in event engines or frameworks where pointer notation
 // is not necessary and may introduce unwanted complexity.
-func TypeNoPtr(myvar interface{}) reflect.Type {
+func TypeNoPtr(myvar any) reflect.Type {
 	t := reflect.TypeOf(myvar)
-	if t.Kind() == reflect.Ptr {
+	if t.Kind() == reflect.Pointer {
 		return t.Elem()
 	}
 	return t
@@ -23,12 +23,12 @@ func TypeNoPtr(myvar interface{}) reflect.Type {
 // InfNameNoPackage returns the name of a struct type without the package path.
 // For instance, given "mypackage.MyStruct", it will return "MyStruct".
 // This simplifies the output for logging, serialization, or routing.
-func InfNameNoPackage(source interface{}) string {
+func InfNameNoPackage(source any) string {
 	rawType := TypeNoPtr(source)
 
 	name := rawType.String()
-	if idx := strings.Index(name, "."); idx >= 0 {
-		return name[idx+1:]
+	if _, after, ok := strings.Cut(name, "."); ok {
+		return after
 	}
 
 	return name
@@ -36,12 +36,12 @@ func InfNameNoPackage(source interface{}) string {
 
 // FuncPath safely returns the fully qualified name of a handler (function or struct type)
 // personally this is just for debugging purposes
-func FuncPath(handler interface{}) string {
+func FuncPath(handler any) string {
 	val := reflect.ValueOf(handler)
 	typ := val.Type()
 
 	// Safely unwrap interfaces or pointers, avoid calling Elem on Func
-	for typ.Kind() == reflect.Interface || typ.Kind() == reflect.Ptr {
+	for typ.Kind() == reflect.Interface || typ.Kind() == reflect.Pointer {
 		if val.IsNil() {
 			return "<nil>"
 		}

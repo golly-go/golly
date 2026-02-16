@@ -12,7 +12,7 @@ import (
 
 type FormatOption uint
 
-type marshalFunc func(interface{}) ([]byte, error)
+type marshalFunc func(any) ([]byte, error)
 
 type Marshaler struct {
 	Handler     marshalFunc
@@ -42,7 +42,7 @@ func RegisterMarshaler(tpe FormatOption, marshal marshalFunc, contentType string
 	marshalers[tpe] = Marshaler{marshal, contentType}
 }
 
-func Render(wctx *WebContext, format FormatOption, res interface{}) {
+func Render(wctx *WebContext, format FormatOption, res any) {
 	// Default format
 	if format == 0 {
 		format = FormatTypeJSON
@@ -108,7 +108,7 @@ func Render(wctx *WebContext, format FormatOption, res interface{}) {
 }
 
 // MarshalContent marshals data into a []byte, supporting common Go buffer types.
-func marshalContent(v interface{}) ([]byte, error) {
+func marshalContent(v any) ([]byte, error) {
 	switch r := v.(type) {
 	case []byte:
 		return r, nil

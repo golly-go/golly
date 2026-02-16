@@ -149,7 +149,6 @@ func TestUnique(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt // capture range variable
 		t.Run(tt.name, func(t *testing.T) {
 			result := Unique(tt.input)
 			assert.Equal(t, tt.expect, result)
@@ -163,7 +162,7 @@ func TestUnique(t *testing.T) {
 
 func BenchmarkAny(b *testing.B) {
 	data := make([]int, 1000)
-	for i := 0; i < len(data); i++ {
+	for i := range data {
 		data[i] = i
 	}
 
@@ -175,7 +174,7 @@ func BenchmarkAny(b *testing.B) {
 
 func BenchmarkMap(b *testing.B) {
 	data := make([]int, 1000)
-	for i := 0; i < len(data); i++ {
+	for i := range data {
 		data[i] = i
 	}
 
@@ -190,7 +189,7 @@ func BenchmarkMap(b *testing.B) {
 
 func BenchmarkFilter(b *testing.B) {
 	data := make([]int, 1000)
-	for i := 0; i < len(data); i++ {
+	for i := range data {
 		data[i] = i
 	}
 
@@ -280,7 +279,7 @@ func generateTestSlice(size int, hasDuplicates bool) []int {
 	// If hasDuplicates, repeat some subset of numbers
 	// else fill with unique values 0..size-1
 	out := make([]int, size)
-	for i := 0; i < size; i++ {
+	for i := range size {
 		if hasDuplicates {
 			// This will force repeats.
 			// For example, for 100 items: 0, 1, 2, ... 49, 0, 1, 2, ... 49

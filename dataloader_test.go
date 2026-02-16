@@ -97,7 +97,7 @@ func TestDataLoaderFetchSingleFlight(t *testing.T) {
 	wg.Add(goroutines)
 
 	results := make(chan any, goroutines)
-	for i := 0; i < goroutines; i++ {
+	for range goroutines {
 		go func() {
 			defer wg.Done()
 			value, err := loader.Fetch("key", fetchFn)
@@ -303,7 +303,7 @@ func BenchmarkDataLoaderFetch_CacheHit(b *testing.B) {
 	}
 
 	// Pre-load cache to simulate cache hit
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		_, _ = loader.Fetch(i, fetchFunc)
 	}
 
@@ -357,7 +357,7 @@ func BenchmarkFetchData_CacheHit(b *testing.B) {
 	}
 
 	// Pre-load cache to simulate cache hit
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		_, _ = FetchData(loader, i, fetchFunc)
 	}
 

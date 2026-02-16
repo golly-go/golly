@@ -13,8 +13,7 @@ import (
 )
 
 func TestContextChildGrowth(t *testing.T) {
-	parent, cancelParent := context.WithCancel(context.Background())
-	defer cancelParent()
+	parent := t.Context()
 
 	var wg sync.WaitGroup
 	gctx := NewContext(parent)
@@ -26,14 +25,12 @@ func TestContextChildGrowth(t *testing.T) {
 	}
 
 	// Simulate spawning multiple child contexts
-	for i := 0; i < 100; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range 100 {
+		wg.Go(func() {
 
 			WithValue(gctx, "key", "val")
 			time.Sleep(10 * time.Millisecond) // Simulate work
-		}()
+		})
 	}
 
 	wg.Wait()
@@ -108,11 +105,11 @@ func TestDeadline(t *testing.T) {
 func TestWithValue(t *testing.T) {
 	tests := []struct {
 		name      string
-		key       interface{}
-		value     interface{}
-		parentKey interface{}
-		parentVal interface{}
-		expectVal interface{}
+		key       any
+		value     any
+		parentKey any
+		parentVal any
+		expectVal any
 	}{
 		{
 			name:      "Value should propagate",
@@ -342,7 +339,7 @@ func TestContextDeepChainLimit(t *testing.T) {
 	root := NewContext(context.Background())
 	current := root
 
-	for i := 0; i < 15; i++ {
+	for range 15 {
 		current = NewContext(current)
 	}
 
@@ -715,7 +712,6 @@ func BenchmarkContextLogger(b *testing.B) {
 	}
 
 	for _, tc := range cases {
-		tc := tc
 
 		b.Run(tc.name, func(b *testing.B) {
 			b.ReportAllocs()
@@ -735,7 +731,7 @@ func BenchmarkEntryPoolWarm(b *testing.B) {
 	ctx := buildCtxEmpty()
 
 	// warm pools outside timer
-	for i := 0; i < 10000; i++ {
+	for range 10000 {
 		e := ctx.Logger()
 		e.Release()
 	}

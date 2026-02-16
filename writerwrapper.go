@@ -16,7 +16,7 @@ type UniversalResponseWriter struct {
 
 // writerPool recycles UniversalResponseWriter instances.
 var writerPool = sync.Pool{
-	New: func() interface{} {
+	New: func() any {
 		return &UniversalResponseWriter{}
 	},
 }

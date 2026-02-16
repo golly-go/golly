@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 
@@ -24,7 +25,7 @@ func NewTestHarness(options Options) *TestHarness {
 
 // Request performs a simulated HTTP request against the application
 // Deprecated: Use Get(), Post(), etc. for fluent API
-func (h *TestHarness) Request(method, path string, body interface{}) *TestResponse {
+func (h *TestHarness) Request(method, path string, body any) *TestResponse {
 	return h.newRequest(method, path).WithBody(body).Send()
 }
 
@@ -67,7 +68,7 @@ type RequestBuilder struct {
 	harness *TestHarness
 	method  string
 	path    string
-	body    interface{}
+	body    any
 	headers http.Header
 }
 
@@ -78,13 +79,13 @@ func (rb *RequestBuilder) WithHeader(key, value string) *RequestBuilder {
 }
 
 // WithBody sets the request body
-func (rb *RequestBuilder) WithBody(body interface{}) *RequestBuilder {
+func (rb *RequestBuilder) WithBody(body any) *RequestBuilder {
 	rb.body = body
 	return rb
 }
 
 // WithJSON sets the request body and Content-Type header
-func (rb *RequestBuilder) WithJSON(body interface{}) *RequestBuilder {
+func (rb *RequestBuilder) WithJSON(body any) *RequestBuilder {
 	rb.body = body
 	rb.headers.Set("Content-Type", "application/json")
 	return rb
@@ -106,9 +107,7 @@ func (rb *RequestBuilder) Send() *TestResponse {
 
 	req := httptest.NewRequest(rb.method, rb.path, bodyReader)
 	// Copy headers
-	for k, v := range rb.headers {
-		req.Header[k] = v
-	}
+	maps.Copy(req.Header, rb.headers)
 
 	w := httptest.NewRecorder()
 	RouteRequest(rb.harness.App, req, w)
@@ -134,7 +133,7 @@ func (r *TestResponse) Body() string {
 }
 
 // Unmarshal unmarshals the response body into the provided interface
-func (r *TestResponse) Unmarshal(v interface{}) error {
+func (r *TestResponse) Unmarshal(v any) error {
 	return json.Unmarshal(r.Recorder.Body.Bytes(), v)
 }
 
@@ -172,7 +171,7 @@ func (r *TestResponse) AssertHeader(t TestingT, key, expected string) *TestRespo
 
 // TestingT is a minimal interface for testing (compatible with *testing.T)
 type TestingT interface {
-	Errorf(format string, args ...interface{})
+	Errorf(format string, args ...any)
 }
 
 func containsString(s, substr string) bool {

@@ -60,20 +60,20 @@ func (l Level) String() string {
 }
 
 // Fields represents a map of fields to be logged
-type Fields map[string]interface{}
+type Fields map[string]any
 
 var (
 	// defaultLogger is the global logger instance
 	defaultLogger = NewLogger()
 	// bufferPool reuses byte buffers to reduce allocations
 	bufferPool = sync.Pool{
-		New: func() interface{} {
+		New: func() any {
 			return new(bytes.Buffer)
 		},
 	}
 	// entryPool reuses Entry objects
 	entryPool = sync.Pool{
-		New: func() interface{} {
+		New: func() any {
 			return &Entry{
 				fields:  make([]Field, 0, 16),
 				tmpMap:  make(Fields, 16),
@@ -101,7 +101,7 @@ type Field struct {
 	Type      LogType
 	Int64     int64
 	StringVal string
-	Interface interface{}
+	Interface any
 }
 
 // Logger is the main logger structure
@@ -151,7 +151,7 @@ func (f *JSONFormatter) FormatInto(e *Entry) error {
 	// Reconstruct map for JSON encoding
 	// We use the pooled tmpMap
 	for _, field := range e.fields {
-		var val interface{}
+		var val any
 		switch field.Type {
 		case LogTypeString:
 			val = field.StringVal
@@ -315,7 +315,7 @@ func (e *Entry) appendField(b *bytes.Buffer, field Field) {
 	}
 }
 
-func (e *Entry) appendValue(b *bytes.Buffer, v interface{}) {
+func (e *Entry) appendValue(b *bytes.Buffer, v any) {
 	switch x := v.(type) {
 	case string:
 		b.WriteString(x)
@@ -466,7 +466,7 @@ func (e *Entry) Fields() Fields {
 	f := make(Fields, len(e.fields))
 	for _, field := range e.fields {
 		// Reconstruct value based on type
-		var val interface{}
+		var val any
 		switch field.Type {
 		case LogTypeString:
 			val = field.StringVal
@@ -532,7 +532,7 @@ func (e *Entry) Release() {
 	entryPool.Put(e)
 }
 
-func (l *Logger) Log(level Level, args ...interface{}) {
+func (l *Logger) Log(level Level, args ...any) {
 	if atomic.LoadInt32((*int32)(&l.level)) > int32(level) {
 		return
 	}
@@ -550,7 +550,7 @@ func (l *Logger) Log(level Level, args ...interface{}) {
 	l.writeEntry(entry)
 }
 
-func (l *Logger) Logf(level Level, format string, args ...interface{}) {
+func (l *Logger) Logf(level Level, format string, args ...any) {
 	if atomic.LoadInt32((*int32)(&l.level)) > int32(level) {
 		return
 	}
@@ -602,33 +602,33 @@ func (l *Logger) IsLevelEnabled(level Level) bool {
 }
 
 // Info logs a message at Info level.
-func (l *Logger) Info(args ...interface{}) { l.Log(LogLevelInfo, args...) }
+func (l *Logger) Info(args ...any) { l.Log(LogLevelInfo, args...) }
 
 // Infof logs a formatted message at Info level.
-func (l *Logger) Infof(format string, args ...interface{}) { l.Logf(LogLevelInfo, format, args...) }
+func (l *Logger) Infof(format string, args ...any) { l.Logf(LogLevelInfo, format, args...) }
 
 // Print logs a message at Info level (alias for compatibility).
-func (l *Logger) Print(args ...interface{}) { l.Log(LogLevelInfo, args...) }
+func (l *Logger) Print(args ...any) { l.Log(LogLevelInfo, args...) }
 
 // Printf logs a formatted message at Info level (alias for compatibility).
-func (l *Logger) Printf(format string, args ...interface{}) { l.Logf(LogLevelInfo, format, args...) }
+func (l *Logger) Printf(format string, args ...any) { l.Logf(LogLevelInfo, format, args...) }
 
 // Println logs a message at Info level (alias for compatibility).
-func (l *Logger) Println(args ...interface{}) { l.Log(LogLevelInfo, args...) }
+func (l *Logger) Println(args ...any) { l.Log(LogLevelInfo, args...) }
 
 // Error logs a message at Error level.
-func (l *Logger) Error(args ...interface{}) { l.Log(LogLevelError, args...) }
+func (l *Logger) Error(args ...any) { l.Log(LogLevelError, args...) }
 
 // Errorf logs a formatted message at Error level.
-func (l *Logger) Errorf(format string, args ...interface{}) {
+func (l *Logger) Errorf(format string, args ...any) {
 	l.Logf(LogLevelError, format, args...)
 }
 
 // Debug logs a message at Debug level.
-func (l *Logger) Debug(args ...interface{}) { l.Log(LogLevelDebug, args...) }
+func (l *Logger) Debug(args ...any) { l.Log(LogLevelDebug, args...) }
 
 // Debugf logs a formatted message at Debug level.
-func (l *Logger) Debugf(format string, args ...interface{}) { l.Logf(LogLevelDebug, format, args...) }
+func (l *Logger) Debugf(format string, args ...any) { l.Logf(LogLevelDebug, format, args...) }
 
 // Opt returns a new Entry for zero-allocation, mutable chaining.
 //
@@ -661,7 +661,7 @@ func (l *Logger) WithFields(fields Fields) *Entry {
 
 // WithField creates a new Entry with a single key-value pair.
 // This is more efficient than WithFields for a single field.
-func (l *Logger) WithField(key string, value interface{}) *Entry {
+func (l *Logger) WithField(key string, value any) *Entry {
 	entry := l.newEntry()
 	entry.retain = true
 	entry.fields = append(entry.fields, Field{Key: key, Type: LogTypeAny, Interface: value})
@@ -688,23 +688,23 @@ func (l *Logger) WithContext(ctx context.Context) *Entry {
 	return entry
 }
 
-func (l *Logger) Trace(args ...interface{})                 { l.Log(LogLevelTrace, args...) }
-func (l *Logger) Tracef(format string, args ...interface{}) { l.Logf(LogLevelTrace, format, args...) }
-func (l *Logger) Warn(args ...interface{})                  { l.Log(LogLevelWarn, args...) }
-func (l *Logger) Warnf(format string, args ...interface{})  { l.Logf(LogLevelWarn, format, args...) }
-func (l *Logger) Fatal(args ...interface{}) {
+func (l *Logger) Trace(args ...any)                 { l.Log(LogLevelTrace, args...) }
+func (l *Logger) Tracef(format string, args ...any) { l.Logf(LogLevelTrace, format, args...) }
+func (l *Logger) Warn(args ...any)                  { l.Log(LogLevelWarn, args...) }
+func (l *Logger) Warnf(format string, args ...any)  { l.Logf(LogLevelWarn, format, args...) }
+func (l *Logger) Fatal(args ...any) {
 	l.Log(LogLevelFatal, args...)
 	os.Exit(1)
 }
-func (l *Logger) Fatalf(format string, args ...interface{}) {
+func (l *Logger) Fatalf(format string, args ...any) {
 	l.Logf(LogLevelFatal, format, args...)
 	os.Exit(1)
 }
-func (l *Logger) Panic(args ...interface{}) {
+func (l *Logger) Panic(args ...any) {
 	l.Log(LogLevelPanic, args...)
 	panic(fmt.Sprint(args...))
 }
-func (l *Logger) Panicf(format string, args ...interface{}) {
+func (l *Logger) Panicf(format string, args ...any) {
 	l.Logf(LogLevelPanic, format, args...)
 	panic(fmt.Sprintf(format, args...))
 }
@@ -720,7 +720,7 @@ func (e *Entry) clone() *Entry {
 // Entry methods to log final message
 // These now create a transient copy so the original Entry (e.g. from Context) remains valid and reusable.
 
-func (e *Entry) setMessage(args []interface{}) {
+func (e *Entry) setMessage(args []any) {
 	if len(args) == 1 {
 		if str, ok := args[0].(string); ok {
 			e.message = str
@@ -732,7 +732,7 @@ func (e *Entry) setMessage(args []interface{}) {
 
 // finalize logs the entry with the given level and message.
 // It handles cloning if retain is true.
-func (e *Entry) finalize(level Level, args ...interface{}) {
+func (e *Entry) finalize(level Level, args ...any) {
 	if atomic.LoadInt32((*int32)(&e.logger.level)) > int32(level) {
 		return
 	}
@@ -749,7 +749,7 @@ func (e *Entry) finalize(level Level, args ...interface{}) {
 
 // finalizef logs the entry with the given level and formatted message.
 // It handles cloning if retain is true.
-func (e *Entry) finalizef(level Level, format string, args ...interface{}) {
+func (e *Entry) finalizef(level Level, format string, args ...any) {
 	if atomic.LoadInt32((*int32)(&e.logger.level)) > int32(level) {
 		return
 	}
@@ -765,7 +765,7 @@ func (e *Entry) finalizef(level Level, format string, args ...interface{}) {
 }
 
 // setMessagef sets the message with formatting
-func (e *Entry) setMessagef(format string, args ...interface{}) {
+func (e *Entry) setMessagef(format string, args ...any) {
 	if len(args) > 0 {
 		e.message = fmt.Sprintf(format, args...)
 	} else {
@@ -774,87 +774,87 @@ func (e *Entry) setMessagef(format string, args ...interface{}) {
 }
 
 // Log logs the entry at the specified level.
-func (e *Entry) Log(level Level, args ...interface{}) {
+func (e *Entry) Log(level Level, args ...any) {
 	e.finalize(level, args...)
 }
 
 // Debug logs the entry at Debug level.
-func (e *Entry) Debug(args ...interface{}) {
+func (e *Entry) Debug(args ...any) {
 	e.finalize(LogLevelDebug, args...)
 }
 
 // Debugf logs the entry at Debug level with formatting.
-func (e *Entry) Debugf(format string, args ...interface{}) {
+func (e *Entry) Debugf(format string, args ...any) {
 	e.finalizef(LogLevelDebug, format, args...)
 }
 
 // Info logs the entry at Info level.
-func (e *Entry) Info(args ...interface{}) {
+func (e *Entry) Info(args ...any) {
 	e.finalize(LogLevelInfo, args...)
 }
 
 // Infof logs the entry at Info level with formatting.
-func (e *Entry) Infof(format string, args ...interface{}) {
+func (e *Entry) Infof(format string, args ...any) {
 	e.finalizef(LogLevelInfo, format, args...)
 }
 
 // Trace logs the entry at Trace level.
-func (e *Entry) Trace(args ...interface{}) {
+func (e *Entry) Trace(args ...any) {
 	e.finalize(LogLevelTrace, args...)
 }
 
 // Tracef logs the entry at Trace level with formatting.
-func (e *Entry) Tracef(format string, args ...interface{}) {
+func (e *Entry) Tracef(format string, args ...any) {
 	e.finalizef(LogLevelTrace, format, args...)
 }
 
 // Warn logs the entry at Warn level.
-func (e *Entry) Warn(args ...interface{}) {
+func (e *Entry) Warn(args ...any) {
 	e.finalize(LogLevelWarn, args...)
 }
 
 // Warnf logs the entry at Warn level with formatting.
-func (e *Entry) Warnf(format string, args ...interface{}) {
+func (e *Entry) Warnf(format string, args ...any) {
 	e.finalizef(LogLevelWarn, format, args...)
 }
 
 // Error logs the entry at Error level.
-func (e *Entry) Error(args ...interface{}) {
+func (e *Entry) Error(args ...any) {
 	e.finalize(LogLevelError, args...)
 }
 
 // Errorf logs the entry at Error level with formatting.
-func (e *Entry) Errorf(format string, args ...interface{}) {
+func (e *Entry) Errorf(format string, args ...any) {
 	e.finalizef(LogLevelError, format, args...)
 }
 
 // Fatal logs the entry at Fatal level and exits the program with os.Exit(1).
-func (e *Entry) Fatal(args ...interface{}) {
+func (e *Entry) Fatal(args ...any) {
 	e.finalize(LogLevelFatal, args...)
 	os.Exit(1)
 }
 
 // Fatalf logs the entry at Fatal level with formatting and exits.
-func (e *Entry) Fatalf(format string, args ...interface{}) {
+func (e *Entry) Fatalf(format string, args ...any) {
 	e.finalizef(LogLevelFatal, format, args...)
 	os.Exit(1)
 }
 
 // Panic logs the entry at Panic level and panics.
-func (e *Entry) Panic(args ...interface{}) {
+func (e *Entry) Panic(args ...any) {
 	e.finalize(LogLevelPanic, args...)
 	panic(e.message)
 }
 
 // Panicf logs the entry at Panic level with formatting and panics.
-func (e *Entry) Panicf(format string, args ...interface{}) {
+func (e *Entry) Panicf(format string, args ...any) {
 	e.finalizef(LogLevelPanic, format, args...)
 	panic(e.message)
 }
 
 // Printf logs the entry at Info level with formatting (compatibility method).
 // Implements the Printf(format string, args ...interface{}) interface used by many libraries.
-func (e *Entry) Printf(format string, args ...interface{}) {
+func (e *Entry) Printf(format string, args ...any) {
 	e.finalizef(LogLevelInfo, format, args...)
 }
 
@@ -933,7 +933,7 @@ func (e *Entry) debugGuard() {
 
 // WithField adds a single key-value pair to the entry and returns a new Entry.
 // If the key already exists, its value is replaced.
-func (e *Entry) WithField(key string, value interface{}) *Entry {
+func (e *Entry) WithField(key string, value any) *Entry {
 	ne := e.clone()
 	ne.retain = true
 	ne.addField(key, value)
@@ -973,24 +973,24 @@ func (e *Entry) WithTime(t time.Time) *Entry {
 
 // Global helpers
 
-func SetLevel(l Level)                          { defaultLogger.SetLevel(l) }
-func DefaultLogger() *Logger                    { return defaultLogger }
-func Trace(args ...interface{})                 { defaultLogger.Log(LogLevelTrace, args...) }
-func Tracef(format string, args ...interface{}) { defaultLogger.Logf(LogLevelTrace, format, args...) }
-func Debug(args ...interface{})                 { defaultLogger.Log(LogLevelDebug, args...) }
-func Debugf(format string, args ...interface{}) { defaultLogger.Logf(LogLevelDebug, format, args...) }
-func Info(args ...interface{})                  { defaultLogger.Log(LogLevelInfo, args...) }
-func Infof(format string, args ...interface{})  { defaultLogger.Logf(LogLevelInfo, format, args...) }
-func Warn(args ...interface{})                  { defaultLogger.Log(LogLevelWarn, args...) }
-func Warnf(format string, args ...interface{})  { defaultLogger.Logf(LogLevelWarn, format, args...) }
-func LogError(args ...interface{})              { defaultLogger.Log(LogLevelError, args...) }
-func LogErrorf(format string, args ...interface{}) {
+func SetLevel(l Level)                  { defaultLogger.SetLevel(l) }
+func DefaultLogger() *Logger            { return defaultLogger }
+func Trace(args ...any)                 { defaultLogger.Log(LogLevelTrace, args...) }
+func Tracef(format string, args ...any) { defaultLogger.Logf(LogLevelTrace, format, args...) }
+func Debug(args ...any)                 { defaultLogger.Log(LogLevelDebug, args...) }
+func Debugf(format string, args ...any) { defaultLogger.Logf(LogLevelDebug, format, args...) }
+func Info(args ...any)                  { defaultLogger.Log(LogLevelInfo, args...) }
+func Infof(format string, args ...any)  { defaultLogger.Logf(LogLevelInfo, format, args...) }
+func Warn(args ...any)                  { defaultLogger.Log(LogLevelWarn, args...) }
+func Warnf(format string, args ...any)  { defaultLogger.Logf(LogLevelWarn, format, args...) }
+func LogError(args ...any)              { defaultLogger.Log(LogLevelError, args...) }
+func LogErrorf(format string, args ...any) {
 	defaultLogger.Logf(LogLevelError, format, args...)
 }
 
 // Set adds a key-value pair to the entry, mutating it in place.
 // Returns the Entry for chaining. Use this with Opt() for high performance.
-func (e *Entry) Set(key string, value interface{}) *Entry {
+func (e *Entry) Set(key string, value any) *Entry {
 	e.debugGuard()
 	e.addField(key, value)
 	return e
@@ -1067,19 +1067,19 @@ func (e *Entry) Err(err error) *Entry {
 	return e
 }
 
-func Fatal(args ...interface{}) {
+func Fatal(args ...any) {
 	defaultLogger.Log(LogLevelFatal, args...)
 	os.Exit(1)
 }
-func Fatalf(format string, args ...interface{}) {
+func Fatalf(format string, args ...any) {
 	defaultLogger.Logf(LogLevelFatal, format, args...)
 	os.Exit(1)
 }
-func Panic(args ...interface{}) {
+func Panic(args ...any) {
 	defaultLogger.Log(LogLevelPanic, args...)
 	panic(fmt.Sprint(args...))
 }
-func Panicf(format string, args ...interface{}) {
+func Panicf(format string, args ...any) {
 	defaultLogger.Logf(LogLevelPanic, format, args...)
 	panic(fmt.Sprintf(format, args...))
 }

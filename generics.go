@@ -8,7 +8,7 @@ import (
 // Find searches for the first element in the slice that satisfies the predicate.
 // Returns the element and a boolean indicating if it was found.
 func Find[T any](slice []T, predicate func(T) bool) (T, bool) {
-	for i := 0; i < len(slice); i++ {
+	for i := range slice {
 		if predicate(slice[i]) {
 			return slice[i], true
 		}
@@ -18,7 +18,7 @@ func Find[T any](slice []T, predicate func(T) bool) (T, bool) {
 
 // Contains checks if a slice contains the specified element.
 func Contains[T comparable](slice []T, element T) bool {
-	for i := 0; i < len(slice); i++ {
+	for i := range slice {
 		if slice[i] == element {
 			return true
 		}
@@ -40,7 +40,7 @@ func Contains[T comparable](slice []T, element T) bool {
 //	numbers := []int{1, 2, 3, 4}
 //	hasEven := Any(numbers, func(n int) bool { return n%2 == 0 }) // true
 func Any[T any](slice []T, predicate func(T) bool) bool {
-	for i := 0; i < len(slice); i++ {
+	for i := range slice {
 		if predicate(slice[i]) {
 			return true
 		}

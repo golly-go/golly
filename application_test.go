@@ -321,7 +321,7 @@ func TestRegisterServiceConcurrent(t *testing.T) {
 	errors := make(chan error, numGoroutines)
 
 	// Launch multiple goroutines trying to register services with same name
-	for i := 0; i < numGoroutines; i++ {
+	for i := range numGoroutines {
 		go func(id int) {
 			service := &mockService{name: "ConcurrentService"}
 			err := app.RegisterService(service)
@@ -332,7 +332,7 @@ func TestRegisterServiceConcurrent(t *testing.T) {
 	// Collect results
 	successCount := 0
 	errorCount := 0
-	for i := 0; i < numGoroutines; i++ {
+	for range numGoroutines {
 		err := <-errors
 		if err == nil {
 			successCount++

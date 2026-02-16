@@ -31,10 +31,7 @@ func (rv *RouteVars) Get(key string) string {
 	}
 
 	// Fast path: check fixed buffer
-	n := rv.count
-	if n > 8 {
-		n = 8
-	}
+	n := min(rv.count, 8)
 
 	for i := 0; i < n; i++ {
 		if ASCIICompair(rv.keys[i], key) {
@@ -310,7 +307,7 @@ func (re *Route) updateHandlers() {
 	middleware := re.resolveMiddleware()
 
 	// Update chained handlers
-	for i := 0; i < 11; i++ {
+	for i := range 11 {
 		h := re.handlers[i]
 		if h != nil {
 			re.chained[i] = chain(middleware, h)

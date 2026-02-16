@@ -78,7 +78,7 @@ func TestLoggerJSONFormatter(t *testing.T) {
 
 	b := entry.buffer.Bytes()
 
-	var output map[string]interface{}
+	var output map[string]any
 	err = json.Unmarshal(b, &output)
 	assert.NoError(t, err)
 

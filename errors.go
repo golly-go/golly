@@ -1,6 +1,7 @@
 package golly
 
 import (
+	"maps"
 	"net/http"
 )
 
@@ -51,9 +52,7 @@ func (e *Error) WithExtensions(m map[string]any) *Error {
 	}
 	cp := *e
 	cp.extensions = copyExt(e.extensions)
-	for k, v := range m {
-		cp.extensions[k] = v
-	}
+	maps.Copy(cp.extensions, m)
 	return &cp
 }
 
@@ -68,9 +67,7 @@ func NewError(code uint, cause error, ext ...map[string]any) *Error {
 
 	extensions := make(map[string]any)
 	for _, e := range ext {
-		for k, v := range e {
-			extensions[k] = v
-		}
+		maps.Copy(extensions, e)
 	}
 
 	return &Error{
@@ -88,8 +85,6 @@ func copyExt(in map[string]any) map[string]any {
 		return map[string]any{}
 	}
 	out := make(map[string]any, len(in))
-	for k, v := range in {
-		out[k] = v
-	}
+	maps.Copy(out, in)
 	return out
 }

@@ -6,7 +6,7 @@ import (
 )
 
 func TestCurrentEnv_Race(t *testing.T) {
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		t.Run(fmt.Sprintf("test-%d", i), func(t *testing.T) {
 			go Env()
 		})
