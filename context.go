@@ -2,7 +2,6 @@ package golly
 
 import (
 	"context"
-	"slices"
 	"sync/atomic"
 	"time"
 	"unsafe"
@@ -444,8 +443,11 @@ func (c *Context) addChild(child canceler) {
 		var children []canceler
 		if oldPtr != nil {
 			children = *(*[]canceler)(oldPtr)
-			if slices.Contains(children, child) {
-				return
+
+			for pos := range children {
+				if children[pos] == child {
+					return
+				}
 			}
 		}
 
