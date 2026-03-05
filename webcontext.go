@@ -3,7 +3,6 @@ package golly
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"io"
 	"net/http"
 	"net/url"
@@ -11,6 +10,8 @@ import (
 	"strconv"
 	"sync"
 	"sync/atomic"
+
+	"github.com/segmentio/encoding/json"
 )
 
 const (
