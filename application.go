@@ -3,6 +3,7 @@ package golly
 import (
 	"context"
 	"errors"
+	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -12,20 +13,22 @@ import (
 
 var (
 	ErrorServiceAlreadyRegistered = errors.New("service already registered")
+	ErrorFatalCalled              = errors.New("fatal() called")
 )
 
 type ApplicationTracker interface {
 	Application() *Application
 }
 
-type ApplicationState string
+type ApplicationState int
 
 const (
-	StateStarting    ApplicationState = "starting"
-	StateInitialized ApplicationState = "initialized"
-	StateShutdown    ApplicationState = "shutdown"
-	StateErrored     ApplicationState = "errored"
-	StateRunning     ApplicationState = "running"
+	StateUnknown ApplicationState = iota
+	StateStarting
+	StateInitialized
+	StateShutdown
+	StateErrored
+	StateRunning
 )
 
 // GollyAppFunc represents a function signature for application initializers.
@@ -92,20 +95,23 @@ type Application struct {
 	preboot AppFunc
 
 	mu    sync.RWMutex // Ensures safe concurrent access during initialization.
-	state ApplicationState
+	state atomic.Uint32
+
+	shutdownWait time.Duration
+	done         chan struct{} // closed when Shutdown() fully completes
 
 	services map[string]Service
-
 	wctxPool sync.Pool
 }
 
 func (a *Application) Application() *Application { return a }
 func (a *Application) Config() *viper.Viper      { return a.config }
 func (a *Application) Routes() *Route            { return a.routes }
-func (a *Application) State() ApplicationState   { return a.state }
 func (a *Application) Events() *EventManager     { return a.events }
 func (a *Application) Logger() *Logger           { return a.logger }
-func (a *Application) Plugins() *PluginManager   { return a.plugins }
+func (a *Application) State() ApplicationState   { return ApplicationState(a.state.Load()) }
+
+func (a *Application) Plugins() *PluginManager { return a.plugins }
 
 func (a *Application) Services() []Service {
 	a.mu.RLock()
@@ -122,11 +128,13 @@ func (a *Application) Services() []Service {
 // changeState changes application state within the application
 // and dispatches to all those who care
 func (a *Application) changeState(state ApplicationState) {
-	if a.state == StateShutdown || a.state == StateErrored {
+	st := a.State()
+
+	if st == StateShutdown || st == StateErrored {
 		return
 	}
 
-	a.state = state
+	a.state.Store(uint32(state))
 
 	a.events.Dispatch(
 		WithApplication(context.Background(), a),
@@ -176,25 +184,46 @@ func (a *Application) Off(event string, fnc EventFunc) {
 	a.Events().Unregister(event, fnc)
 }
 
-// Shutdown starts the shutdown process
+// Fatal logs the error, runs a full graceful shutdown (so plugins can flush),
+// then exits. Always use this instead of os.Exit for unrecoverable errors.
+func (a *Application) Fatal(err error) {
+	a.Logger().WithError(err).Error("shutting down on fatal error")
+	a.Shutdown()
+	os.Exit(1)
+}
+
+// Shutdown runs the full shutdown lifecycle:
+//  1. Stop all running services (with per-service timeout)
+//  2. Deinitialize all plugins (flush queued jobs, close DB connections, etc.)
+//  3. Dispatch ApplicationShutdown event + afterDeinitialize hooks
+//
+// Shutdown is safe to call concurrently. The first call performs the work;
+// subsequent callers block until the first completes, then return.
 func (a *Application) Shutdown() {
-	a.mu.RLock()
-	if a.state == StateShutdown {
-		a.mu.RUnlock()
-		return
-	}
-	a.mu.RUnlock()
-
-	a.changeState(StateShutdown)
-
-	stopRunningServices(a)
-
-	if a.plugins != nil {
-		if err := a.plugins.deinitialize(a); err != nil {
-			a.logger.WithError(err)
+	if a.State() == StateShutdown {
+		for {
+			select {
+			case <-a.done:
+				return
+			case <-time.After(a.shutdownWait):
+				return
+			}
 		}
 	}
 
+	a.changeState(StateShutdown)
+
+	// 1. Stop all running services
+	stopRunningServices(a)
+
+	// 2. Deinitialize plugins (flush queued work, close connections, etc.)
+	if a.plugins != nil {
+		if err := a.plugins.deinitialize(a); err != nil {
+			a.logger.WithError(err).Error("error deinitializing plugins")
+		}
+	}
+
+	// 3. Dispatch shutdown event + after-deinit hooks
 	a.events.Dispatch(
 		WithApplication(context.Background(), a),
 		ApplicationShutdown{})
@@ -203,6 +232,7 @@ func (a *Application) Shutdown() {
 		a.plugins.afterDeinitialize(a)
 	}
 
+	close(a.done)
 }
 
 // RegisterInitializer registers an initializer with the application.
@@ -274,19 +304,25 @@ func NewApplication(options Options) *Application {
 	// Ensure slices are initialized for safe iteration.
 	services := append(options.Services, pluginServices(options.Plugins)...)
 
+	if options.ShutdownWait == 0 {
+		options.ShutdownWait = 30 * time.Second
+	}
+
 	return &Application{
-		Name:        options.Name,
-		Env:         Env(),      // Fetches the current environment.
-		StartedAt:   time.Now(), // Marks the startup time of the application.
-		services:    serviceMap(services),
-		initializer: options.Initializer,
-		plugins:     NewPluginManager(options.Plugins...),
-		preboot:     options.Preboot,
-		events:      &EventManager{},
-		logger:      NewLogger(),
-		watchConfig: options.WatchConfig,
-		ConfigPath:  options.ConfigPath,
-		config:      viper.New(),
+		Name:         options.Name,
+		Env:          Env(),      // Fetches the current environment.
+		StartedAt:    time.Now(), // Marks the startup time of the application.
+		services:     serviceMap(services),
+		initializer:  options.Initializer,
+		plugins:      NewPluginManager(options.Plugins...),
+		preboot:      options.Preboot,
+		events:       &EventManager{},
+		logger:       NewLogger(),
+		watchConfig:  options.WatchConfig,
+		ConfigPath:   options.ConfigPath,
+		config:       viper.New(),
+		done:         make(chan struct{}),
+		shutdownWait: options.ShutdownWait,
 		routes: NewRouteRoot().
 			Get("/routes", renderRoutes).
 			Get("/status", renderStatus), // Default route mount point (can be extended with specific handlers).
@@ -332,4 +368,12 @@ func (a *Application) ConfigChanged() {
 		WithApplication(context.Background(), a),
 		&ConfigChanged{Config: a.config},
 	)
+}
+
+func Fatal(err error) {
+	if a := app.Load(); a != nil {
+		a.Fatal(err)
+	} else {
+		os.Exit(1)
+	}
 }

@@ -1,12 +1,15 @@
 package golly
 
 import (
+	"errors"
 	"fmt"
-	"os"
 
 	"github.com/spf13/cobra"
 )
 
+var (
+	ErrorAppNotInitialized = errors.New("application not initialized")
+)
 var (
 	serviceCommand = &cobra.Command{
 		Use:              "service",
@@ -61,13 +64,12 @@ func Command(command CLICommand) func(cmd *cobra.Command, args []string) {
 		a := app.Load()
 		if a == nil {
 			fmt.Println("Error: application not initialized")
-			os.Exit(1)
+			a.Fatal(ErrorAppNotInitialized)
 		}
 
 		err := command(a, cmd, args)
 		if err != nil && err != ErrorExit && err != ErrorNone {
-			fmt.Printf("Error: %s\n", err)
-			os.Exit(1)
+			a.Fatal(err)
 		}
 	}
 }

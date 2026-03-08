@@ -1,7 +1,6 @@
 package golly
 
 import (
-	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
@@ -54,13 +53,18 @@ func setupSignals(app *Application) func() {
 
 // Run starts the application with command-line interface
 func Run(opts Options) {
-	app := bootApplication(opts)
-	cmd := bindCommands(app, opts)
+	a := bootApplication(opts)
+	cmd := bindCommands(a, opts)
 
 	if err := cmd.Execute(); err != nil {
-		fmt.Printf("Error: %s\n", err)
-		os.Exit(1)
+		// Fatal runs full shutdown (plugins flush) then os.Exit(1)
+		a.Fatal(err)
 	}
+
+	// cmd.Execute() unblocks when services exit, but a signal-triggered
+	// Shutdown() may still be running (stopping services, deiniting plugins).
+	// Block here until the full shutdown lifecycle completes.
+	a.Shutdown()
 }
 
 // RunStandalone runs the application in standalone mode (no service subcommands)

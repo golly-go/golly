@@ -694,12 +694,13 @@ func (l *Logger) Warn(args ...any)                  { l.Log(LogLevelWarn, args..
 func (l *Logger) Warnf(format string, args ...any)  { l.Logf(LogLevelWarn, format, args...) }
 func (l *Logger) Fatal(args ...any) {
 	l.Log(LogLevelFatal, args...)
-	os.Exit(1)
+	Fatal(ErrorFatalCalled)
 }
 func (l *Logger) Fatalf(format string, args ...any) {
 	l.Logf(LogLevelFatal, format, args...)
-	os.Exit(1)
+	Fatal(ErrorFatalCalled)
 }
+
 func (l *Logger) Panic(args ...any) {
 	l.Log(LogLevelPanic, args...)
 	panic(fmt.Sprint(args...))
@@ -831,13 +832,13 @@ func (e *Entry) Errorf(format string, args ...any) {
 // Fatal logs the entry at Fatal level and exits the program with os.Exit(1).
 func (e *Entry) Fatal(args ...any) {
 	e.finalize(LogLevelFatal, args...)
-	os.Exit(1)
+	Fatal(ErrorFatalCalled)
 }
 
 // Fatalf logs the entry at Fatal level with formatting and exits.
 func (e *Entry) Fatalf(format string, args ...any) {
 	e.finalizef(LogLevelFatal, format, args...)
-	os.Exit(1)
+	Fatal(ErrorFatalCalled)
 }
 
 // Panic logs the entry at Panic level and panics.
@@ -1065,21 +1066,4 @@ func (e *Entry) Err(err error) *Entry {
 	}
 	e.fields = append(e.fields, Field{Key: "error", Type: LogTypeError, Interface: err})
 	return e
-}
-
-func Fatal(args ...any) {
-	defaultLogger.Log(LogLevelFatal, args...)
-	os.Exit(1)
-}
-func Fatalf(format string, args ...any) {
-	defaultLogger.Logf(LogLevelFatal, format, args...)
-	os.Exit(1)
-}
-func Panic(args ...any) {
-	defaultLogger.Log(LogLevelPanic, args...)
-	panic(fmt.Sprint(args...))
-}
-func Panicf(format string, args ...any) {
-	defaultLogger.Logf(LogLevelPanic, format, args...)
-	panic(fmt.Sprintf(format, args...))
 }

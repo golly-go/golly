@@ -148,10 +148,15 @@ func (pm *PluginManager) afterDeinitialize(app *Application) {
 func (pm *PluginManager) deinitialize(app *Application) error {
 	var deinitErrors []error
 
+	app.logger.Trace("starting plugin deinitialization")
+
 	for pos := range pm.plugins {
+
 		if err := pm.plugins[pos].Deinitialize(app); err != nil {
 			deinitErrors = append(deinitErrors, fmt.Errorf("failed to deinitialize plugin %T: %w", pm.plugins[pos], err))
 		}
+
+		app.logger.Tracef("Deinitialized plugin %s\n", pm.plugins[pos].Name())
 	}
 
 	if len(deinitErrors) > 0 {

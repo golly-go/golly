@@ -1,6 +1,10 @@
 package golly
 
-import "github.com/spf13/cobra"
+import (
+	"time"
+
+	"github.com/spf13/cobra"
+)
 
 type Options struct {
 	// Name of the application (the reason this is dynamic)
@@ -44,4 +48,6 @@ type Options struct {
 	// this is good for cli tools that want to provide their own commands and not
 	// become confusing with the default commands
 	Standalone bool
+
+	ShutdownWait time.Duration
 }

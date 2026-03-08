@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"golang.org/x/sync/errgroup"
 
@@ -149,12 +150,19 @@ func StartService(app *Application, service Service) error {
 
 // StopService stops a specific service and emits the ServiceStopped event
 func StopService(app *Application, service Service) error {
-	name := getServiceName(service)
-	app.logger.Tracef("Stopping service: %s", name)
 
 	if !service.IsRunning() {
 		return nil
 	}
+	name := getServiceName(service)
+
+	defer func(app *Application, name string) {
+		if r := recover(); r != nil {
+			app.logger.Errorf("panic in stop service %s (%#v)", name, r)
+		}
+	}(app, name)
+
+	app.logger.Opt().Str("service", name).Trace("Stopping service")
 
 	if err := service.Stop(); err != nil {
 		return fmt.Errorf("error stopping service %s: %w", name, err)
@@ -167,14 +175,30 @@ func StopService(app *Application, service Service) error {
 	return nil
 }
 
-// stopRunningServices stops all running services.
+// stopRunningServices stops all running services with a per-service timeout.
 func stopRunningServices(app *Application) {
+	const stopTimeout = 10 * time.Second
+
 	for _, svc := range app.services {
+
 		if !svc.IsRunning() {
 			continue
 		}
-		if err := StopService(app, svc); err != nil {
-			app.logger.Error(err)
+
+		name := getServiceName(svc)
+
+		done := make(chan error, 1)
+		go func() {
+			done <- StopService(app, svc)
+		}()
+
+		select {
+		case err := <-done:
+			if err != nil {
+				app.logger.Error(err)
+			}
+		case <-time.After(stopTimeout):
+			app.logger.Warnf("timeout stopping service %s after %s", name, stopTimeout)
 		}
 	}
 }
@@ -247,17 +271,7 @@ func serviceRun(name string) CLICommand {
 //
 // Returns an error if any service stops unexpectedly before shutdown.
 func runAllServices(app *Application, cmd *cobra.Command, args []string) error {
-	// Use WithContext to fail-fast on first service error
-	eg, ctx := errgroup.WithContext(context.Background())
-
-	// Watch for context cancellation (on first error) and shutdown immediately
-	go func() {
-		<-ctx.Done()
-
-		if ctx.Err() != nil {
-			app.Shutdown()
-		}
-	}()
+	eg := new(errgroup.Group)
 
 	// Run each service in its own goroutine
 	for _, svc := range app.services {
@@ -273,5 +287,11 @@ func runAllServices(app *Application, cmd *cobra.Command, args []string) error {
 		eg.Go(fnc(svc, getServiceName(svc)))
 	}
 
-	return eg.Wait()
+	if err := eg.Wait(); err != nil {
+		// A service crashed unexpectedly — trigger shutdown so other services stop
+		app.Shutdown()
+		return err
+	}
+
+	return nil
 }

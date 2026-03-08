@@ -462,7 +462,7 @@ func TestChangeState(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			app := NewApplication(Options{})
-			app.state = tt.initialState
+			app.state.Store(uint32(tt.initialState))
 
 			eventDispatched := false
 			var dispatchedState ApplicationState
@@ -660,7 +660,13 @@ func TestShutdown(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			app := NewApplication(Options{})
-			app.state = tt.initialState
+			app.state.Store(uint32(tt.initialState))
+
+			// If we're simulating an already-completed shutdown, done must be closed
+			// to reflect that the lifecycle finished (Shutdown closes done at the end).
+			if tt.initialState == StateShutdown {
+				close(app.done)
+			}
 
 			shutdownDispatched := false
 			stateChangedDispatched := false
@@ -699,7 +705,7 @@ func TestShutdown(t *testing.T) {
 // TestShutdownMultipleTimes tests that calling Shutdown multiple times is safe
 func TestShutdownMultipleTimes(t *testing.T) {
 	app := NewApplication(Options{})
-	app.state = StateRunning
+	app.state.Store(uint32(StateRunning))
 
 	shutdownCount := 0
 	app.On(EventShutdown, func(ctx context.Context, data any) {
