@@ -149,6 +149,10 @@ func (wctx *WebContext) Application() *Application { return wctx.ctx.Application
 // // Set the status code
 // wctx.Response().WriteHeader(http.StatusOK)
 
+func (wctx *WebContext) WithStatus(status int) *WebContext {
+	wctx.writer.WriteHeader(status)
+	return wctx
+}
 func (wctx *WebContext) Render(format FormatOption, data any) { Render(wctx, format, data) }
 func (wctx *WebContext) RenderJSON(data any)                  { Render(wctx, FormatTypeJSON, data) }
 func (wctx *WebContext) RenderXML(data any)                   { Render(wctx, FormatTypeXML, data) }
