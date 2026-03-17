@@ -64,7 +64,7 @@ func New() *Service {
 }
 
 // Name satisfies golly.Namer.
-func (*Service) Name() string { return "http2" }
+func (*Service) Name() string { return "web" }
 
 // IsRunning satisfies golly.Service.
 func (s *Service) IsRunning() bool { return s.running.Load() }
