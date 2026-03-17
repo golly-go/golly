@@ -197,6 +197,9 @@ func (a *Application) Fatal(err error) {
 //  2. Deinitialize all plugins (flush queued jobs, close DB connections, etc.)
 //  3. Dispatch ApplicationShutdown event + afterDeinitialize hooks
 //
+// Steps 1-3 are skipped if the app never reached StateInitialized (e.g. bad
+// CLI command, startup error) to avoid nil-pointer panics in plugin hooks.
+//
 // Shutdown is safe to call concurrently. The first call performs the work;
 // subsequent callers block until the first completes, then return.
 func (a *Application) Shutdown() {
@@ -211,7 +214,16 @@ func (a *Application) Shutdown() {
 		}
 	}
 
+	// Capture pre-shutdown state before we transition — used to decide
+	// whether plugins/services were ever initialized.
+	priorState := a.State()
 	a.changeState(StateShutdown)
+
+	// Only tear down what was actually initialized.
+	if priorState < StateInitialized {
+		close(a.done)
+		return
+	}
 
 	// 1. Stop all running services
 	stopRunningServices(a)

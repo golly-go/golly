@@ -272,7 +272,15 @@ func (wctx *WebContext) Reset(parent context.Context, r *http.Request, w http.Re
 	if len(segements) == 0 {
 		wctx.fillSegments(r.URL.Path)
 	} else {
-		copy(wctx.segments, segements)
+		n := len(segements)
+		if n <= len(wctx.segmentBuf) {
+			copy(wctx.segmentBuf[:n], segements)
+			wctx.segments = wctx.segmentBuf[:n]
+		} else {
+			s := make([]string, n)
+			copy(s, segements)
+			wctx.segments = s
+		}
 	}
 }
 

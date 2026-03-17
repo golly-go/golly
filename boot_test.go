@@ -44,7 +44,7 @@ func TestInitializeApp(t *testing.T) {
 
 		assert.NoError(t, err)
 		assert.NotNil(t, app.config)
-		assert.Equal(t, StateInitialized, app.state)
+		assert.Equal(t, StateInitialized, app.State())
 	})
 
 	t.Run("sets state to errored on failure", func(t *testing.T) {
@@ -58,7 +58,7 @@ func TestInitializeApp(t *testing.T) {
 		err := initializeApp(app)
 
 		assert.Error(t, err)
-		assert.Equal(t, StateErrored, app.state)
+		assert.Equal(t, StateErrored, app.State())
 	})
 
 	t.Run("transitions through states correctly", func(t *testing.T) {
@@ -69,7 +69,7 @@ func TestInitializeApp(t *testing.T) {
 		err := initializeApp(app)
 
 		assert.NoError(t, err)
-		assert.Equal(t, StateInitialized, app.state)
+		assert.Equal(t, StateInitialized, app.State())
 	})
 }
 
@@ -87,39 +87,36 @@ func TestSetupSignals(t *testing.T) {
 	t.Run("calls shutdown on signal", func(t *testing.T) {
 		app := NewApplication(Options{Name: "test-shutdown-signal"})
 
-		done := make(chan struct{})
-		app.On(EventShutdown, func(ctx context.Context, a any) {
-			done <- struct{}{}
+		// Shutdown() only dispatches ApplicationShutdown after StateInitialized.
+		// For an uninitialized app we verify shutdown via EventStateChanged instead.
+		done := make(chan struct{}, 1)
+		app.On(EventStateChanged, func(ctx context.Context, a any) {
+			if ev, ok := a.(ApplicationStateChanged); ok && ev.State == StateShutdown {
+				select {
+				case done <- struct{}{}:
+				default:
+				}
+			}
 		})
 
 		stop := setupSignals(app)
 		defer stop()
 
-		var called bool
-		// Send interrupt signal to current process
-		// Note: This is a bit tricky to test without actually killing the process
-		// In a real scenario, you might want to use a custom signal channel
 		p, _ := os.FindProcess(os.Getpid())
 		p.Signal(os.Interrupt)
 
 		ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(time.Second))
 		defer cancel()
 
-		wait := true
-		for wait {
-			select {
-			case <-done:
-				called = true
-				wait = false
-
-			case <-ctx.Done():
-				t.Error("Timeout waiting for shutdown")
-				wait = false
-			}
+		var called bool
+		select {
+		case <-done:
+			called = true
+		case <-ctx.Done():
+			t.Error("Timeout waiting for shutdown")
 		}
 
 		assert.True(t, called)
-
 	})
 }
 

@@ -1,6 +1,7 @@
 package golly
 
 import (
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -14,6 +15,91 @@ import (
 
 func TestWebContext(t *testing.T) {
 	// Add basic web context tests here if needed
+}
+
+// TestWebContextURLParams verifies that URLParams correctly extracts dynamic
+// route variables from the path, including after pool reuse via Reset.
+func TestWebContextURLParams(t *testing.T) {
+	root := NewRouteRoot()
+	root.Delete("/_regression/{organizationID}", noOpHandler)
+	root.Get("/users/{userID}/posts/{postID}", noOpHandler)
+
+	t.Run("fresh context - single param", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodDelete, "/_regression/019bd7b0-15ee-71e4-ae51-7523f6b9bb02", nil)
+		w := httptest.NewRecorder()
+
+		wctx := NewWebContext(req.Context(), req, w)
+		wctx.route = FindRoute(root, req.URL.Path)
+
+		params := wctx.URLParams()
+		assert.Equal(t, "019bd7b0-15ee-71e4-ae51-7523f6b9bb02", params.Get("organizationID"))
+	})
+
+	t.Run("fresh context - multiple params", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/users/42/posts/99", nil)
+		w := httptest.NewRecorder()
+
+		wctx := NewWebContext(req.Context(), req, w)
+		wctx.route = FindRoute(root, req.URL.Path)
+
+		params := wctx.URLParams()
+		assert.Equal(t, "42", params.Get("userID"))
+		assert.Equal(t, "99", params.Get("postID"))
+	})
+
+	// Regression: Reset with a nil/empty wctx.segments (fresh pool object) and a
+	// non-empty segments slice caused copy() to be a no-op, leaving URLParams empty.
+	t.Run("reset from shorter path to longer path - bug repro", func(t *testing.T) {
+		// Simulate a pool WebContext whose previous request was a short path (2 segments).
+		short := httptest.NewRequest(http.MethodGet, "/status", nil)
+		w := httptest.NewRecorder()
+		wctx := NewWebContext(short.Context(), short, w)
+
+		// Now reset for a longer path with a dynamic segment.
+		long := httptest.NewRequest(http.MethodDelete, "/_regression/019bd7b0-15ee-71e4-ae51-7523f6b9bb02", nil)
+		path := long.URL.Path
+		stack := make([]string, makePathCount(path))
+		pathSegments(stack, path)
+
+		wctx.Reset(long.Context(), long, w, stack)
+		wctx.route = FindRoute(root, path)
+
+		params := wctx.URLParams()
+		assert.Equal(t, "019bd7b0-15ee-71e4-ae51-7523f6b9bb02", params.Get("organizationID"),
+			"URLParams must not be empty after Reset with more segments than previous request")
+	})
+
+	t.Run("reset from longer path to shorter path", func(t *testing.T) {
+		// Previous request was long (4 segments).
+		long := httptest.NewRequest(http.MethodGet, "/users/42/posts/99", nil)
+		w := httptest.NewRecorder()
+		wctx := NewWebContext(long.Context(), long, w)
+
+		// Reset for a shorter dynamic path (3 segments).
+		next := httptest.NewRequest(http.MethodDelete, "/_regression/abc123", nil)
+		path := next.URL.Path
+		stack := make([]string, makePathCount(path))
+		pathSegments(stack, path)
+
+		wctx.Reset(next.Context(), next, w, stack)
+		wctx.route = FindRoute(root, path)
+
+		params := wctx.URLParams()
+		assert.Equal(t, "abc123", params.Get("organizationID"),
+			"URLParams must not bleed stale segments from a previous longer request")
+	})
+
+	t.Run("URLParams cached after first call", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodDelete, "/_regression/cached-id", nil)
+		w := httptest.NewRecorder()
+
+		wctx := NewWebContext(req.Context(), req, w)
+		wctx.route = FindRoute(root, req.URL.Path)
+
+		p1 := wctx.URLParams()
+		p2 := wctx.URLParams()
+		assert.Same(t, p1, p2, "URLParams should return the same pointer on repeated calls")
+	})
 }
 
 func TestMakeRequestID_LongHostname(t *testing.T) {

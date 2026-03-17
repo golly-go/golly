@@ -501,6 +501,29 @@ func BenchmarkRouteRequest_ZeroAlloc(b *testing.B) {
 	}
 }
 
+// BenchmarkRouteRequest_ZeroAlloc_WithParams verifies that serving a request
+// with dynamic URL params (and reading them via URLParams) does not allocate.
+func BenchmarkRouteRequest_ZeroAlloc_WithParams(b *testing.B) {
+	app := NewApplication(Options{})
+	app.routes.Delete("/_regression/{organizationID}", func(ctx *WebContext) {
+		_ = ctx.URLParams().Get("organizationID")
+		ctx.writer.WriteHeader(http.StatusOK)
+	})
+
+	req := httptest.NewRequest(http.MethodDelete, "/_regression/019bd7b0-15ee-71e4-ae51-7523f6b9bb02", nil)
+	mw := &BenchMockWriter{h: make(http.Header)}
+
+	// Warm up the pool so Reset() is exercised, not NewWebContext.
+	RouteRequest(app, req, mw)
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		RouteRequest(app, req, mw)
+	}
+}
+
 func BenchmarkAddPath(b *testing.B) {
 	benchmarks := []struct {
 		name string
