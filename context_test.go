@@ -510,7 +510,7 @@ func TestContext_LoggerLeak(t *testing.T) {
 	}()
 
 	// Step 1: Create a context with many fields to expand the pooled entry's fields slice
-	ctx1 := WithLoggerFields(NewContext(nil), Fields{
+	ctx1 := WithLoggerFields(NewContext(context.TODO()), Fields{
 		"field1": "val1",
 		"field2": "val2",
 		"field3": "val3",
@@ -530,7 +530,7 @@ func TestContext_LoggerLeak(t *testing.T) {
 	// Pass 2 walks from root, finds 0 fields.
 	// e.fields has length 1, but index 0 contains "field1" from previous log!
 
-	ctx2 := WithLoggerField(NewContext(nil), "newfield", "newval")
+	ctx2 := WithLoggerField(NewContext(context.TODO()), "newfield", "newval")
 	ctx2.Logger().Info("Log 2")
 
 	output2 := buf.String()

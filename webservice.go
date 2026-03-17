@@ -84,6 +84,10 @@ func (ws *WebService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	RouteRequest(ws.application, r, w)
 }
 
+func BindFromConfig(a *Application, fullBindEnv, portEnv string) string {
+	return bindFromConfig(a, fullBindEnv, portEnv)
+}
+
 func bindFromConfig(a *Application, fullBindEnv, portEnv string) string {
 	bind := a.config.GetString(fullBindEnv)
 	if bind == "" {

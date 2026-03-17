@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestBootApplication(t *testing.T) {
@@ -103,7 +104,7 @@ func TestSetupSignals(t *testing.T) {
 		defer stop()
 
 		p, _ := os.FindProcess(os.Getpid())
-		p.Signal(os.Interrupt)
+		require.NoError(t, p.Signal(os.Interrupt))
 
 		ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(time.Second))
 		defer cancel()

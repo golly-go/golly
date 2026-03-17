@@ -172,7 +172,7 @@ func TestDataLoaderGet(t *testing.T) {
 	releaseFetch := make(chan struct{})
 
 	go func() {
-		loader.Fetch("inflight", func() (any, error) {
+		_, _ = loader.Fetch("inflight", func() (any, error) {
 			close(fetchStarted)
 			<-releaseFetch
 			return "result", nil
@@ -205,7 +205,7 @@ func TestDataLoaderGetWait(t *testing.T) {
 	releaseFetch := make(chan struct{})
 
 	go func() {
-		loader.Fetch("inflight", func() (any, error) {
+		_, _ = loader.Fetch("inflight", func() (any, error) {
 			close(fetchStarted)
 			<-releaseFetch
 			return "result", nil

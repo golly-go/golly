@@ -295,7 +295,9 @@ func BenchmarkHttpFancyWriterReadFrom(b *testing.B) {
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
 				_, _ = fw.ReadFrom(data)
-				data.Seek(0, io.SeekStart) // Reset the reader for the next iteration
+				if _, err := data.Seek(0, io.SeekStart); err != nil {
+					b.Fatal(err)
+				}
 			}
 		})
 	}

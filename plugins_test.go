@@ -173,11 +173,3 @@ func TestPluginManager_Lifecycle(t *testing.T) {
 	pm.afterDeinitialize(app)
 	assert.True(t, plugin.afterDeinit)
 }
-
-func TestPluginServicesAggregation(t *testing.T) {
-	type servicePlugin struct {
-		testPlugin
-	}
-	// Note: We can't easily mock PluginServices here without defining the interface match
-	// but we can check if the helper works with a slice
-}
