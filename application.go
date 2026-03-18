@@ -69,6 +69,8 @@ type Application struct {
 	StartedAt  time.Time // Timestamp of when the application was started.
 	ConfigPath string    `json:"config_path"` // Config path of the application.
 
+	runningServices []string
+
 	Env EnvName // Current environment (e.g., development, production).
 
 	logger *Logger // Right now we are leveraging Logrus (Why reinvent the wheel - hold a pointer to it)
@@ -110,6 +112,32 @@ func (a *Application) Routes() *Route            { return a.routes }
 func (a *Application) Events() *EventManager     { return a.events }
 func (a *Application) Logger() *Logger           { return a.logger }
 func (a *Application) State() ApplicationState   { return ApplicationState(a.state.Load()) }
+
+func (a *Application) RunningServices() []string {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+
+	return a.runningServices[:]
+}
+
+func (a *Application) IsServiceScheduled(name string) bool {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+
+	for pos := range a.runningServices {
+		if a.runningServices[pos] == name {
+			return true
+		}
+	}
+	return false
+}
+
+func (a *Application) addRunningService(names ...string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	a.runningServices = append(a.runningServices, names...)
+}
 
 func (a *Application) Plugins() *PluginManager { return a.plugins }
 
@@ -321,20 +349,21 @@ func NewApplication(options Options) *Application {
 	}
 
 	return &Application{
-		Name:         options.Name,
-		Env:          Env(),      // Fetches the current environment.
-		StartedAt:    time.Now(), // Marks the startup time of the application.
-		services:     serviceMap(services),
-		initializer:  options.Initializer,
-		plugins:      NewPluginManager(options.Plugins...),
-		preboot:      options.Preboot,
-		events:       &EventManager{},
-		logger:       NewLogger(),
-		watchConfig:  options.WatchConfig,
-		ConfigPath:   options.ConfigPath,
-		config:       viper.New(),
-		done:         make(chan struct{}),
-		shutdownWait: options.ShutdownWait,
+		Name:            options.Name,
+		Env:             Env(),      // Fetches the current environment.
+		StartedAt:       time.Now(), // Marks the startup time of the application.
+		runningServices: make([]string, 0),
+		services:        serviceMap(services),
+		initializer:     options.Initializer,
+		plugins:         NewPluginManager(options.Plugins...),
+		preboot:         options.Preboot,
+		events:          &EventManager{},
+		logger:          NewLogger(),
+		watchConfig:     options.WatchConfig,
+		ConfigPath:      options.ConfigPath,
+		config:          viper.New(),
+		done:            make(chan struct{}),
+		shutdownWait:    options.ShutdownWait,
 		routes: NewRouteRoot().
 			Get("/routes", renderRoutes).
 			Get("/status", renderStatus), // Default route mount point (can be extended with specific handlers).

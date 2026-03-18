@@ -24,7 +24,7 @@ import (
 )
 
 func TestHTTP2Service_Name(t *testing.T) {
-	assert.Equal(t, "http2", svchttp2.New().Name())
+	assert.Equal(t, "web", svchttp2.New().Name())
 }
 
 func TestHTTP2Service_IsRunning(t *testing.T) {

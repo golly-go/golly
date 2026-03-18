@@ -18,7 +18,7 @@ import (
 )
 
 func TestH2CService_Name(t *testing.T) {
-	assert.Equal(t, "h2c", h2c.New().Name())
+	assert.Equal(t, "web", h2c.New().Name())
 }
 
 func TestH2CService_IsRunning(t *testing.T) {

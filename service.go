@@ -133,7 +133,8 @@ func listServices(services []Service) func(cmd *cobra.Command, args []string) {
 //
 // we should probably move this to (application struct as it starts to need more and more of it)
 func StartService(app *Application, service Service) error {
-	app.logger.Tracef("Starting service: %s", getServiceName(service))
+	name := getServiceName(service)
+	app.logger.Tracef("Starting service: %s", name)
 
 	if i, ok := service.(Initializer); ok {
 		if err := i.Initialize(app); err != nil {
@@ -143,7 +144,7 @@ func StartService(app *Application, service Service) error {
 
 	app.Events().Dispatch(
 		WithApplication(context.Background(), app),
-		&ServiceStarted{Name: getServiceName(service)})
+		&ServiceStarted{Name: name})
 
 	return service.Start()
 }
@@ -263,6 +264,8 @@ func serviceRun(name string) CLICommand {
 			return ErrorServiceNotRegistered
 		}
 
+		app.addRunningService(name)
+
 		return StartService(app, service)
 	}
 }
@@ -272,6 +275,13 @@ func serviceRun(name string) CLICommand {
 // Returns an error if any service stops unexpectedly before shutdown.
 func runAllServices(app *Application, cmd *cobra.Command, args []string) error {
 	eg := new(errgroup.Group)
+
+	app.mu.Lock()
+	app.runningServices = make([]string, 0, len(app.services))
+	for name := range app.services {
+		app.runningServices = append(app.runningServices, name)
+	}
+	app.mu.Unlock()
 
 	// Run each service in its own goroutine
 	for _, svc := range app.services {
