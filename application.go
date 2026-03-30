@@ -191,17 +191,21 @@ func (a *Application) initialize() error {
 		if err := a.plugins.initialize(a); err != nil {
 			return err
 		}
+	}
 
+	if a.initializer != nil {
+		if err := a.initializer(a); err != nil {
+			return err
+		}
+	}
+
+	if a.plugins != nil {
 		if err := a.plugins.afterInitialize(a); err != nil {
 			return err
 		}
 	}
 
-	if a.initializer == nil {
-		return nil
-	}
-
-	return a.initializer(a)
+	return nil
 }
 
 func (a *Application) On(event string, fnc EventFunc) {
