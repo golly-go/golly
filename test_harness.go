@@ -17,6 +17,13 @@ type TestHarness struct {
 	App *Application
 }
 
+func (h *TestHarness) NewContext() *Context {
+	ctx := NewContext(context.TODO())
+	ctx.application = h.App
+
+	return ctx
+}
+
 // NewTestHarness creates a new test harness with the provided options
 func NewTestHarness(options Options) *TestHarness {
 	app, _ := NewTestApplication(options)
