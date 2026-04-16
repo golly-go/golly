@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+
+	"github.com/segmentio/encoding/json"
 )
 
 const (
@@ -168,6 +170,9 @@ type Route struct {
 	// Index 10: ALL
 	handlers [11]HandlerFunc
 	chained  [11]HandlerFunc
+
+	// Declared params per method — populated via Params[T]() at route registration.
+	params [11]RouteParamSet
 
 	children   []*Route
 	middleware []MiddlewareFunc //TBD
@@ -355,7 +360,7 @@ func (re *Route) resolveMiddleware() []MiddlewareFunc {
 	return middleware
 }
 
-func (re *Route) add(path string, handler HandlerFunc, httpMethods methodType) *Route {
+func (re *Route) add(path string, handler HandlerFunc, httpMethods methodType, params RouteParamSet) *Route {
 
 	tokens := tokenize(path)
 	if len(tokens) == 0 {
@@ -400,8 +405,8 @@ func (re *Route) add(path string, handler HandlerFunc, httpMethods methodType) *
 			allIdx := 10
 
 			if r.handlers[allIdx] == nil && r.handlers[idx] == nil {
-				// Store in array
 				r.handlers[idx] = handler
+				r.params[idx] = params
 				r.allowed |= httpMethods
 				r.updateHandlers()
 			}
@@ -423,35 +428,56 @@ func (re *Route) Use(fns ...MiddlewareFunc) *Route {
 // There seems to be a chaining expectation and i keep falling into this trap expecting Add() to behave
 // like all the other helpers, so lets just settle this once and for all
 // if you want to chain on a child route use Mount or Namespace
-func (re *Route) Add(path string, h HandlerFunc, meth methodType) *Route {
-	re.add(path, h, meth)
+func (re *Route) Add(path string, h HandlerFunc, meth methodType, params ...RouteParamSet) *Route {
+	var p RouteParamSet
+	if len(params) > 0 {
+		p = params[0]
+	}
+
+	re.add(path, h, meth, p)
 
 	return re
 }
 
 // Get adds a get route
-func (re *Route) Get(path string, h HandlerFunc) *Route { return re.Add(path, h, GET) }
+func (re *Route) Get(path string, h HandlerFunc, params ...RouteParamSet) *Route {
+	return re.Add(path, h, GET, params...)
+}
 
 // Post adds a post route
-func (re *Route) Post(path string, h HandlerFunc) *Route { return re.Add(path, h, POST) }
+func (re *Route) Post(path string, h HandlerFunc, params ...RouteParamSet) *Route {
+	return re.Add(path, h, POST, params...)
+}
 
 // Put adds a put route
-func (re *Route) Put(path string, h HandlerFunc) *Route { return re.Add(path, h, PUT) }
+func (re *Route) Put(path string, h HandlerFunc, params ...RouteParamSet) *Route {
+	return re.Add(path, h, PUT, params...)
+}
 
 // Patch adds a patch route
-func (re *Route) Patch(path string, h HandlerFunc) *Route { return re.Add(path, h, PATCH) }
+func (re *Route) Patch(path string, h HandlerFunc, params ...RouteParamSet) *Route {
+	return re.Add(path, h, PATCH, params...)
+}
 
 // Delete adds a delete route
-func (re *Route) Delete(path string, h HandlerFunc) *Route { return re.Add(path, h, DELETE) }
+func (re *Route) Delete(path string, h HandlerFunc, params ...RouteParamSet) *Route {
+	return re.Add(path, h, DELETE, params...)
+}
 
 // Connect adds a connect route
-func (re *Route) Connect(path string, h HandlerFunc) *Route { return re.Add(path, h, CONNECT) }
+func (re *Route) Connect(path string, h HandlerFunc, params ...RouteParamSet) *Route {
+	return re.Add(path, h, CONNECT, params...)
+}
 
 // Options adds an options route
-func (re *Route) Options(path string, h HandlerFunc) *Route { return re.Add(path, h, OPTIONS) }
+func (re *Route) Options(path string, h HandlerFunc, params ...RouteParamSet) *Route {
+	return re.Add(path, h, OPTIONS, params...)
+}
 
 // Head add a route for a head request
-func (re *Route) Head(path string, h HandlerFunc) *Route { return re.Add(path, h, HEAD) }
+func (re *Route) Head(path string, h HandlerFunc, params ...RouteParamSet) *Route {
+	return re.Add(path, h, HEAD, params...)
+}
 
 func (re *Route) mount(path string, f func(r *Route)) *Route {
 	re.Namespace(path, f)
@@ -463,7 +489,7 @@ func (re *Route) Mount(path string, c Controller) *Route {
 }
 
 func (re *Route) Namespace(path string, f func(r *Route)) *Route {
-	r := re.add(path, nil, 0)
+	r := re.add(path, nil, 0, nil)
 
 	f(r)
 
@@ -549,6 +575,13 @@ func chain(middlewares []MiddlewareFunc, endpoint HandlerFunc) HandlerFunc {
 	return h
 }
 
+// RouteEntry is a single entry in the rendered route list.
+type RouteEntry struct {
+	Method string        `json:"method"`
+	Path   string        `json:"path"`
+	Params RouteParamSet `json:"params,omitempty"`
+}
+
 func renderRoutes(c *WebContext) {
 	if !Env().IsDevelopment() {
 		c.Response().WriteHeader(http.StatusNotFound)
@@ -560,8 +593,59 @@ func renderRoutes(c *WebContext) {
 		root = root.parent
 	}
 
-	text := strings.Join(buildPath(root, ""), "\n")
-	c.RenderText(text)
+	entries := buildRouteEntries(root, "")
+
+	// Stable sort: method then path
+	sort.Slice(entries, func(i, j int) bool {
+		if entries[i].Path != entries[j].Path {
+			return entries[i].Path < entries[j].Path
+		}
+		return entries[i].Method < entries[j].Method
+	})
+
+	c.Response().Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(c.Response()).Encode(entries)
+}
+
+// buildRouteEntries walks the route tree and returns a flat list of RouteEntry.
+func buildRouteEntries(route *Route, prefix string) []RouteEntry {
+	var entries []RouteEntry
+
+	if route.token != nil {
+		if route.token.value == "/" {
+			prefix = "/"
+		} else {
+			if prefix != "/" {
+				prefix += "/"
+			}
+			if route.token.isDynamic {
+				pattern := ""
+				if m := route.token.matcher; m != "" {
+					pattern = ":" + m
+				}
+				prefix += fmt.Sprintf("{%s%s}", route.token.value, pattern)
+			} else {
+				prefix += route.token.value
+			}
+		}
+	}
+
+	for k, mt := range methods {
+		if route.IsAllowed(k) {
+			idx := methodIndex(mt)
+			entries = append(entries, RouteEntry{
+				Method: k,
+				Path:   prefix,
+				Params: route.params[idx],
+			})
+		}
+	}
+
+	for _, child := range route.children {
+		entries = append(entries, buildRouteEntries(child, prefix)...)
+	}
+
+	return entries
 }
 
 func buildPath(route *Route, prefix string) []string {
@@ -592,9 +676,10 @@ func buildPath(route *Route, prefix string) []string {
 
 	// Collect allowed methods for the current path
 	// if route.allowed != 0 {
-	for k := range methods {
+	for k, mt := range methods {
 		if route.IsAllowed(k) {
-			ret = append(ret, fmt.Sprintf("[%s] %s", k, prefix))
+			idx := methodIndex(mt)
+			ret = append(ret, fmt.Sprintf("[%s] %s%s", k, prefix, formatRouteParams(route.params[idx])))
 		}
 	}
 	// }
