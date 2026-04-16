@@ -109,9 +109,9 @@ func formatRouteParams(params RouteParamSet) string {
 	parts := make([]string, 0, len(params))
 	for _, p := range params {
 		if p.Required {
-			parts = append(parts, p.Name+"*")
+			parts = append(parts, p.Name+": "+p.Type+"*")
 		} else {
-			parts = append(parts, p.Name+"?")
+			parts = append(parts, p.Name+": "+p.Type+"?")
 		}
 	}
 

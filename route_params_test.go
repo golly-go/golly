@@ -148,26 +148,26 @@ func TestFormatRouteParams_Empty(t *testing.T) {
 
 func TestFormatRouteParams_RequiredAndOptional(t *testing.T) {
 	ps := RouteParamSet{
-		{Name: "id", Required: true},
-		{Name: "notes", Required: false},
+		{Name: "id", Type: "string", Required: true},
+		{Name: "notes", Type: "string", Required: false},
 	}
-	assert.Equal(t, " [id*, notes?]", formatRouteParams(ps))
+	assert.Equal(t, " [id: string*, notes: string?]", formatRouteParams(ps))
 }
 
 func TestFormatRouteParams_AllRequired(t *testing.T) {
 	ps := RouteParamSet{
-		{Name: "stage", Required: true},
-		{Name: "name", Required: true},
+		{Name: "stage", Type: "string", Required: true},
+		{Name: "name", Type: "string", Required: true},
 	}
-	assert.Equal(t, " [stage*, name*]", formatRouteParams(ps))
+	assert.Equal(t, " [stage: string*, name: string*]", formatRouteParams(ps))
 }
 
 func TestFormatRouteParams_AllOptional(t *testing.T) {
 	ps := RouteParamSet{
-		{Name: "cursor", Required: false},
-		{Name: "limit", Required: false},
+		{Name: "cursor", Type: "string", Required: false},
+		{Name: "limit", Type: "int", Required: false},
 	}
-	assert.Equal(t, " [cursor?, limit?]", formatRouteParams(ps))
+	assert.Equal(t, " [cursor: string?, limit: int?]", formatRouteParams(ps))
 }
 
 // ---------------------------------------------------------------------------
@@ -243,7 +243,7 @@ func TestBuildPath_WithParams(t *testing.T) {
 
 	// Should contain the POST line with param annotation
 	require.Len(t, lines, 1)
-	assert.Equal(t, "[POST] /create [workroom_id*, name*]", lines[0])
+	assert.Equal(t, "[POST] /create [workroom_id: string*, name: string*]", lines[0])
 }
 
 func TestBuildPath_NoParams_NoAnnotation(t *testing.T) {
@@ -266,6 +266,6 @@ func TestBuildPath_MixedParamsAndNone(t *testing.T) {
 
 	assert.Equal(t, []string{
 		"[GET] /list",
-		"[POST] /create [id*, notes?]",
+		"[POST] /create [id: string*, notes: string?]",
 	}, lines)
 }

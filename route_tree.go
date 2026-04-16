@@ -674,7 +674,7 @@ func buildPath(route *Route, prefix string) []string {
 		}
 	}
 
-	// Collect allowed methods for the current path
+	// Collect allowed methods for the current pathgive me an example
 	// if route.allowed != 0 {
 	for k, mt := range methods {
 		if route.IsAllowed(k) {
