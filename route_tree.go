@@ -6,8 +6,6 @@ import (
 	"net/http"
 	"sort"
 	"strings"
-
-	"github.com/segmentio/encoding/json"
 )
 
 const (
@@ -575,13 +573,6 @@ func chain(middlewares []MiddlewareFunc, endpoint HandlerFunc) HandlerFunc {
 	return h
 }
 
-// RouteEntry is a single entry in the rendered route list.
-type RouteEntry struct {
-	Method string        `json:"method"`
-	Path   string        `json:"path"`
-	Params RouteParamSet `json:"params,omitempty"`
-}
-
 func renderRoutes(c *WebContext) {
 	if !Env().IsDevelopment() {
 		c.Response().WriteHeader(http.StatusNotFound)
@@ -593,59 +584,11 @@ func renderRoutes(c *WebContext) {
 		root = root.parent
 	}
 
-	entries := buildRouteEntries(root, "")
+	lines := buildPath(root, "")
+	sort.Strings(lines)
 
-	// Stable sort: method then path
-	sort.Slice(entries, func(i, j int) bool {
-		if entries[i].Path != entries[j].Path {
-			return entries[i].Path < entries[j].Path
-		}
-		return entries[i].Method < entries[j].Method
-	})
-
-	c.Response().Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(c.Response()).Encode(entries)
-}
-
-// buildRouteEntries walks the route tree and returns a flat list of RouteEntry.
-func buildRouteEntries(route *Route, prefix string) []RouteEntry {
-	var entries []RouteEntry
-
-	if route.token != nil {
-		if route.token.value == "/" {
-			prefix = "/"
-		} else {
-			if prefix != "/" {
-				prefix += "/"
-			}
-			if route.token.isDynamic {
-				pattern := ""
-				if m := route.token.matcher; m != "" {
-					pattern = ":" + m
-				}
-				prefix += fmt.Sprintf("{%s%s}", route.token.value, pattern)
-			} else {
-				prefix += route.token.value
-			}
-		}
-	}
-
-	for k, mt := range methods {
-		if route.IsAllowed(k) {
-			idx := methodIndex(mt)
-			entries = append(entries, RouteEntry{
-				Method: k,
-				Path:   prefix,
-				Params: route.params[idx],
-			})
-		}
-	}
-
-	for _, child := range route.children {
-		entries = append(entries, buildRouteEntries(child, prefix)...)
-	}
-
-	return entries
+	text := strings.Join(lines, "\n")
+	c.RenderText(text)
 }
 
 func buildPath(route *Route, prefix string) []string {
@@ -674,7 +617,7 @@ func buildPath(route *Route, prefix string) []string {
 		}
 	}
 
-	// Collect allowed methods for the current pathgive me an example
+	// Collect allowed methods for the current path
 	// if route.allowed != 0 {
 	for k, mt := range methods {
 		if route.IsAllowed(k) {
