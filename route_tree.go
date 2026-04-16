@@ -588,7 +588,7 @@ func renderRoutes(c *WebContext) {
 	sort.Strings(lines)
 
 	text := strings.Join(lines, "\n")
-	c.RenderText(text)
+	c.WithStatus(http.StatusOK).RenderText(text)
 }
 
 func buildPath(route *Route, prefix string) []string {
@@ -622,7 +622,7 @@ func buildPath(route *Route, prefix string) []string {
 	for k, mt := range methods {
 		if route.IsAllowed(k) {
 			idx := methodIndex(mt)
-			ret = append(ret, fmt.Sprintf("[%s] %s%s", k, prefix, formatRouteParams(route.params[idx])))
+			ret = append(ret, fmt.Sprintf("[%s]\t%s\t\t%s", k, prefix, formatRouteParams(route.params[idx])))
 		}
 	}
 	// }
