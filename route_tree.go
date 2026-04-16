@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+	"text/tabwriter"
 )
 
 const (
@@ -169,8 +170,7 @@ type Route struct {
 	handlers [11]HandlerFunc
 	chained  [11]HandlerFunc
 
-	// Declared params per method — populated via Params[T]() at route registration.
-	params [11]RouteParamSet
+	docs [11]*RouteDoc
 
 	children   []*Route
 	middleware []MiddlewareFunc //TBD
@@ -358,7 +358,7 @@ func (re *Route) resolveMiddleware() []MiddlewareFunc {
 	return middleware
 }
 
-func (re *Route) add(path string, handler HandlerFunc, httpMethods methodType, params RouteParamSet) *Route {
+func (re *Route) add(path string, handler HandlerFunc, httpMethods methodType, docs ...*RouteDoc) *Route {
 
 	tokens := tokenize(path)
 	if len(tokens) == 0 {
@@ -404,7 +404,9 @@ func (re *Route) add(path string, handler HandlerFunc, httpMethods methodType, p
 
 			if r.handlers[allIdx] == nil && r.handlers[idx] == nil {
 				r.handlers[idx] = handler
-				r.params[idx] = params
+				if len(docs) > 0 {
+					r.docs[idx] = docs[0]
+				}
 				r.allowed |= httpMethods
 				r.updateHandlers()
 			}
@@ -426,55 +428,50 @@ func (re *Route) Use(fns ...MiddlewareFunc) *Route {
 // There seems to be a chaining expectation and i keep falling into this trap expecting Add() to behave
 // like all the other helpers, so lets just settle this once and for all
 // if you want to chain on a child route use Mount or Namespace
-func (re *Route) Add(path string, h HandlerFunc, meth methodType, params ...RouteParamSet) *Route {
-	var p RouteParamSet
-	if len(params) > 0 {
-		p = params[0]
-	}
-
-	re.add(path, h, meth, p)
+func (re *Route) Add(path string, h HandlerFunc, meth methodType, docs ...*RouteDoc) *Route {
+	re.add(path, h, meth, docs...)
 
 	return re
 }
 
 // Get adds a get route
-func (re *Route) Get(path string, h HandlerFunc, params ...RouteParamSet) *Route {
-	return re.Add(path, h, GET, params...)
+func (re *Route) Get(path string, h HandlerFunc, docs ...*RouteDoc) *Route {
+	return re.Add(path, h, GET, docs...)
 }
 
 // Post adds a post route
-func (re *Route) Post(path string, h HandlerFunc, params ...RouteParamSet) *Route {
-	return re.Add(path, h, POST, params...)
+func (re *Route) Post(path string, h HandlerFunc, docs ...*RouteDoc) *Route {
+	return re.Add(path, h, POST, docs...)
 }
 
 // Put adds a put route
-func (re *Route) Put(path string, h HandlerFunc, params ...RouteParamSet) *Route {
-	return re.Add(path, h, PUT, params...)
+func (re *Route) Put(path string, h HandlerFunc, docs ...*RouteDoc) *Route {
+	return re.Add(path, h, PUT, docs...)
 }
 
 // Patch adds a patch route
-func (re *Route) Patch(path string, h HandlerFunc, params ...RouteParamSet) *Route {
-	return re.Add(path, h, PATCH, params...)
+func (re *Route) Patch(path string, h HandlerFunc, docs ...*RouteDoc) *Route {
+	return re.Add(path, h, PATCH, docs...)
 }
 
 // Delete adds a delete route
-func (re *Route) Delete(path string, h HandlerFunc, params ...RouteParamSet) *Route {
-	return re.Add(path, h, DELETE, params...)
+func (re *Route) Delete(path string, h HandlerFunc, docs ...*RouteDoc) *Route {
+	return re.Add(path, h, DELETE, docs...)
 }
 
 // Connect adds a connect route
-func (re *Route) Connect(path string, h HandlerFunc, params ...RouteParamSet) *Route {
-	return re.Add(path, h, CONNECT, params...)
+func (re *Route) Connect(path string, h HandlerFunc, docs ...*RouteDoc) *Route {
+	return re.Add(path, h, CONNECT, docs...)
 }
 
 // Options adds an options route
-func (re *Route) Options(path string, h HandlerFunc, params ...RouteParamSet) *Route {
-	return re.Add(path, h, OPTIONS, params...)
+func (re *Route) Options(path string, h HandlerFunc, docs ...*RouteDoc) *Route {
+	return re.Add(path, h, OPTIONS, docs...)
 }
 
 // Head add a route for a head request
-func (re *Route) Head(path string, h HandlerFunc, params ...RouteParamSet) *Route {
-	return re.Add(path, h, HEAD, params...)
+func (re *Route) Head(path string, h HandlerFunc, docs ...*RouteDoc) *Route {
+	return re.Add(path, h, HEAD, docs...)
 }
 
 func (re *Route) mount(path string, f func(r *Route)) *Route {
@@ -587,8 +584,14 @@ func renderRoutes(c *WebContext) {
 	lines := buildPath(root, "")
 	sort.Strings(lines)
 
-	text := strings.Join(lines, "\n")
-	c.WithStatus(http.StatusOK).RenderText(text)
+	var buf strings.Builder
+	w := tabwriter.NewWriter(&buf, 0, 0, 3, ' ', 0)
+	for _, line := range lines {
+		fmt.Fprintln(w, line)
+	}
+	w.Flush()
+
+	c.WithStatus(http.StatusOK).RenderText(buf.String())
 }
 
 func buildPath(route *Route, prefix string) []string {
@@ -622,7 +625,7 @@ func buildPath(route *Route, prefix string) []string {
 	for k, mt := range methods {
 		if route.IsAllowed(k) {
 			idx := methodIndex(mt)
-			ret = append(ret, fmt.Sprintf("[%s]\t%s\t\t%s", k, prefix, formatRouteParams(route.params[idx])))
+			ret = append(ret, fmt.Sprintf("[%s]\t%s\t%s", k, prefix, formatRouteDoc(route.docs[idx])))
 		}
 	}
 	// }

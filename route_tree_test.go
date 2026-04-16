@@ -209,7 +209,6 @@ func TestAddRouteHelpers(t *testing.T) {
 
 // Test function for buildPath
 func TestBuildPath(t *testing.T) {
-	handler := noOpHandler
 
 	tests := []struct {
 		name     string
@@ -218,26 +217,38 @@ func TestBuildPath(t *testing.T) {
 		expected []string
 	}{
 		{
-			name:     "Static path with GET method",
-			route:    NewRouteRoot().Get("/users", handler),
-			expected: []string{"[GET] /users"},
+			name: "Static path with GET method",
+			route: func() *Route {
+				root := NewRouteRoot()
+				root.Get("/users", func(ctx *WebContext) {})
+				return root
+			}(),
+			expected: []string{"[GET]\t/users\t"},
 		},
 		{
-			name:     "Veradic path with POST method",
-			route:    NewRouteRoot().Add("/{id:[0-9]+}", handler, POST),
-			expected: []string{"[POST] /{id:[0-9]+}"},
+			name: "Veradic path with POST method",
+			route: func() *Route {
+				root := NewRouteRoot()
+				root.Post("/{id:[0-9]+}", func(ctx *WebContext) {})
+				return root
+			}(),
+			expected: []string{"[POST]\t/{id:[0-9]+}\t"},
 		},
 		{
 			name: "Nested routes with mixed methods",
-			route: NewRouteRoot().
-				Add("/api", handler, GET).
-				Add("/api/v1", handler, POST).
-				Add("/api/v1/{userID:[0-9]+}", handler, GET|PUT),
+			route: func() *Route {
+				root := NewRouteRoot()
+				root.Get("/api", func(ctx *WebContext) {})
+				root.Post("/api/v1", func(ctx *WebContext) {})
+				root.Get("/api/v1/{userID:[0-9]+}", func(ctx *WebContext) {})
+				root.Put("/api/v1/{userID:[0-9]+}", func(ctx *WebContext) {})
+				return root
+			}(),
 			expected: []string{
-				"[GET] /api",
-				"[POST] /api/v1",
-				"[GET] /api/v1/{userID:[0-9]+}",
-				"[PUT] /api/v1/{userID:[0-9]+}",
+				"[GET]\t/api\t",
+				"[GET]\t/api/v1/{userID:[0-9]+}\t",
+				"[POST]\t/api/v1\t",
+				"[PUT]\t/api/v1/{userID:[0-9]+}\t",
 			},
 		},
 		{

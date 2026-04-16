@@ -22,21 +22,47 @@ type RouteParam struct {
 	Source   ParamSource
 }
 
-// RouteParamSet is a slice of RouteParam attached to a route registration.
-// Pass it as the last argument to Post/Put/Patch/etc via Params[T]().
 type RouteParamSet []RouteParam
 
-// Params inspects T via reflection and returns a RouteParamSet describing
-// its exported fields. Field names are resolved from json tags; required
-// status is resolved from required:"true" or validate:"required" tags.
-//
-// Usage:
-//
-//	r.Post("/create", c.Create, golly.Params[CreateArgs]())
-func Params[T any]() RouteParamSet {
-	var zero T
+// RouteDoc holds routing documentation metadata.
+type RouteDoc struct {
+	description string
+	params      RouteParamSet
+}
 
-	t := reflect.TypeOf(zero)
+// Body sets the body schema by reflecting over the provided struct instance.
+func (d *RouteDoc) Body(v any) *RouteDoc {
+	if d == nil {
+		d = &RouteDoc{}
+	}
+	d.params = append(d.params, paramsFromAny(v, ParamSourceBody)...)
+	return d
+}
+
+// Query sets the query schema by reflecting over the provided struct instance.
+func (d *RouteDoc) Query(v any) *RouteDoc {
+	if d == nil {
+		d = &RouteDoc{}
+	}
+	d.params = append(d.params, paramsFromAny(v, ParamSourceQuery)...)
+	return d
+}
+
+// Describe initializes a RouteDoc with a description.
+func Describe(desc string) *RouteDoc { return &RouteDoc{description: desc} }
+
+// Body is a convenience starting point for RouteDoc without a description.
+func Body(v any) *RouteDoc { return (&RouteDoc{}).Body(v) }
+
+// Query is a convenience starting point for RouteDoc without a description.
+func Query(v any) *RouteDoc { return (&RouteDoc{}).Query(v) }
+
+func paramsFromAny(v any, source ParamSource) RouteParamSet {
+	if v == nil {
+		return nil
+	}
+
+	t := reflect.TypeOf(v)
 	if t == nil {
 		return nil
 	}
@@ -99,21 +125,27 @@ func isRouteParamRequired(field reflect.StructField) bool {
 	return false
 }
 
-// formatRouteParams formats a RouteParamSet for display in the route list.
-// Required params are suffixed with *, optional with ?.
-func formatRouteParams(params RouteParamSet) string {
-	if len(params) == 0 {
+// formatRouteDoc formats a RouteDoc for display in the route list.
+func formatRouteDoc(doc *RouteDoc) string {
+	if doc == nil {
 		return ""
 	}
 
-	parts := make([]string, 0, len(params))
-	for _, p := range params {
-		if p.Required {
-			parts = append(parts, p.Name+": "+p.Type+"*")
-		} else {
-			parts = append(parts, p.Name+": "+p.Type+"?")
+	var paramStr string
+	if len(doc.params) > 0 {
+		parts := make([]string, 0, len(doc.params))
+		for _, p := range doc.params {
+			if p.Required {
+				parts = append(parts, p.Name+": "+p.Type+"*")
+			} else {
+				parts = append(parts, p.Name+": "+p.Type+"?")
+			}
 		}
+		paramStr = " [" + strings.Join(parts, ", ") + "]"
 	}
 
-	return " [" + strings.Join(parts, ", ") + "]"
+	if doc.description != "" {
+		return paramStr + "\t\"" + doc.description + "\""
+	}
+	return paramStr
 }

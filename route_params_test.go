@@ -48,11 +48,11 @@ type paramsPointer struct {
 }
 
 // ---------------------------------------------------------------------------
-// Params[T]
+// RouteDoc Tests
 // ---------------------------------------------------------------------------
 
 func TestParams_AllRequired(t *testing.T) {
-	ps := Params[paramsAllRequired]()
+	ps := Body(paramsAllRequired{}).params
 
 	require.Len(t, ps, 2)
 
@@ -65,7 +65,7 @@ func TestParams_AllRequired(t *testing.T) {
 }
 
 func TestParams_AllOptional(t *testing.T) {
-	ps := Params[paramsAllOptional]()
+	ps := Body(paramsAllOptional{}).params
 
 	require.Len(t, ps, 2)
 	assert.Equal(t, "cursor", ps[0].Name)
@@ -76,7 +76,7 @@ func TestParams_AllOptional(t *testing.T) {
 }
 
 func TestParams_Mixed(t *testing.T) {
-	ps := Params[paramsMixed]()
+	ps := Body(paramsMixed{}).params
 
 	require.Len(t, ps, 2)
 
@@ -88,7 +88,7 @@ func TestParams_Mixed(t *testing.T) {
 }
 
 func TestParams_ValidateTagWithOptions(t *testing.T) {
-	ps := Params[paramsValidateTag]()
+	ps := Body(paramsValidateTag{}).params
 
 	require.Len(t, ps, 2)
 	assert.Equal(t, "stage", ps[0].Name)
@@ -96,7 +96,7 @@ func TestParams_ValidateTagWithOptions(t *testing.T) {
 }
 
 func TestParams_NoJSONTag_FallsBackToLowercase(t *testing.T) {
-	ps := Params[paramsNoJSON]()
+	ps := Body(paramsNoJSON{}).params
 
 	require.Len(t, ps, 2)
 	assert.Equal(t, "workroomid", ps[0].Name)
@@ -107,14 +107,14 @@ func TestParams_NoJSONTag_FallsBackToLowercase(t *testing.T) {
 }
 
 func TestParams_ExcludesDashedAndUnexported(t *testing.T) {
-	ps := Params[paramsExcluded]()
+	ps := Body(paramsExcluded{}).params
 
 	require.Len(t, ps, 1, "json:\"-\" and unexported fields should be excluded")
 	assert.Equal(t, "keep", ps[0].Name)
 }
 
 func TestParams_Pointer(t *testing.T) {
-	ps := Params[*paramsPointer]()
+	ps := Body(&paramsPointer{}).params
 
 	require.Len(t, ps, 1)
 	assert.Equal(t, "id", ps[0].Name)
@@ -122,15 +122,15 @@ func TestParams_Pointer(t *testing.T) {
 }
 
 func TestParams_NonStruct_ReturnsNil(t *testing.T) {
-	ps := Params[string]()
+	ps := Body("").params
 	assert.Nil(t, ps)
 
-	ps2 := Params[int]()
+	ps2 := Body(1).params
 	assert.Nil(t, ps2)
 }
 
 func TestParams_TypeField(t *testing.T) {
-	ps := Params[paramsAllOptional]()
+	ps := Body(paramsAllOptional{}).params
 
 	require.Len(t, ps, 2)
 	assert.Equal(t, "string", ps[0].Type)
@@ -138,36 +138,36 @@ func TestParams_TypeField(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// formatRouteParams
+// formatRouteDoc
 // ---------------------------------------------------------------------------
 
-func TestFormatRouteParams_Empty(t *testing.T) {
-	assert.Equal(t, "", formatRouteParams(nil))
-	assert.Equal(t, "", formatRouteParams(RouteParamSet{}))
+func TestFormatRouteDoc_Empty(t *testing.T) {
+	assert.Equal(t, "", formatRouteDoc(nil))
+	assert.Equal(t, "", formatRouteDoc(&RouteDoc{}))
 }
 
-func TestFormatRouteParams_RequiredAndOptional(t *testing.T) {
-	ps := RouteParamSet{
-		{Name: "id", Type: "string", Required: true},
-		{Name: "notes", Type: "string", Required: false},
-	}
-	assert.Equal(t, " [id: string*, notes: string?]", formatRouteParams(ps))
+func TestFormatRouteDoc_RequiredAndOptional(t *testing.T) {
+	doc := Describe("My doc").Body(struct {
+		ID    string `json:"id" required:"true"`
+		Notes string `json:"notes"`
+	}{})
+	assert.Equal(t, " [id: string*, notes: string?]\t\"My doc\"", formatRouteDoc(doc))
 }
 
-func TestFormatRouteParams_AllRequired(t *testing.T) {
-	ps := RouteParamSet{
-		{Name: "stage", Type: "string", Required: true},
-		{Name: "name", Type: "string", Required: true},
-	}
-	assert.Equal(t, " [stage: string*, name: string*]", formatRouteParams(ps))
+func TestFormatRouteDoc_AllRequired(t *testing.T) {
+	doc := Body(struct {
+		Stage string `json:"stage" required:"true"`
+		Name  string `json:"name" required:"true"`
+	}{})
+	assert.Equal(t, " [stage: string*, name: string*]", formatRouteDoc(doc))
 }
 
-func TestFormatRouteParams_AllOptional(t *testing.T) {
-	ps := RouteParamSet{
-		{Name: "cursor", Type: "string", Required: false},
-		{Name: "limit", Type: "int", Required: false},
-	}
-	assert.Equal(t, " [cursor: string?, limit: int?]", formatRouteParams(ps))
+func TestFormatRouteDoc_AllOptional(t *testing.T) {
+	doc := Describe("Docs").Body(struct {
+		Cursor string `json:"cursor"`
+		Limit  int    `json:"limit"`
+	}{})
+	assert.Equal(t, " [cursor: string?, limit: int?]\t\"Docs\"", formatRouteDoc(doc))
 }
 
 // ---------------------------------------------------------------------------
@@ -176,34 +176,38 @@ func TestFormatRouteParams_AllOptional(t *testing.T) {
 
 func TestRouteParams_StoredOnNode(t *testing.T) {
 	root := NewRouteRoot()
-	root.Post("/create", noOpHandler, Params[paramsAllRequired]())
+	root.Post("/create", noOpHandler, Body(paramsAllRequired{}))
 
 	node := FindRoute(root, "/create")
 	require.NotNil(t, node)
 
 	idx := methodIndex(POST)
-	ps := node.params[idx]
+	doc := node.docs[idx]
 
-	require.Len(t, ps, 2)
-	assert.Equal(t, "workroom_id", ps[0].Name)
-	assert.True(t, ps[0].Required)
+	require.NotNil(t, doc)
+	require.Len(t, doc.params, 2)
+	assert.Equal(t, "workroom_id", doc.params[0].Name)
+	assert.True(t, doc.params[0].Required)
 }
 
 func TestRouteParams_DifferentMethodsDifferentParams(t *testing.T) {
 	root := NewRouteRoot()
-	root.Post("/resource", noOpHandler, Params[paramsAllRequired]())
-	root.Put("/resource", noOpHandler, Params[paramsAllOptional]())
+	root.Post("/resource", noOpHandler, Body(paramsAllRequired{}))
+	root.Put("/resource", noOpHandler, Body(paramsAllOptional{}))
 
 	node := FindRoute(root, "/resource")
 	require.NotNil(t, node)
 
-	postParams := node.params[methodIndex(POST)]
-	putParams := node.params[methodIndex(PUT)]
+	postDoc := node.docs[methodIndex(POST)]
+	putDoc := node.docs[methodIndex(PUT)]
 
-	assert.Len(t, postParams, 2)
-	assert.Len(t, putParams, 2)
-	assert.Equal(t, "workroom_id", postParams[0].Name)
-	assert.Equal(t, "cursor", putParams[0].Name)
+	require.NotNil(t, postDoc)
+	require.NotNil(t, putDoc)
+
+	assert.Len(t, postDoc.params, 2)
+	assert.Len(t, putDoc.params, 2)
+	assert.Equal(t, "workroom_id", postDoc.params[0].Name)
+	assert.Equal(t, "cursor", putDoc.params[0].Name)
 }
 
 func TestRouteParams_NoParamsLeavesSliceNil(t *testing.T) {
@@ -213,11 +217,10 @@ func TestRouteParams_NoParamsLeavesSliceNil(t *testing.T) {
 	node := FindRoute(root, "/ping")
 	require.NotNil(t, node)
 
-	assert.Nil(t, node.params[methodIndex(GET)])
+	assert.Nil(t, node.docs[methodIndex(GET)])
 }
 
 func TestRouteParams_BackwardCompatible_NoParamArg(t *testing.T) {
-	// All method helpers must work without the params arg — no panics.
 	root := NewRouteRoot()
 	assert.NotPanics(t, func() {
 		root.Get("/a", noOpHandler)
@@ -237,13 +240,12 @@ func TestRouteParams_BackwardCompatible_NoParamArg(t *testing.T) {
 
 func TestBuildPath_WithParams(t *testing.T) {
 	root := NewRouteRoot()
-	root.Post("/create", noOpHandler, Params[paramsAllRequired]())
+	root.Post("/create", noOpHandler, Describe("Test").Body(paramsAllRequired{}))
 
 	lines := buildPath(root, "")
 
-	// Should contain the POST line with param annotation
 	require.Len(t, lines, 1)
-	assert.Equal(t, "[POST] /create [workroom_id: string*, name: string*]", lines[0])
+	assert.Equal(t, "[POST]\t/create\t [workroom_id: string*, name: string*]\t\"Test\"", lines[0])
 }
 
 func TestBuildPath_NoParams_NoAnnotation(t *testing.T) {
@@ -253,19 +255,19 @@ func TestBuildPath_NoParams_NoAnnotation(t *testing.T) {
 	lines := buildPath(root, "")
 
 	require.Len(t, lines, 1)
-	assert.Equal(t, "[GET] /ping", lines[0])
+	assert.Equal(t, "[GET]\t/ping\t", lines[0])
 }
 
 func TestBuildPath_MixedParamsAndNone(t *testing.T) {
 	root := NewRouteRoot()
 	root.Get("/list", noOpHandler)
-	root.Post("/create", noOpHandler, Params[paramsMixed]())
+	root.Post("/create", noOpHandler, Body(paramsMixed{}))
 
 	lines := buildPath(root, "")
 	sort.Strings(lines)
 
 	assert.Equal(t, []string{
-		"[GET] /list",
-		"[POST] /create [id: string*, notes: string?]",
+		"[GET]\t/list\t",
+		"[POST]\t/create\t [id: string*, notes: string?]",
 	}, lines)
 }
