@@ -52,20 +52,20 @@ type paramsPointer struct {
 // ---------------------------------------------------------------------------
 
 func TestParams_AllRequired(t *testing.T) {
-	ps := Body(paramsAllRequired{}).params
+	ps := Input(paramsAllRequired{}).params
 
 	require.Len(t, ps, 2)
 
 	assert.Equal(t, "workroom_id", ps[0].Name)
 	assert.True(t, ps[0].Required)
-	assert.Equal(t, ParamSourceBody, ps[0].Source)
+	assert.Equal(t, ParamSourceInput, ps[0].Source)
 
 	assert.Equal(t, "name", ps[1].Name)
 	assert.True(t, ps[1].Required)
 }
 
 func TestParams_AllOptional(t *testing.T) {
-	ps := Body(paramsAllOptional{}).params
+	ps := Input(paramsAllOptional{}).params
 
 	require.Len(t, ps, 2)
 	assert.Equal(t, "cursor", ps[0].Name)
@@ -76,7 +76,7 @@ func TestParams_AllOptional(t *testing.T) {
 }
 
 func TestParams_Mixed(t *testing.T) {
-	ps := Body(paramsMixed{}).params
+	ps := Input(paramsMixed{}).params
 
 	require.Len(t, ps, 2)
 
@@ -88,7 +88,7 @@ func TestParams_Mixed(t *testing.T) {
 }
 
 func TestParams_ValidateTagWithOptions(t *testing.T) {
-	ps := Body(paramsValidateTag{}).params
+	ps := Input(paramsValidateTag{}).params
 
 	require.Len(t, ps, 2)
 	assert.Equal(t, "stage", ps[0].Name)
@@ -96,7 +96,7 @@ func TestParams_ValidateTagWithOptions(t *testing.T) {
 }
 
 func TestParams_NoJSONTag_FallsBackToLowercase(t *testing.T) {
-	ps := Body(paramsNoJSON{}).params
+	ps := Input(paramsNoJSON{}).params
 
 	require.Len(t, ps, 2)
 	assert.Equal(t, "workroomid", ps[0].Name)
@@ -107,14 +107,14 @@ func TestParams_NoJSONTag_FallsBackToLowercase(t *testing.T) {
 }
 
 func TestParams_ExcludesDashedAndUnexported(t *testing.T) {
-	ps := Body(paramsExcluded{}).params
+	ps := Input(paramsExcluded{}).params
 
 	require.Len(t, ps, 1, "json:\"-\" and unexported fields should be excluded")
 	assert.Equal(t, "keep", ps[0].Name)
 }
 
 func TestParams_Pointer(t *testing.T) {
-	ps := Body(&paramsPointer{}).params
+	ps := Input(&paramsPointer{}).params
 
 	require.Len(t, ps, 1)
 	assert.Equal(t, "id", ps[0].Name)
@@ -122,15 +122,15 @@ func TestParams_Pointer(t *testing.T) {
 }
 
 func TestParams_NonStruct_ReturnsNil(t *testing.T) {
-	ps := Body("").params
+	ps := Input("").params
 	assert.Nil(t, ps)
 
-	ps2 := Body(1).params
+	ps2 := Input(1).params
 	assert.Nil(t, ps2)
 }
 
 func TestParams_TypeField(t *testing.T) {
-	ps := Body(paramsAllOptional{}).params
+	ps := Input(paramsAllOptional{}).params
 
 	require.Len(t, ps, 2)
 	assert.Equal(t, "string", ps[0].Type)
@@ -142,32 +142,47 @@ func TestParams_TypeField(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestFormatRouteDoc_Empty(t *testing.T) {
-	assert.Equal(t, "", formatRouteDoc(nil))
-	assert.Equal(t, "", formatRouteDoc(&RouteDoc{}))
+	q, i, o, d := formatRouteDoc(nil)
+	assert.Equal(t, "-", q)
+	assert.Equal(t, "-", i)
+	assert.Equal(t, "-", o)
+	assert.Equal(t, "", d)
 }
 
 func TestFormatRouteDoc_RequiredAndOptional(t *testing.T) {
-	doc := Describe("My doc").Body(struct {
+	doc := Describe("My doc").Input(struct {
 		ID    string `json:"id" required:"true"`
 		Notes string `json:"notes"`
 	}{})
-	assert.Equal(t, " [id: string*, notes: string?]\t\"My doc\"", formatRouteDoc(doc))
+	q, i, o, d := formatRouteDoc(doc)
+	assert.Equal(t, "-", q)
+	assert.Equal(t, "[id: string*, notes: string?]", i)
+	assert.Equal(t, "-", o)
+	assert.Equal(t, "\"My doc\"", d)
 }
 
 func TestFormatRouteDoc_AllRequired(t *testing.T) {
-	doc := Body(struct {
+	doc := Input(struct {
 		Stage string `json:"stage" required:"true"`
 		Name  string `json:"name" required:"true"`
 	}{})
-	assert.Equal(t, " [stage: string*, name: string*]", formatRouteDoc(doc))
+	q, i, o, d := formatRouteDoc(doc)
+	assert.Equal(t, "-", q)
+	assert.Equal(t, "[stage: string*, name: string*]", i)
+	assert.Equal(t, "-", o)
+	assert.Equal(t, "", d)
 }
 
 func TestFormatRouteDoc_AllOptional(t *testing.T) {
-	doc := Describe("Docs").Body(struct {
+	doc := Describe("Docs").Input(struct {
 		Cursor string `json:"cursor"`
 		Limit  int    `json:"limit"`
 	}{})
-	assert.Equal(t, " [cursor: string?, limit: int?]\t\"Docs\"", formatRouteDoc(doc))
+	q, i, o, d := formatRouteDoc(doc)
+	assert.Equal(t, "-", q)
+	assert.Equal(t, "[cursor: string?, limit: int?]", i)
+	assert.Equal(t, "-", o)
+	assert.Equal(t, "\"Docs\"", d)
 }
 
 // ---------------------------------------------------------------------------
@@ -176,7 +191,7 @@ func TestFormatRouteDoc_AllOptional(t *testing.T) {
 
 func TestRouteParams_StoredOnNode(t *testing.T) {
 	root := NewRouteRoot()
-	root.Post("/create", noOpHandler, Body(paramsAllRequired{}))
+	root.Post("/create", noOpHandler, Input(paramsAllRequired{}))
 
 	node := FindRoute(root, "/create")
 	require.NotNil(t, node)
@@ -192,8 +207,8 @@ func TestRouteParams_StoredOnNode(t *testing.T) {
 
 func TestRouteParams_DifferentMethodsDifferentParams(t *testing.T) {
 	root := NewRouteRoot()
-	root.Post("/resource", noOpHandler, Body(paramsAllRequired{}))
-	root.Put("/resource", noOpHandler, Body(paramsAllOptional{}))
+	root.Post("/resource", noOpHandler, Input(paramsAllRequired{}))
+	root.Put("/resource", noOpHandler, Input(paramsAllOptional{}))
 
 	node := FindRoute(root, "/resource")
 	require.NotNil(t, node)
@@ -240,12 +255,12 @@ func TestRouteParams_BackwardCompatible_NoParamArg(t *testing.T) {
 
 func TestBuildPath_WithParams(t *testing.T) {
 	root := NewRouteRoot()
-	root.Post("/create", noOpHandler, Describe("Test").Body(paramsAllRequired{}))
+	root.Post("/create", noOpHandler, Describe("Test").Input(paramsAllRequired{}))
 
 	lines := buildPath(root, "")
 
 	require.Len(t, lines, 1)
-	assert.Equal(t, "[POST]\t/create\t [workroom_id: string*, name: string*]\t\"Test\"", lines[0])
+	assert.Equal(t, "[POST]\t/create\t\"Test\"\t-\t[workroom_id: string*, name: string*]\t-", lines[0])
 }
 
 func TestBuildPath_NoParams_NoAnnotation(t *testing.T) {
@@ -255,19 +270,19 @@ func TestBuildPath_NoParams_NoAnnotation(t *testing.T) {
 	lines := buildPath(root, "")
 
 	require.Len(t, lines, 1)
-	assert.Equal(t, "[GET]\t/ping\t", lines[0])
+	assert.Equal(t, "[GET]\t/ping\t\t-\t-\t-", lines[0])
 }
 
 func TestBuildPath_MixedParamsAndNone(t *testing.T) {
 	root := NewRouteRoot()
 	root.Get("/list", noOpHandler)
-	root.Post("/create", noOpHandler, Body(paramsMixed{}))
+	root.Post("/create", noOpHandler, Input(paramsMixed{}))
 
 	lines := buildPath(root, "")
 	sort.Strings(lines)
 
 	assert.Equal(t, []string{
-		"[GET]\t/list\t",
-		"[POST]\t/create\t [id: string*, notes: string?]",
+		"[GET]\t/list\t\t-\t-\t-",
+		"[POST]\t/create\t\t-\t[id: string*, notes: string?]\t-",
 	}, lines)
 }

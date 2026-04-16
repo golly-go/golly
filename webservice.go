@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"strings"
+	"os"
+	"sort"
 	"sync/atomic"
+	"text/tabwriter"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -47,7 +49,16 @@ func (ws *WebService) Commands() []*cobra.Command {
 			Short: "List all routes",
 			Run: Command(func(app *Application, cmd *cobra.Command, args []string) error {
 				fmt.Println("Listing Routes:")
-				fmt.Println(strings.Join(buildPath(app.routes, ""), "\n"))
+
+				lines := buildPath(app.routes, "")
+				sort.Strings(lines)
+
+				w := tabwriter.NewWriter(os.Stdout, 0, 0, 3, ' ', 0)
+				fmt.Fprintln(w, "METHOD\tPATH\tDESCRIPTION\tQUERY\tINPUT\tOUTPUT")
+				for _, line := range lines {
+					fmt.Fprintln(w, line)
+				}
+				w.Flush()
 				return nil
 			}),
 		},

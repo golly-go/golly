@@ -223,7 +223,7 @@ func TestBuildPath(t *testing.T) {
 				root.Get("/users", func(ctx *WebContext) {})
 				return root
 			}(),
-			expected: []string{"[GET]\t/users\t"},
+			expected: []string{"[GET]\t/users\t\t-\t-\t-"},
 		},
 		{
 			name: "Veradic path with POST method",
@@ -232,7 +232,7 @@ func TestBuildPath(t *testing.T) {
 				root.Post("/{id:[0-9]+}", func(ctx *WebContext) {})
 				return root
 			}(),
-			expected: []string{"[POST]\t/{id:[0-9]+}\t"},
+			expected: []string{"[POST]\t/{id:[0-9]+}\t\t-\t-\t-"},
 		},
 		{
 			name: "Nested routes with mixed methods",
@@ -245,10 +245,10 @@ func TestBuildPath(t *testing.T) {
 				return root
 			}(),
 			expected: []string{
-				"[GET]\t/api\t",
-				"[GET]\t/api/v1/{userID:[0-9]+}\t",
-				"[POST]\t/api/v1\t",
-				"[PUT]\t/api/v1/{userID:[0-9]+}\t",
+				"[GET]\t/api\t\t-\t-\t-",
+				"[GET]\t/api/v1/{userID:[0-9]+}\t\t-\t-\t-",
+				"[POST]\t/api/v1\t\t-\t-\t-",
+				"[PUT]\t/api/v1/{userID:[0-9]+}\t\t-\t-\t-",
 			},
 		},
 		{

@@ -586,6 +586,8 @@ func renderRoutes(c *WebContext) {
 
 	var buf strings.Builder
 	w := tabwriter.NewWriter(&buf, 0, 0, 3, ' ', 0)
+
+	fmt.Fprintln(w, "METHOD\tPATH\tDESCRIPTION\tQUERY\tINPUT\tOUTPUT")
 	for _, line := range lines {
 		fmt.Fprintln(w, line)
 	}
@@ -625,7 +627,8 @@ func buildPath(route *Route, prefix string) []string {
 	for k, mt := range methods {
 		if route.IsAllowed(k) {
 			idx := methodIndex(mt)
-			ret = append(ret, fmt.Sprintf("[%s]\t%s\t%s", k, prefix, formatRouteDoc(route.docs[idx])))
+			q, i, o, d := formatRouteDoc(route.docs[idx])
+			ret = append(ret, fmt.Sprintf("[%s]\t%s\t%s\t%s\t%s\t%s", k, prefix, d, q, i, o))
 		}
 	}
 	// }

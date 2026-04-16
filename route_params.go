@@ -9,9 +9,10 @@ import (
 type ParamSource string
 
 const (
-	ParamSourceBody  ParamSource = "body"
-	ParamSourceQuery ParamSource = "query"
-	ParamSourcePath  ParamSource = "path"
+	ParamSourceInput  ParamSource = "input"
+	ParamSourceQuery  ParamSource = "query"
+	ParamSourceOutput ParamSource = "output"
+	ParamSourcePath   ParamSource = "path"
 )
 
 // RouteParam describes a single declared parameter on a route.
@@ -30,12 +31,12 @@ type RouteDoc struct {
 	params      RouteParamSet
 }
 
-// Body sets the body schema by reflecting over the provided struct instance.
-func (d *RouteDoc) Body(v any) *RouteDoc {
+// Input sets the input schema by reflecting over the provided struct instance.
+func (d *RouteDoc) Input(v any) *RouteDoc {
 	if d == nil {
 		d = &RouteDoc{}
 	}
-	d.params = append(d.params, paramsFromAny(v, ParamSourceBody)...)
+	d.params = append(d.params, paramsFromAny(v, ParamSourceInput)...)
 	return d
 }
 
@@ -48,14 +49,26 @@ func (d *RouteDoc) Query(v any) *RouteDoc {
 	return d
 }
 
+// Output sets the output schema by reflecting over the provided struct instance.
+func (d *RouteDoc) Output(v any) *RouteDoc {
+	if d == nil {
+		d = &RouteDoc{}
+	}
+	d.params = append(d.params, paramsFromAny(v, ParamSourceOutput)...)
+	return d
+}
+
 // Describe initializes a RouteDoc with a description.
 func Describe(desc string) *RouteDoc { return &RouteDoc{description: desc} }
 
-// Body is a convenience starting point for RouteDoc without a description.
-func Body(v any) *RouteDoc { return (&RouteDoc{}).Body(v) }
+// Input is a convenience starting point for RouteDoc without a description.
+func Input(v any) *RouteDoc { return (&RouteDoc{}).Input(v) }
 
 // Query is a convenience starting point for RouteDoc without a description.
 func Query(v any) *RouteDoc { return (&RouteDoc{}).Query(v) }
+
+// Output is a convenience starting point for RouteDoc without a description.
+func Output(v any) *RouteDoc { return (&RouteDoc{}).Output(v) }
 
 func paramsFromAny(v any, source ParamSource) RouteParamSet {
 	if v == nil {
@@ -75,7 +88,7 @@ func paramsFromAny(v any, source ParamSource) RouteParamSet {
 		return nil
 	}
 
-	return paramsFromType(t, ParamSourceBody)
+	return paramsFromType(t, source)
 }
 
 func paramsFromType(t reflect.Type, source ParamSource) RouteParamSet {
@@ -126,26 +139,49 @@ func isRouteParamRequired(field reflect.StructField) bool {
 }
 
 // formatRouteDoc formats a RouteDoc for display in the route list.
-func formatRouteDoc(doc *RouteDoc) string {
+func formatRouteDoc(doc *RouteDoc) (string, string, string, string) {
 	if doc == nil {
-		return ""
+		return "-", "-", "-", ""
 	}
 
-	var paramStr string
+	var inParts []string
+	var outParts []string
+	var queryParts []string
+
 	if len(doc.params) > 0 {
-		parts := make([]string, 0, len(doc.params))
 		for _, p := range doc.params {
+			modifier := "?"
 			if p.Required {
-				parts = append(parts, p.Name+": "+p.Type+"*")
-			} else {
-				parts = append(parts, p.Name+": "+p.Type+"?")
+				modifier = "*"
+			}
+			str := p.Name + ": " + p.Type + modifier
+
+			switch p.Source {
+			case ParamSourceOutput:
+				outParts = append(outParts, str)
+			case ParamSourceQuery:
+				queryParts = append(queryParts, str)
+			default:
+				inParts = append(inParts, str)
 			}
 		}
-		paramStr = " [" + strings.Join(parts, ", ") + "]"
 	}
 
-	if doc.description != "" {
-		return paramStr + "\t\"" + doc.description + "\""
+	queryStr, inStr, outStr := "-", "-", "-"
+
+	if len(queryParts) > 0 {
+		queryStr = "[" + strings.Join(queryParts, ", ") + "]"
 	}
-	return paramStr
+	if len(inParts) > 0 {
+		inStr = "[" + strings.Join(inParts, ", ") + "]"
+	}
+	if len(outParts) > 0 {
+		outStr = "[" + strings.Join(outParts, ", ") + "]"
+	}
+
+	descStr := ""
+	if doc.description != "" {
+		descStr = "\"" + doc.description + "\""
+	}
+	return queryStr, inStr, outStr, descStr
 }
