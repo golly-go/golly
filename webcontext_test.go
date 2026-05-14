@@ -157,7 +157,7 @@ func BenchmarkNewWebContext(b *testing.B) {
 	}
 }
 
-func BenchmarkWebContextRequestBody(b *testing.B) {
+func BenchmarkWebContextBody(b *testing.B) {
 	body := []byte(`{"key": "value", "data": [1, 2, 3, 4, 5]}`)
 	req := httptest.NewRequest("POST", "/", nil)
 	w := httptest.NewRecorder()
@@ -168,6 +168,6 @@ func BenchmarkWebContextRequestBody(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = wctx.RequestBody()
+		_ = wctx.Body()
 	}
 }

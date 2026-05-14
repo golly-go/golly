@@ -171,21 +171,53 @@ func (wctx *WebContext) URLParams() *RouteVars {
 	return &wctx.vars
 }
 
-// Params marshals json params into out interface
+// Marshal decodes JSON from the buffered request body into out.
+// Suitable for small, known-size payloads (JSON APIs, small forms).
+// Repeated calls are safe — body is cached after the first read.
 func (wctx *WebContext) Marshal(out any) error {
-	return json.Unmarshal(wctx.RequestBody(), out)
+	return json.Unmarshal(wctx.Body(), out)
 }
 
-// RequestBody return the request body in a buffer
-func (wctx *WebContext) RequestBody() []byte {
+// MarshalStream decodes JSON via a streaming decoder without buffering the body.
+// Prefer this for large payloads or NDJSON where you don't need the raw bytes.
+// NOTE: mutually exclusive with Body() — once the stream is consumed it cannot be re-read.
+func (wctx *WebContext) MarshalStream(out any) error {
+	return json.NewDecoder(wctx.request.Body).Decode(out)
+}
+
+// Body buffers the full request body into memory and returns it.
+// Repeated calls return the cached result with no additional reads.
+// Use BodyReader() instead when you need streaming access or are handling large payloads.
+func (wctx *WebContext) Body() []byte {
 	if wctx.body != nil {
 		return wctx.body
 	}
-	b, _ := io.ReadAll(wctx.request.Body)
-	wctx.request.Body = io.NopCloser(bytes.NewBuffer(b))
-	wctx.body = b
-	return b
+
+	var buf *bytes.Buffer
+	if cl := wctx.request.ContentLength; cl > 0 {
+		buf = bytes.NewBuffer(make([]byte, 0, cl))
+	} else {
+		buf = &bytes.Buffer{}
+	}
+
+	io.Copy(buf, wctx.request.Body) //nolint:errcheck
+	wctx.body = buf.Bytes()
+	wctx.request.Body = io.NopCloser(bytes.NewReader(wctx.body))
+	return wctx.body
 }
+
+// BodyReader returns the raw request body as a streaming io.Reader.
+// Zero allocation — prefer this for large payloads, file uploads, or streaming protocols (e.g. MIME, NDJSON).
+// NOTE: mutually exclusive with Body() — once consumed the stream cannot be re-read.
+func (wctx *WebContext) BodyReader() io.Reader {
+	return wctx.request.Body
+}
+
+// RequestBody returns the buffered request body.
+//
+// Deprecated: use Body() instead. RequestBody() will be removed in a future release.
+func (wctx *WebContext) RequestBody() []byte { return wctx.Body() }
+
 func (wctx *WebContext) Write(b []byte) (int, error) {
 	return wctx.writer.Write(b)
 }
