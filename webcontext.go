@@ -188,8 +188,29 @@ func (wctx *WebContext) MarshalStream(out any) error {
 // Body buffers the full request body into memory and returns it.
 // Repeated calls return the cached result with no additional reads.
 // Use BodyReader() instead when you need streaming access or are handling large payloads.
+//
+// Safe to call concurrently; internally serialised with mu.
 func (wctx *WebContext) Body() []byte {
+	// Fast path — already buffered (no lock needed for read after first store).
+	wctx.mu.RLock()
 	if wctx.body != nil {
+		b := wctx.body
+		wctx.mu.RUnlock()
+		return b
+	}
+	wctx.mu.RUnlock()
+
+	wctx.mu.Lock()
+	defer wctx.mu.Unlock()
+
+	// Double-check after acquiring write lock (another goroutine may have populated it).
+	if wctx.body != nil {
+		return wctx.body
+	}
+
+	// Guard against nil or sentinel NoBody — treat as empty payload.
+	if wctx.request.Body == nil || wctx.request.Body == http.NoBody {
+		wctx.body = []byte{}
 		return wctx.body
 	}
 

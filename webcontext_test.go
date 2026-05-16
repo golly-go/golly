@@ -1,9 +1,11 @@
 package golly
 
 import (
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -132,6 +134,59 @@ func TestMakeRequestID_LongHostname(t *testing.T) {
 	// Or even better, run a small benchmark here?
 	// Let's just trust the logic: if len+pad <= cap, it slices.
 	// Since 37 <= 64, it should slice.
+}
+
+// TestWebContextBody verifies the nil-body guard, NoBody sentinel, caching, and concurrency safety.
+func TestWebContextBody(t *testing.T) {
+	newCtx := func(body io.ReadCloser) *WebContext {
+		req := httptest.NewRequest(http.MethodPost, "/", nil)
+		req.Body = body
+		return NewTestWebContext(req, httptest.NewRecorder())
+	}
+
+	t.Run("nil body returns empty slice", func(t *testing.T) {
+		wctx := newCtx(nil)
+		b := wctx.Body()
+		assert.NotNil(t, b)
+		assert.Empty(t, b)
+	})
+
+	t.Run("http.NoBody returns empty slice", func(t *testing.T) {
+		wctx := newCtx(http.NoBody)
+		b := wctx.Body()
+		assert.NotNil(t, b)
+		assert.Empty(t, b)
+	})
+
+	t.Run("normal body reads and caches", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{"hello":"world"}`))
+		wctx := NewTestWebContext(req, httptest.NewRecorder())
+		b1 := wctx.Body()
+		b2 := wctx.Body()
+		assert.Equal(t, `{"hello":"world"}`, string(b1))
+		assert.Equal(t, b1, b2, "second call must return cached bytes")
+	})
+
+	t.Run("concurrent reads return identical result", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`concurrent`))
+		wctx := NewTestWebContext(req, httptest.NewRecorder())
+
+		const n = 20
+		results := make([][]byte, n)
+		var wg sync.WaitGroup
+		wg.Add(n)
+		for i := range n {
+			go func(idx int) {
+				defer wg.Done()
+				results[idx] = wctx.Body()
+			}(i)
+		}
+		wg.Wait()
+
+		for i := 1; i < n; i++ {
+			assert.Equal(t, results[0], results[i], "goroutine %d got different result", i)
+		}
+	})
 }
 
 // /===
