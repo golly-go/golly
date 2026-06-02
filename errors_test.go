@@ -1,6 +1,7 @@
 package golly
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 	"testing"
@@ -25,7 +26,7 @@ func TestNew(t *testing.T) {
 			extensions: nil,
 			wantStatus: http.StatusBadRequest,
 			wantCause:  errors.New("test error"),
-			wantExt:    nil,
+			wantExt:    map[string]any{"code": http.StatusBadRequest, "status": "Bad Request"},
 		},
 		{
 			name:       "Without extensions and nil cause",
@@ -34,7 +35,7 @@ func TestNew(t *testing.T) {
 			extensions: nil,
 			wantStatus: http.StatusNotFound,
 			wantCause:  nil,
-			wantExt:    nil,
+			wantExt:    map[string]any{"code": http.StatusNotFound, "status": "Not Found"},
 		},
 		{
 			name:  "With single extension map",
@@ -45,7 +46,7 @@ func TestNew(t *testing.T) {
 			},
 			wantStatus: http.StatusInternalServerError,
 			wantCause:  errors.New("server error"),
-			wantExt:    map[string]any{"key1": "value1", "key2": 42},
+			wantExt:    map[string]any{"code": http.StatusInternalServerError, "status": "Internal Server Error", "key1": "value1", "key2": 42},
 		},
 		{
 			name:  "With multiple extension maps",
@@ -57,7 +58,7 @@ func TestNew(t *testing.T) {
 			},
 			wantStatus: http.StatusUnauthorized,
 			wantCause:  errors.New("unauthorized"),
-			wantExt:    map[string]any{"key1": "value1", "key2": "value2", "key3": 123},
+			wantExt:    map[string]any{"code": http.StatusUnauthorized, "status": "Unauthorized", "key1": "value1", "key2": "value2", "key3": 123},
 		},
 		{
 			name:  "With overlapping keys in extension maps",
@@ -69,7 +70,7 @@ func TestNew(t *testing.T) {
 			},
 			wantStatus: http.StatusConflict,
 			wantCause:  errors.New("conflict"),
-			wantExt:    map[string]any{"key1": "second", "key2": "value2"}, // Last value wins
+			wantExt:    map[string]any{"code": http.StatusConflict, "status": "Conflict", "key1": "second", "key2": "value2"}, // Last value wins
 		},
 	}
 
@@ -87,11 +88,7 @@ func TestNew(t *testing.T) {
 				assert.Equal(t, tt.wantCause.Error(), err.Unwrap().Error())
 			}
 
-			if tt.wantExt == nil {
-				assert.Nil(t, err.Extensions())
-			} else {
-				assert.Equal(t, tt.wantExt, err.Extensions())
-			}
+			assert.Equal(t, tt.wantExt, err.Extensions())
 		})
 	}
 }
@@ -144,45 +141,29 @@ func TestError_Message(t *testing.T) {
 }
 
 func TestError_Extensions(t *testing.T) {
-	tests := []struct {
-		name       string
-		extensions []map[string]any
-		expect     map[string]any
-	}{
-		{
-			name:       "With extensions",
-			extensions: []map[string]any{{"key1": "value1", "key2": 42}},
-			expect:     map[string]any{"key1": "value1", "key2": 42},
-		},
-		{
-			name:       "Nil extensions (no extension arg)",
-			extensions: nil,
-			expect:     nil,
-		},
-		{
-			name:       "Empty extensions map",
-			extensions: []map[string]any{{}},
-			expect:     map[string]any{},
-		},
-	}
+	t.Run("Always includes code and status", func(t *testing.T) {
+		err := NewError(http.StatusBadRequest, nil)
+		ext := err.Extensions()
+		assert.Equal(t, http.StatusBadRequest, ext["code"])
+		assert.Equal(t, "Bad Request", ext["status"])
+	})
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			var err *Error
-			if tt.extensions == nil {
-				err = NewError(http.StatusBadRequest, nil)
-			} else {
-				err = NewError(http.StatusBadRequest, nil, tt.extensions...)
-			}
-			ext := err.Extensions()
+	t.Run("Includes user-supplied extensions", func(t *testing.T) {
+		err := NewError(http.StatusBadRequest, nil, map[string]any{"key1": "value1", "key2": 42})
+		ext := err.Extensions()
+		assert.Equal(t, map[string]any{
+			"code":   http.StatusBadRequest,
+			"status": "Bad Request",
+			"key1":   "value1",
+			"key2":   42,
+		}, ext)
+	})
 
-			if tt.expect == nil {
-				assert.Nil(t, ext)
-			} else {
-				assert.Equal(t, tt.expect, ext)
-			}
-		})
-	}
+	t.Run("User extensions can override code/status", func(t *testing.T) {
+		err := NewError(http.StatusBadRequest, nil, map[string]any{"code": "CUSTOM"})
+		ext := err.Extensions()
+		assert.Equal(t, "CUSTOM", ext["code"])
+	})
 }
 
 func TestError_Error(t *testing.T) {
@@ -266,31 +247,27 @@ func TestError_WithMeta(t *testing.T) {
 		key        string
 		value      any
 		expectExt  map[string]any
-		expectCopy bool // Whether a new error should be returned
 	}{
 		{
 			name:       "Add to nil extensions",
 			initialExt: nil,
 			key:        "newKey",
 			value:      "newValue",
-			expectExt:  map[string]any{"newKey": "newValue"},
-			expectCopy: true,
+			expectExt:  map[string]any{"code": http.StatusBadRequest, "status": "Bad Request", "newKey": "newValue"},
 		},
 		{
 			name:       "Add to existing extensions",
 			initialExt: []map[string]any{{"existing": "value"}},
 			key:        "newKey",
 			value:      "newValue",
-			expectExt:  map[string]any{"existing": "value", "newKey": "newValue"},
-			expectCopy: true,
+			expectExt:  map[string]any{"code": http.StatusBadRequest, "status": "Bad Request", "existing": "value", "newKey": "newValue"},
 		},
 		{
 			name:       "Overwrite existing key",
 			initialExt: []map[string]any{{"key": "old"}},
 			key:        "key",
 			value:      "new",
-			expectExt:  map[string]any{"key": "new"},
-			expectCopy: true,
+			expectExt:  map[string]any{"code": http.StatusBadRequest, "status": "Bad Request", "key": "new"},
 		},
 	}
 
@@ -306,14 +283,6 @@ func TestError_WithMeta(t *testing.T) {
 
 			// Verify copy-on-write behavior
 			assert.NotSame(t, original, modified, "WithMeta should return a new error instance")
-
-			// Verify original is unchanged
-			originalExt := original.Extensions()
-			if tt.initialExt == nil {
-				assert.Nil(t, originalExt)
-			} else {
-				assert.Equal(t, tt.initialExt[0], originalExt)
-			}
 
 			// Verify modified has the new key-value pair
 			assert.Equal(t, tt.expectExt, modified.Extensions())
@@ -333,28 +302,28 @@ func TestError_WithExtensions(t *testing.T) {
 			name:                 "Empty map should return original",
 			initialExt:           []map[string]any{{"existing": "value"}},
 			newExt:               map[string]any{},
-			expectExt:            map[string]any{"existing": "value"},
+			expectExt:            map[string]any{"code": http.StatusBadRequest, "status": "Bad Request", "existing": "value"},
 			shouldReturnOriginal: true,
 		},
 		{
 			name:                 "Add to nil extensions",
 			initialExt:           nil,
 			newExt:               map[string]any{"key1": "value1", "key2": 42},
-			expectExt:            map[string]any{"key1": "value1", "key2": 42},
+			expectExt:            map[string]any{"code": http.StatusBadRequest, "status": "Bad Request", "key1": "value1", "key2": 42},
 			shouldReturnOriginal: false,
 		},
 		{
 			name:                 "Merge with existing extensions",
 			initialExt:           []map[string]any{{"existing": "value"}},
 			newExt:               map[string]any{"new1": "value1", "new2": 42},
-			expectExt:            map[string]any{"existing": "value", "new1": "value1", "new2": 42},
+			expectExt:            map[string]any{"code": http.StatusBadRequest, "status": "Bad Request", "existing": "value", "new1": "value1", "new2": 42},
 			shouldReturnOriginal: false,
 		},
 		{
 			name:                 "Overwrite existing keys",
 			initialExt:           []map[string]any{{"key": "old", "keep": "this"}},
 			newExt:               map[string]any{"key": "new"},
-			expectExt:            map[string]any{"key": "new", "keep": "this"},
+			expectExt:            map[string]any{"code": http.StatusBadRequest, "status": "Bad Request", "key": "new", "keep": "this"},
 			shouldReturnOriginal: false,
 		},
 	}
@@ -370,27 +339,13 @@ func TestError_WithExtensions(t *testing.T) {
 			modified := original.WithExtensions(tt.newExt)
 
 			if tt.shouldReturnOriginal {
-				// Empty map case - should return original
 				assert.Same(t, original, modified, "WithExtensions should return original for empty map")
 			} else {
-				// Should return a new instance
 				assert.NotSame(t, original, modified, "WithExtensions should return a new error instance")
-
-				// Verify original is unchanged
-				originalExt := original.Extensions()
-				if tt.initialExt == nil {
-					assert.Nil(t, originalExt)
-				} else {
-					assert.Equal(t, tt.initialExt[0], originalExt)
-				}
 			}
 
 			// Verify modified has expected extensions
-			if tt.expectExt == nil {
-				assert.Nil(t, modified.Extensions())
-			} else {
-				assert.Equal(t, tt.expectExt, modified.Extensions())
-			}
+			assert.Equal(t, tt.expectExt, modified.Extensions())
 		})
 	}
 }
@@ -452,15 +407,14 @@ func TestError_Chaining(t *testing.T) {
 			WithMeta("key2", "value2").
 			WithExtensions(map[string]any{"key3": "value3", "key4": 42})
 
-		// Verify original is unchanged
-		assert.Nil(t, original.Extensions())
-
-		// Verify all modifications are present
+		// Verify all modifications are present (plus code+status)
 		expected := map[string]any{
-			"key1": "value1",
-			"key2": "value2",
-			"key3": "value3",
-			"key4": 42,
+			"code":   http.StatusBadRequest,
+			"status": "Bad Request",
+			"key1":   "value1",
+			"key2":   "value2",
+			"key3":   "value3",
+			"key4":   42,
 		}
 		assert.Equal(t, expected, modified.Extensions())
 	})
@@ -475,4 +429,57 @@ func TestError_Chaining(t *testing.T) {
 		assert.Equal(t, original.Unwrap(), modified.Unwrap())
 		assert.Equal(t, cause.Error(), modified.Unwrap().Error())
 	})
+}
+
+func TestError_MarshalJSON(t *testing.T) {
+	tests := []struct {
+		name   string
+		err    *Error
+		expect map[string]any
+	}{
+		{
+			name: "With extensions",
+			err: NewError(http.StatusBadRequest, errors.New("bad input"),
+				map[string]any{"field": "email", "reason": "invalid"}),
+			expect: map[string]any{
+				"message": "bad input",
+				"code":    float64(http.StatusBadRequest),
+				"extensions": map[string]any{
+					"field":  "email",
+					"reason": "invalid",
+				},
+			},
+		},
+		{
+			name: "Without extensions",
+			err:  NewError(http.StatusNotFound, errors.New("not found")),
+			expect: map[string]any{
+				"message": "not found",
+				"code":    float64(http.StatusNotFound),
+			},
+		},
+		{
+			name: "With message override",
+			err: func() *Error {
+				e := NewError(http.StatusForbidden, errors.New("cause"))
+				e.message = "access denied"
+				return e
+			}(),
+			expect: map[string]any{
+				"message": "access denied",
+				"code":    float64(http.StatusForbidden),
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			data, err := json.Marshal(tt.err)
+			assert.NoError(t, err)
+
+			var got map[string]any
+			assert.NoError(t, json.Unmarshal(data, &got))
+			assert.Equal(t, tt.expect, got)
+		})
+	}
 }

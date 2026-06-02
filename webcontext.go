@@ -124,6 +124,7 @@ func (wctx *WebContext) Query(key string) url.Values   { return wctx.request.URL
 func (wctx *WebContext) Cache() *DataLoader        { return wctx.ctx.Cache() }
 func (wctx *WebContext) Logger() *Entry            { return wctx.ctx.Logger() }
 func (wctx *WebContext) Application() *Application { return wctx.ctx.Application() }
+func (wctx *WebContext) Path() string              { return wctx.path }
 
 // Render provides a flexible method for sending responses in various formats (JSON, XML, etc.).
 // It adds minimal overhead compared to direct writes, making it an ideal choice for standardized response handling.

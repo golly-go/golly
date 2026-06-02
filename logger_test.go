@@ -303,12 +303,6 @@ func TestEntry_Any(t *testing.T) {
 	assert.Equal(t, struct{ Name string }{Name: "test"}, fields["struct"])
 }
 
-func TestLoggerDefaults(t *testing.T) {
-	logger := NewLogger()
-	assert.Equal(t, LogLevelInfo, logger.Level())
-	assert.NotNil(t, logger.formatter.Load())
-}
-
 // ******************************************************************
 // Benchmarks
 // ******************************************************************

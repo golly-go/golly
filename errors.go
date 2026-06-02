@@ -3,6 +3,8 @@ package golly
 import (
 	"maps"
 	"net/http"
+
+	"github.com/segmentio/encoding/json"
 )
 
 type HTTPError interface {
@@ -20,9 +22,16 @@ type Error struct {
 	cause      error
 }
 
-func (e *Error) Status() int                { return e.statusCode }
-func (e *Error) Message() string            { return e.message }
-func (e *Error) Extensions() map[string]any { return e.extensions }
+func (e *Error) Status() int     { return e.statusCode }
+func (e *Error) Message() string { return e.message }
+func (e *Error) Extensions() map[string]any {
+	out := map[string]any{
+		"code":   e.statusCode,
+		"status": e.statusText,
+	}
+	maps.Copy(out, e.extensions)
+	return out
+}
 
 func (e *Error) Error() string {
 	if e.message != "" {
@@ -36,6 +45,22 @@ func (e *Error) Error() string {
 }
 
 func (e *Error) Unwrap() error { return e.cause }
+
+// MarshalJSON produces a protocol-agnostic JSON representation
+// that includes extensions, so GQL/RPC consumers get the full picture
+// without needing to type-assert ExtendedError themselves.
+func (e *Error) MarshalJSON() ([]byte, error) {
+	obj := map[string]any{
+		"message": e.Error(),
+		"code":    e.statusCode,
+	}
+
+	if len(e.extensions) > 0 {
+		obj["extensions"] = e.extensions
+	}
+
+	return json.Marshal(obj)
+}
 
 // WithMeta adds a single k/v to extensions (copy-on-write).
 func (e *Error) WithMeta(k string, v any) *Error {
