@@ -40,3 +40,49 @@ func TestBindCommands(t *testing.T) {
 	assert.NotNil(t, rootCMD)
 	assert.Len(t, rootCMD.Commands(), 3)
 }
+
+func TestSetScheduledServices(t *testing.T) {
+	options := Options{
+		Services: []Service{
+			&mockService{name: "ServiceA"},
+			&mockService{name: "ServiceB"},
+		},
+		Commands: []*cobra.Command{
+			{Use: "custom", Short: "Custom Command"},
+		},
+	}
+
+	app := NewApplication(options)
+	rootCMD := bindCommands(app, options)
+
+	// Test 1: executing "myapp service ServiceA"
+	cmd, _, err := rootCMD.Find([]string{"service", "ServiceA"})
+	assert.NoError(t, err)
+	assert.NotNil(t, cmd)
+	assert.Equal(t, "ServiceA", cmd.Name())
+
+	app.runningServices = []string{}
+	setScheduledServices(app, cmd)
+	assert.True(t, app.IsServiceScheduled("ServiceA"))
+	assert.False(t, app.IsServiceScheduled("ServiceB"))
+
+	// Test 2: executing "myapp service all"
+	cmdAll, _, err := rootCMD.Find([]string{"service", "all"})
+	assert.NoError(t, err)
+	assert.NotNil(t, cmdAll)
+
+	app.runningServices = []string{}
+	setScheduledServices(app, cmdAll)
+	assert.True(t, app.IsServiceScheduled("ServiceA"))
+	assert.True(t, app.IsServiceScheduled("ServiceB"))
+
+	// Test 3: executing "myapp custom"
+	cmdCustom, _, err := rootCMD.Find([]string{"custom"})
+	assert.NoError(t, err)
+	assert.NotNil(t, cmdCustom)
+
+	app.runningServices = []string{}
+	setScheduledServices(app, cmdCustom)
+	assert.False(t, app.IsServiceScheduled("ServiceA"))
+	assert.False(t, app.IsServiceScheduled("ServiceB"))
+}

@@ -80,6 +80,7 @@ func bindCommands(app *Application, options Options) *cobra.Command {
 		Use: app.Name,
 		// Initialize app before ANY command runs
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
+			setScheduledServices(app, cmd)
 			if err := initializeApp(app); err != nil {
 				app.logger.Fatal(err)
 			}
@@ -133,4 +134,40 @@ func bindCommands(app *Application, options Options) *cobra.Command {
 	rootCMD.AddCommand(options.Commands...)
 
 	return rootCMD
+}
+
+func setScheduledServices(app *Application, cmd *cobra.Command) {
+	var isServiceCmd bool
+	var serviceSubcmd *cobra.Command
+
+	curr := cmd
+	for curr != nil {
+		if curr.Name() == "service" {
+			isServiceCmd = true
+			break
+		}
+		serviceSubcmd = curr
+		curr = curr.Parent()
+	}
+
+	if !isServiceCmd || serviceSubcmd == nil {
+		return
+	}
+
+	if serviceSubcmd.Name() == "all" {
+		app.mu.Lock()
+		app.runningServices = make([]string, 0, len(app.services))
+		for name := range app.services {
+			app.runningServices = append(app.runningServices, name)
+		}
+		app.mu.Unlock()
+		return
+	}
+
+	serviceName := serviceSubcmd.Name()
+	app.mu.Lock()
+	if _, exists := app.services[serviceName]; exists {
+		app.runningServices = []string{serviceName}
+	}
+	app.mu.Unlock()
 }

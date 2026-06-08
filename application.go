@@ -136,7 +136,18 @@ func (a *Application) addRunningService(names ...string) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
-	a.runningServices = append(a.runningServices, names...)
+	for _, name := range names {
+		found := false
+		for _, existing := range a.runningServices {
+			if existing == name {
+				found = true
+				break
+			}
+		}
+		if !found {
+			a.runningServices = append(a.runningServices, name)
+		}
+	}
 }
 
 func (a *Application) Plugins() *PluginManager { return a.plugins }
