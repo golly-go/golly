@@ -121,17 +121,32 @@ func listServices(services []Service) func(cmd *cobra.Command, args []string) {
 	}
 }
 
-// startService starts a service.
+// RegisterAndStartService registers a service with the application (ignoring if it's
+// already registered) and starts it in a golly-managed goroutine.
 //
-// Parameters:
-//   - app: The application instance.
-//   - service: The service to start.
-//
-// Returns:
-//   - An error if the service fails to start.
-//   - nil if the service starts successfully.
-//
-// we should probably move this to (application struct as it starts to need more and more of it)
+// StartService is designed to block for the lifetime of the service so that golly
+// can own the goroutine and lifecycle. RegisterAndStartService therefore launches the
+// service in a background goroutine, keeping the call non-blocking for the caller.
+// If the service exits with an error, app.Shutdown() is triggered automatically —
+// identical to the behaviour of running all services via the CLI.
+func (a *Application) RegisterAndStartService(service Service) error {
+	if err := a.RegisterService(service); err != nil && err != ErrorServiceAlreadyRegistered {
+		return err
+	}
+
+	name := getServiceName(service)
+	a.addRunningService(name)
+
+	go func() {
+		if err := StartService(a, service); err != nil {
+			a.logger.Errorf("service '%s' terminated unexpectedly: %v", name, err)
+			a.Shutdown()
+		}
+	}()
+
+	return nil
+}
+
 func StartService(app *Application, service Service) error {
 	name := getServiceName(service)
 	app.logger.Tracef("Starting service: %s", name)

@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"net/http"
 	"reflect"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -100,6 +102,7 @@ func TestGetService(t *testing.T) {
 }
 
 type mockLifecycleService struct {
+	mu          sync.Mutex
 	initialized bool
 	started     bool
 	stopped     bool
@@ -109,20 +112,45 @@ type mockLifecycleService struct {
 func (m *mockLifecycleService) Name() string        { return "lifecycle" }
 func (m *mockLifecycleService) Description() string { return "lifecycle mock" }
 func (m *mockLifecycleService) Initialize(app *Application) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.initialized = true
 	return nil
 }
 func (m *mockLifecycleService) Start() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.started = true
 	m.running = true
 	return nil
 }
 func (m *mockLifecycleService) Stop() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.stopped = true
 	m.running = false
 	return nil
 }
-func (m *mockLifecycleService) IsRunning() bool { return m.running }
+func (m *mockLifecycleService) IsRunning() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.running
+}
+func (m *mockLifecycleService) Started() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.started
+}
+func (m *mockLifecycleService) Stopped() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.stopped
+}
+func (m *mockLifecycleService) Initialized() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.initialized
+}
 
 func TestServiceLifecycle(t *testing.T) {
 	testApp, _ := NewTestApplication(Options{})
@@ -131,29 +159,33 @@ func TestServiceLifecycle(t *testing.T) {
 	t.Run("StartService", func(t *testing.T) {
 		err := StartService(testApp, svc)
 		assert.NoError(t, err)
-		assert.True(t, svc.initialized)
-		assert.True(t, svc.started)
-		assert.True(t, svc.running)
+		assert.True(t, svc.Initialized())
+		assert.True(t, svc.Started())
+		assert.True(t, svc.IsRunning())
 	})
 
 	t.Run("StopService", func(t *testing.T) {
 		err := StopService(testApp, svc)
 		assert.NoError(t, err)
-		assert.True(t, svc.stopped)
-		assert.False(t, svc.running)
+		assert.True(t, svc.Stopped())
+		assert.False(t, svc.IsRunning())
 	})
 
 	t.Run("StopService_NotRunning", func(t *testing.T) {
+		svc.mu.Lock()
 		svc.running = false
+		svc.mu.Unlock()
 		err := StopService(testApp, svc)
 		assert.NoError(t, err)
 	})
 
 	t.Run("stopRunningServices", func(t *testing.T) {
+		svc.mu.Lock()
 		svc.running = true
+		svc.mu.Unlock()
 		testApp.services["lifecycle"] = svc
 		stopRunningServices(testApp)
-		assert.False(t, svc.running)
+		assert.False(t, svc.IsRunning())
 	})
 
 	t.Run("stopRunningServices_Error", func(t *testing.T) {
@@ -175,6 +207,22 @@ func TestServiceLifecycle(t *testing.T) {
 		err := StopService(testApp, failSvc)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "stop failed")
+	})
+
+	t.Run("RegisterAndStartService", func(t *testing.T) {
+		svc := &mockLifecycleService{}
+		err := testApp.RegisterAndStartService(svc)
+		assert.NoError(t, err)
+
+		// RegisterAndStartService is non-blocking — the service runs in a
+		// golly-managed goroutine, so wait for it to start.
+		assert.Eventually(t, func() bool {
+			return svc.Started() && svc.IsRunning() && svc.Initialized()
+		}, time.Second, 10*time.Millisecond)
+
+		// Calling it again should ignore ErrorServiceAlreadyRegistered and still work
+		err = testApp.RegisterAndStartService(svc)
+		assert.NoError(t, err)
 	})
 }
 

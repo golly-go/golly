@@ -40,7 +40,6 @@ type paramsNoJSON struct {
 type paramsExcluded struct {
 	Keep    string `json:"keep"`
 	Skipped string `json:"-"`
-	hidden  string // unexported
 }
 
 type paramsPointer struct {
