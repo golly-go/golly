@@ -163,7 +163,15 @@ func (f *JSONFormatter) FormatInto(e *Entry) error {
 			val = math.Float64frombits(uint64(field.Int64))
 		case LogTypeBool:
 			val = field.Int64 == 1
-		case LogTypeError, LogTypeAny:
+		case LogTypeError:
+			if err, ok := field.Interface.(error); ok && err != nil {
+				val = err.Error()
+			} else if s, ok := field.Interface.(string); ok {
+				val = s
+			} else {
+				val = nil
+			}
+		case LogTypeAny:
 			val = field.Interface
 		case LogTypeDuration:
 			val = field.Interface // or time.Duration(field.Int64).String()
